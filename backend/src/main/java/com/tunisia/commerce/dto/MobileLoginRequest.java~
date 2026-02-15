@@ -1,0 +1,4 @@
+package com.tunisia.commerce.dto;
+
+public class MobileLoginRequest {
+}

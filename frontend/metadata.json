@@ -1,0 +1,8 @@
+{
+  "name": "Portail Officiel du Commerce Extérieur - République Tunisienne",
+  "short_name": "Commerce TN",
+  "description": "Portail gouvernemental pour la régulation du commerce extérieur, l'enregistrement des exportateurs et le suivi des accords d'importation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
