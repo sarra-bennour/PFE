@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
+import { get } from 'http';
 
 const Navbar: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -53,11 +54,11 @@ const Navbar: React.FC = () => {
 
   const allNavLinks = [
     { path: '/', label: 'nav_home', roles: [] },
-    { path: '/exporter', label: 'nav_exporter', roles: ['exporter'] },
-    { path: '/importer', label: 'nav_importer', roles: ['importer'] },
-    { path: '/validator', label: 'nav_validator', roles: ['validator'] },
-    { path: '/dashboard', label: 'nav_dashboard', roles: ['admin', 'validator'] },
-    { path: '/admin', label: 'nav_admin', roles: ['admin'] },
+    { path: '/exporter', label: 'nav_exporter', roles: ['EXPORTATEUR'] }, // Modifié en majuscules
+    { path: '/importer', label: 'nav_importer', roles: ['IMPORTATEUR'] }, // Modifié en majuscules
+    { path: '/validator', label: 'nav_validator', roles: ['VALIDATOR'] }, // Modifié
+    { path: '/dashboard', label: 'nav_dashboard', roles: ['ADMIN', 'VALIDATOR'] }, // Modifié en majuscules
+    { path: '/admin', label: 'nav_admin', roles: ['ADMIN'] }, // Modifié en majuscules
   ];
 
   const visibleLinks = allNavLinks.filter(link => {
@@ -65,6 +66,51 @@ const Navbar: React.FC = () => {
     if (!user) return false;
     return link.roles.includes(user.role);
   });
+
+  // Fonction pour obtenir le nom à afficher
+  const getDisplayName = () => {
+  if (!user) return '';
+  
+  // Si c'est un exportateur avec un nom d'entreprise
+  if (user.role === 'EXPORTATEUR' && user.companyName) {
+    // Tronquer le nom si trop long (optionnel)
+    const companyName = user.companyName;
+    return companyName.length > 15 ? companyName.substring(0, 12) + '...' : companyName;
+  }
+  
+  // Si c'est un importateur ou autre avec prénom/nom
+  if (user.prenom || user.nom) {
+    const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
+    if (fullName.length > 0) {
+      // Prendre seulement le prénom ou une version courte
+      const firstName = user.prenom || user.nom || '';
+      return firstName.length > 12 ? firstName.substring(0, 10) + '...' : firstName;
+    }
+  }
+  
+  // Fallback à l'email
+  return user.email.split('@')[0];
+};
+
+
+  // Fonction pour obtenir le rôle en majuscules pour l'affichage
+  const getRoleDisplay = () => {
+    if (!user || !user.role) return '';
+    return user.role.toUpperCase();
+  };
+
+  // Fonction pour obtenir les initiales de l'avatar
+  const getInitials = () => {
+    if (!user) return '';
+    
+    if (user.prenom && user.nom) {
+      return (user.prenom.charAt(0) + user.nom.charAt(0)).toUpperCase();
+    }
+    if (user.companyName) {
+      return user.companyName.charAt(0).toUpperCase();
+    }
+    return user.email.charAt(0).toUpperCase();
+  };
 
   return (
     <>
@@ -184,14 +230,16 @@ const Navbar: React.FC = () => {
                   <div className="relative group">
                     <button className="flex items-center gap-3 group">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-50 to-indigo-100 flex items-center justify-center border border-blue-200 group-hover:border-tunisia-red transition-all shadow-sm">
-                        <i className="fas fa-user text-[10px] text-blue-600 group-hover:text-tunisia-red"></i>
+                        <span className="text-[10px] font-black text-blue-600 group-hover:text-tunisia-red">
+                          {getInitials()}
+                        </span>
                       </div>
                       <div className="hidden md:flex flex-col items-start">
                         <span className="text-[9px] font-black text-slate-900 uppercase tracking-widest leading-none">
-                          {user.companyName || user.email.split('@')[0]}
+                          {getDisplayName()}
                         </span>
                         <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none mt-0.5">
-                          {user.role.toUpperCase()}
+                          {getRoleDisplay()}
                         </span>
                       </div>
                       <i className="fas fa-chevron-down text-[8px] text-slate-400 group-hover:text-tunisia-red transition-colors"></i>
@@ -200,6 +248,18 @@ const Navbar: React.FC = () => {
                     {/* Dropdown menu */}
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 z-50">
                       <div className="p-1">
+                        {/* Informations utilisateur dans le dropdown */}
+                        <div className="px-4 py-3 border-b border-slate-100 mb-1">
+                          <div className="text-[9px] font-black text-slate-900 uppercase tracking-widest truncate max-w-[150px]" title={user.email}>
+                            {user.email}
+                          </div>
+                          {user.country && (
+                            <div className="text-[7px] text-slate-400 font-medium mt-1">
+                              {user.country} {user.city ? `- ${user.city}` : ''}
+                            </div>
+                          )}
+                        </div>
+
                         <Link
                           to="/profile"
                           className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 transition-colors text-left"

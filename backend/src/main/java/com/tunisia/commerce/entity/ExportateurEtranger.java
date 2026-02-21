@@ -7,9 +7,12 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "exportateurs")
+@PrimaryKeyJoinColumn(name = "id")
 @DiscriminatorValue("EXPORTATEUR")
 @Data
 @SuperBuilder
@@ -44,8 +47,10 @@ public class ExportateurEtranger extends User {
     @Column(name = "numero_tva")
     private String numeroTVA;
 
-    /*@OneToMany(mappedBy = "exportateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Document> documents = new ArrayList<>();*/
+    @OneToMany(mappedBy = "exportateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    @ToString.Exclude
+    private List<Document> documents = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     @Column(name = "statut_agrement")
@@ -82,4 +87,6 @@ public class ExportateurEtranger extends User {
     private LocalDateTime resetPasswordTokenExpiry;
     @Column(name = "last_password_change")
     private LocalDateTime lastPasswordChange;
+
+
 }

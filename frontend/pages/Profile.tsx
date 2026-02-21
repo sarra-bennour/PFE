@@ -13,8 +13,14 @@ const Profile: React.FC = () => {
   
   const [formData, setFormData] = useState({
     companyName: user?.companyName || '',
-    phone: user?.phone || '',
-    address: '123 Avenue de la Liberté, Tunis'
+    phone: user?.telephone || user?.phone || '', // Support both telephone and phone fields
+    address: user?.address || user?.adresseLegale || '123 Avenue de la Liberté, Tunis',
+    email: user?.email || '',
+    country: user?.country || user?.paysOrigine || '',
+    city: user?.city || user?.ville || '',
+    tinNumber: user?.tinNumber || user?.numeroRegistreCommerce || '',
+    website: user?.website || user?.siteWeb || '',
+    legalRep: user?.legalRep || user?.representantLegal || ''
   });
 
   if (!user) return null;
@@ -26,35 +32,40 @@ const Profile: React.FC = () => {
   };
 
   const toggle2FA = () => {
-    const newState = !user.isTwoFactorEnabled;
+    const newState = !user.twoFactorEnabled;
     updateUser({ isTwoFactorEnabled: newState });
     localStorage.setItem(`2fa_${user.email}`, newState.toString());
   };
 
   const getRemainingDays = () => {
-    if (!user?.submissionDate) return 15;
-    const start = new Date(user.submissionDate).getTime();
+    if (!user?.dateCreation) return 15;
+    const start = new Date(user.dateCreation).getTime();
     const now = new Date().getTime();
     const diff = Math.ceil((start + 15 * 24 * 60 * 60 * 1000 - now) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
   };
 
   const roleColors = {
-    exporter: 'bg-tunisia-red',
-    importer: 'bg-emerald-600',
-    validator: 'bg-blue-600',
-    admin: 'bg-slate-900'
+    EXPORTATEUR: 'bg-tunisia-red',
+    IMPORTATEUR: 'bg-emerald-600',
+    VALIDATOR: 'bg-blue-600',
+    ADMIN: 'bg-slate-900',
+    exporter: 'bg-tunisia-red', // For backward compatibility
+    importer: 'bg-emerald-600', // For backward compatibility
+    validator: 'bg-blue-600', // For backward compatibility
+    admin: 'bg-slate-900' // For backward compatibility
   };
 
   const userStatusBadge = () => {
-    if (user.role === 'exporter') {
+    if (user.role === 'EXPORTATEUR' || user.role === 'exporter') {
+      const status = user.statut || user.status;
       return (
         <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-          user.status === 'VERIFIED' ? 'bg-green-50 text-green-600 border-green-200' : 
-          user.status === 'PENDING_VERIFICATION' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+          status === 'ACTIF' || status === 'VERIFIED' ? 'bg-green-50 text-green-600 border-green-200' : 
+          status === 'INACTIF' || status === 'PENDING_VERIFICATION' ? 'bg-amber-50 text-amber-600 border-amber-200' :
           'bg-red-50 text-red-600 border-red-200'
         }`}>
-          {user.status?.replace('_', ' ')}
+          {status || 'EN ATTENTE'}
         </span>
       );
     }
@@ -65,21 +76,22 @@ const Profile: React.FC = () => {
     );
   };
 
-  const isPaymentPending = user?.role === 'exporter' && user?.status === 'PAYMENT_PENDING';
-  const isVerifiedExporter = user?.role === 'exporter' && user?.status === 'VERIFIED';
+  const isPaymentPending = false; // À implémenter selon votre logique métier
+  const isVerifiedExporter = (user.role === 'EXPORTATEUR' || user.role === 'exporter') && 
+                            (user.statut === 'ACTIF' || user.emailVerified === true);
   const remainingDays = getRemainingDays();
 
-  // Mock Data pour le certificat
+  // Mock Data pour le certificat (à remplacer par les vraies données du backend)
   const certData = {
     enTete: "RÉPUBLIQUE TUNISIENNE - MINISTÈRE DU COMMERCE",
     titre: "CERTIFICAT D'ENREGISTREMENT D'EXPORTATEUR ÉTRANGER",
     infos: {
-      numeroCertificat: "CERT-NEE-2024-001234",
-      nee: "NEE-TUN-2024-05789-XD",
-      societe: user.companyName || "ABC Electronics GmbH",
-      pays: "Allemagne",
-      representant: "Hans Müller",
-      dateEmission: "15/03/2024",
+      numeroCertificat: user.numeroAgrement || "CERT-NEE-2024-001234",
+      nee: user.numeroAgrement || "NEE-TUN-2024-05789-XD",
+      societe: user.companyName || user.raisonSociale || "ABC Electronics GmbH",
+      pays: user.country || user.paysOrigine || "Allemagne",
+      representant: user.legalRep || user.representantLegal || "Hans Müller",
+      dateEmission: user.dateAgrement || "15/03/2024",
       dateExpiration: "14/03/2027",
       qrCode: "https://verify.gov.tn/nee/NEE-TUN-2024-05789-XD"
     },
@@ -89,6 +101,12 @@ const Profile: React.FC = () => {
 
   const handleDownloadCert = () => {
     alert("Téléchargement du certificat PDF haute résolution en cours...");
+  };
+
+  // Déterminer la couleur du rôle
+  const getRoleColor = () => {
+    const role = user.role?.toUpperCase() || 'EXPORTATEUR';
+    return roleColors[role] || roleColors['EXPORTATEUR'];
   };
 
   return (
@@ -233,7 +251,7 @@ const Profile: React.FC = () => {
 
       {/* Header Profil */}
       <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100 mb-8 animate-fade-in-scale">
-        <div className={`h-40 ${roleColors[user.role]} relative`}>
+        <div className={`h-40 ${getRoleColor()} relative`}>
           <div className="absolute inset-0 opacity-10 flex flex-wrap gap-4 p-4 overflow-hidden">
              {[...Array(20)].map((_, i) => (
                <i key={i} className={`fas fa-globe text-6xl transform rotate-${i * 15}`}></i>
@@ -244,7 +262,7 @@ const Profile: React.FC = () => {
           <div className="flex flex-col md:flex-row md:items-end -mt-16 gap-6">
             <div className="w-32 h-32 rounded-[2.5rem] bg-white p-2 shadow-2xl relative border border-slate-50">
               <img 
-                src={`https://ui-avatars.com/api/?name=${user.companyName || user.email}&background=random&size=200`} 
+                src={`https://ui-avatars.com/api/?name=${user.companyName || user.raisonSociale || user.email}&background=random&size=200`} 
                 alt="Avatar" 
                 className="w-full h-full rounded-[2.2rem] object-cover"
               />
@@ -253,7 +271,7 @@ const Profile: React.FC = () => {
             <div className="flex-grow">
               <div className="flex items-center gap-4 mb-1">
                 <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">
-                  {user.companyName || user.email.split('@')[0]}
+                  {user.companyName || user.raisonSociale || user.email.split('@')[0]}
                 </h1>
                 {userStatusBadge()}
               </div>
@@ -315,12 +333,12 @@ const Profile: React.FC = () => {
                     <button 
                       onClick={toggle2FA}
                       className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-all ${
-                        user.isTwoFactorEnabled 
+                        user.twoFactorEnabled 
                         ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' 
                         : 'bg-slate-200 text-slate-500'
                       }`}
                     >
-                      {user.isTwoFactorEnabled ? 'Activé' : 'Désactivé'}
+                      {user.twoFactorEnabled ? 'Activé' : 'Désactivé'}
                     </button>
                  </div>
               </div>
@@ -370,22 +388,30 @@ const Profile: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
                 <div>
                   <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">{t('company_name')}</span>
-                  <span className="text-lg font-black text-slate-800">{user.companyName || 'Non défini'}</span>
+                  <span className="text-lg font-black text-slate-800">{user.companyName || user.raisonSociale || 'Non défini'}</span>
                 </div>
                 <div>
                   <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">{t('phone_number')}</span>
-                  <span className="text-lg font-black text-slate-800">{user.phone || '+216 -- --- ---'}</span>
+                  <span className="text-lg font-black text-slate-800">{user.telephone || user.phone || '+216 -- --- ---'}</span>
                 </div>
                 
-                {user.role === 'exporter' && (
+                {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                   <>
                     <div>
                       <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">{t('tin_number')}</span>
-                      <span className="text-lg font-black text-slate-800 tracking-tighter">TR-8829-X01</span>
+                      <span className="text-lg font-black text-slate-800 tracking-tighter">{user.tinNumber || user.numeroRegistreCommerce || 'Non défini'}</span>
                     </div>
                     <div>
                       <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">{t('country')}</span>
-                      <span className="text-lg font-black text-slate-800">Turquie</span>
+                      <span className="text-lg font-black text-slate-800">{user.country || user.paysOrigine || 'Non défini'}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Ville</span>
+                      <span className="text-lg font-black text-slate-800">{user.city || user.ville || 'Non défini'}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">Site Web</span>
+                      <span className="text-lg font-black text-slate-800">{user.website || user.siteWeb || 'Non défini'}</span>
                     </div>
                   </>
                 )}

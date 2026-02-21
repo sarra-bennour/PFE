@@ -1,0 +1,4 @@
+package com.tunisia.commerce.repository;
+
+public interface ProductRepository {
+}

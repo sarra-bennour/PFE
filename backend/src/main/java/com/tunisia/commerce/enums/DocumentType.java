@@ -1,0 +1,22 @@
+package com.tunisia.commerce.enums;
+
+public enum DocumentType {
+    // Documents entreprise
+    RC_CERT, RC_TRANSLATION, RC_LEGALIZATION,
+    STATUTES, STATUTES_TRANSLATION,
+    TIN_CERT,
+
+    // Documents représentant
+    PASSPORT, DESIGNATION_PV,
+
+    // Documents financiers
+    SOLVENCY_CERT, ANNUAL_ACCOUNTS, EXTERNAL_AUDIT,
+
+    // Documents produits
+    TECHNICAL_DATA_SHEET, PRODUCT_LABELS,
+    SANITARY_CERT, FREE_SALE_CERT,
+    BACTERIO_ANALYSIS, PHYSICO_CHEM_ANALYSIS,
+    RADIOACTIVITY_ANALYSIS, FUMIGATION_CERT,
+    HACCP_CERT, ISO_CERT,
+    BRAND_LICENSE, COMPETENT_AUTHORITY_LETTER
+}

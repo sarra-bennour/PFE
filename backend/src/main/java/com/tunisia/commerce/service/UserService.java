@@ -1,6 +1,6 @@
 package com.tunisia.commerce.service;
 
-import com.tunisia.commerce.dto.*;
+import com.tunisia.commerce.dto.user.*;
 
 public interface UserService {
     UserDTO registerExportateur(ExportateurSignupRequest request);

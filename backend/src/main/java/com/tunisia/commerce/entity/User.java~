@@ -40,7 +40,7 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(name = "statut", nullable = false)
     @Builder.Default
-    private UserStatus statut = UserStatus.INACTIF;
+    private UserStatus statut = UserStatus.ACTIF;
 
     @Column(name = "last_login")
     private LocalDateTime lastLogin;

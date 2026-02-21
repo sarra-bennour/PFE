@@ -1,6 +1,6 @@
 package com.tunisia.commerce.service.impl;
 
-import com.tunisia.commerce.dto.*;
+import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.enums.UserStatus;
@@ -55,28 +55,20 @@ public class UserServiceImpl implements UserService {
         String verificationToken = generateVerificationToken();
         LocalDateTime tokenExpiry = LocalDateTime.now().plusHours(verificationExpiryHours);
 
-        // 1. Créer l'entité User parente d'abord
-        User user = new User();
-        user.setNom(request.getCompanyName());
-        user.setPrenom(request.getLegalRep());
-        user.setEmail(request.getEmail());
-        user.setTelephone(request.getPhone());
-        user.setRole(UserRole.EXPORTATEUR);
-        user.setStatut(UserStatus.INACTIF);
-        user.setDateCreation(LocalDateTime.now());
-
-        // 2. Créer l'exportateur
+        // ✅ SOLUTION: Créer DIRECTEMENT l'exportateur avec TOUS les champs
+        // Les champs de User sont accessibles car ExportateurEtranger extends User
         ExportateurEtranger exportateur = new ExportateurEtranger();
-        exportateur.setId(user.getId()); // Si nécessaire
-        exportateur.setNom(user.getNom());
-        exportateur.setPrenom(user.getPrenom());
-        exportateur.setEmail(user.getEmail());
-        exportateur.setTelephone(user.getTelephone());
-        exportateur.setRole(user.getRole()); // Copier le rôle
-        exportateur.setStatut(user.getStatut());
-        exportateur.setDateCreation(user.getDateCreation());
 
-        // Champs spécifiques
+        // === CHAMPS DE LA CLASSE PARENT (User) ===
+        exportateur.setNom(request.getCompanyName());        // Nom de l'entreprise
+        exportateur.setPrenom(request.getLegalRep());        // Représentant légal
+        exportateur.setEmail(request.getEmail());            // Email
+        exportateur.setTelephone(request.getPhone());        // Téléphone
+        exportateur.setRole(UserRole.EXPORTATEUR);          // Rôle
+        exportateur.setStatut(UserStatus.INACTIF);           // Statut (inactif tant que email non vérifié)
+        exportateur.setDateCreation(LocalDateTime.now());    // Date de création
+
+        // === CHAMPS SPÉCIFIQUES À L'EXPORTATEUR ===
         exportateur.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         exportateur.setPaysOrigine(request.getCountry());
         exportateur.setRaisonSociale(request.getCompanyName());
@@ -86,14 +78,28 @@ public class UserServiceImpl implements UserService {
         exportateur.setSiteWeb(request.getWebsite());
         exportateur.setRepresentantLegal(request.getLegalRep());
 
-        // Champs de vérification email
+        // === CHAMPS DE VÉRIFICATION ===
         exportateur.setEmailVerified(false);
         exportateur.setVerificationToken(verificationToken);
         exportateur.setVerificationTokenExpiry(tokenExpiry);
 
+        // Optionnel: TVA
+        if (request.getNumeroTVA() != null) {
+            exportateur.setNumeroTVA(request.getNumeroTVA());
+        }
+
+        logger.info("Création de l'exportateur avec email: " + exportateur.getEmail());
         logger.info("Rôle défini: " + exportateur.getRole());
 
+        // ✅ Une seule sauvegarde - Hibernate s'occupe de tout !
+        // Grâce à l'héritage JOINED, Hibernate va:
+        // 1. Insérer d'abord dans la table 'users'
+        // 2. Récupérer l'ID généré
+        // 3. Insérer dans la table 'exportateurs' avec le même ID
         ExportateurEtranger saved = exportateurRepository.save(exportateur);
+
+        logger.info("Exportateur sauvegardé avec ID: " + saved.getId());
+        logger.info("Vérification dans users: " + userRepository.findById(saved.getId()).isPresent());
 
         // Envoyer l'email de vérification
         try {
@@ -104,13 +110,12 @@ public class UserServiceImpl implements UserService {
             );
             logger.info("Email de vérification envoyé à: " + request.getEmail());
         } catch (Exception e) {
-            logger.severe("Erreur lors de l'envoi de l'email de vérification: " + e.getMessage());
-            // Ne pas lancer d'exception, l'utilisateur est créé quand même
-            // L'email pourra être renvoyé plus tard
+            logger.severe("Erreur lors de l'envoi de l'email: " + e.getMessage());
         }
 
         return mapToUserDTO(saved);
     }
+
 
     private String generateVerificationToken() {
         return UUID.randomUUID().toString().replace("-", "");
@@ -156,7 +161,7 @@ public class UserServiceImpl implements UserService {
 
         // Mettre à jour
         exportateur.setEmailVerified(true);
-        exportateur.setStatut(UserStatus.ACTIF);
+        exportateur.setStatut(UserStatus.PROFILE_INCOMPLETE);
         exportateur.setVerificationToken(null);
         exportateur.setVerificationTokenExpiry(null);
 

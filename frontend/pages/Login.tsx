@@ -199,26 +199,34 @@ const Login: React.FC = () => {
     i18n.changeLanguage(lng);
   };
 
-  const executeLogin = (userEmail: string) => {
-    let role: UserRole = 'exporter';
-    let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
-    
-    if (userEmail.includes('admin')) role = 'admin';
-    if (userEmail.includes('validator')) role = 'validator';
-    if (userEmail.includes('importer')) role = 'importer';
+  const executeLogin = (userEmail: string, userData?: any) => {
+  // Si on a déjà les données utilisateur du backend, on les utilise
+  if (userData) {
+    login(userData, localStorage.getItem('token'));
+    navigate(`/${userData.role.toLowerCase()}`);
+    return;
+  }
 
-    const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
+  // Fallback pour les cas où on n'a pas les données (ancien code)
+  let role: UserRole = 'EXPORTATEUR';
+  let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
+  
+  if (userEmail.includes('admin')) role = 'admin';
+  if (userEmail.includes('validator')) role = 'validator';
+  if (userEmail.includes('importer')) role = 'importer';
 
-    login({ 
-      email: userEmail, 
-      role, 
-      status, 
-      companyName: 'Opérateur International',
-      isTwoFactorEnabled: is2FA
-    });
+  const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
+
+  login({ 
+    email: userEmail, 
+    role, 
+    status, 
+    companyName: 'Opérateur International',
+    isTwoFactorEnabled: is2FA
+  }, localStorage.getItem('token')); // Ajouter le token même pour le fallback
     
-    navigate(`/${role}`);
-  };
+  navigate(`/${role}`);
+};
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -238,15 +246,18 @@ const Login: React.FC = () => {
 
       if (response.ok) {
         const loginResponse = await response.json();
-        console.log('Login réussi:', loginResponse);
+
+        console.log('User role:', loginResponse.user?.role);
         
         localStorage.setItem('token', loginResponse.token);
         localStorage.setItem('user', JSON.stringify(loginResponse.user));
+
+        login(loginResponse.user, loginResponse.token);
         
         if (loginResponse.requiresTwoFactor) {
           setView('two_factor');
         } else {
-          executeLogin(email);
+          executeLogin(email, loginResponse.user);
         }
       } else {
         const error = await response.json();

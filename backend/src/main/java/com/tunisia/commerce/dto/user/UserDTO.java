@@ -1,4 +1,4 @@
-package com.tunisia.commerce.dto;
+package com.tunisia.commerce.dto.user;
 
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.enums.UserStatus;

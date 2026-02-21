@@ -1,14 +1,12 @@
 package com.tunisia.commerce.controller;
 
 import com.tunisia.commerce.config.JwtUtil;
-import com.tunisia.commerce.dto.*;
+import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -104,12 +102,12 @@ public class AuthController {
         return ResponseEntity.ok(isValid);
     }
 
-    @GetMapping("/me")
+    /*@GetMapping("/me")
     public ResponseEntity<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
         // Extraire l'email du token via JwtUtil si nécessaire
         // Pour simplifier, on pourrait avoir un endpoint qui prend l'email en paramètre
         return ResponseEntity.ok().build();
-    }
+    }*/
 
     @PostMapping("/logout")
     public ResponseEntity<?> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
@@ -132,7 +130,7 @@ public class AuthController {
     }
 
     @PostMapping("/verify-email")
-    public ResponseEntity<?> verifyEmail(@RequestParam String token) {
+    public ResponseEntity<?> verifyEmail(@RequestParam("token") String token) {
         try {
             boolean verified = userService.verifyEmail(token);
             return ResponseEntity.ok(Map.of(

@@ -1,8 +1,8 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GoogleGenAI } from '@google/genai';
 import { useAuth } from '../App';
+import axios from 'axios';
 
 // Définition de l'interface pour les données KYC
 interface KycData {
@@ -18,6 +18,53 @@ interface KycData {
   annualAccounts: File | null;
   externalAudit: File | null;
 }
+
+// Interface pour la réponse du dossier
+interface DossierResponse {
+  success: boolean;
+  message: string;
+  timestamp: string;
+  hasDossier: boolean;
+  demandeId?: number;
+  status?: string;
+  reference?: string;
+  submittedAt?: string;
+  requiresCompletion?: boolean;
+  prochainesEtapes?: string[];
+  exportateurInfo?: any;
+  documentsCount?: number;
+}
+
+// Composant de nœud de pipeline style Jenkins
+const PipelineNode = ({ label, status, isLast = false }: { 
+  label: string, 
+  status: 'pending' | 'processing' | 'success' | 'failure',
+  isLast?: boolean
+}) => {
+  const configs = {
+    pending: { color: 'bg-slate-100 text-slate-300', icon: 'fa-circle', line: 'bg-slate-100' },
+    processing: { color: 'bg-blue-500 text-white shadow-lg shadow-blue-200', icon: 'fa-sync fa-spin', line: 'bg-slate-100' },
+    success: { color: 'bg-emerald-500 text-white shadow-lg shadow-emerald-200', icon: 'fa-check', line: 'bg-emerald-500' },
+    failure: { color: 'bg-tunisia-red text-white shadow-lg shadow-red-200', icon: 'fa-times', line: 'bg-emerald-500' },
+  };
+  const config = configs[status];
+
+  return (
+    <div className={`flex items-center ${isLast ? '' : 'flex-grow'}`}>
+      <div className="flex flex-col items-center relative group">
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] transition-all duration-500 z-10 ${config.color}`}>
+          <i className={`fas ${config.icon}`}></i>
+        </div>
+        <div className="absolute -bottom-8 whitespace-nowrap text-center w-32 left-1/2 -translate-x-1/2">
+          <span className="text-[8px] font-black uppercase tracking-widest text-slate-900 opacity-60 group-hover:opacity-100 transition-opacity">{label}</span>
+        </div>
+      </div>
+      {!isLast && (
+        <div className={`h-[2px] flex-grow mx-2 rounded-full transition-colors duration-1000 ${config.line}`}></div>
+      )}
+    </div>
+  );
+};
 
 // Composant de téléchargement (Style Neo-Gov)
 const FileUploadBox = ({ 
@@ -78,6 +125,7 @@ const ExporterSpace: React.FC = () => {
   const { user, updateUserStatus, updateUser } = useAuth();
   
   const [loading, setLoading] = useState(false);
+  const [dossierInfo, setDossierInfo] = useState<DossierResponse | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -100,33 +148,162 @@ const ExporterSpace: React.FC = () => {
     externalAudit: null,
   });
 
+  // Vérifier le statut du dossier au chargement
+  useEffect(() => {
+    const fetchDossierStatus = async () => {
+      try {
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+          console.error('❌ Token manquant - redirection vers login');
+          window.location.href = '/login';
+          return;
+        }
+
+        console.log('🔑 Token récupéré:', token.substring(0, 20) + '...');
+
+        const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setDossierInfo(response.data);
+        
+        // Mettre à jour le statut utilisateur en fonction du dossier
+        if (response.data.hasDossier) {
+          if (response.data.status === 'SOUMISE' || response.data.status === 'EN_ATTENTE_PAIEMENT') {
+            updateUserStatus('PENDING_VERIFICATION');
+          } else if (response.data.status === 'VALIDEE') {
+            updateUserStatus('VERIFIED');
+          } else if (response.data.status === 'BROUILLON') {
+            updateUserStatus('PROFILE_INCOMPLETE');
+          } else if (response.data.status === 'PAYEE') {
+            updateUserStatus('PAYMENT_PENDING');
+          }
+        }
+      } catch (error) {
+        console.error('Erreur lors de la récupération du dossier:', error);
+      }
+    };
+
+    if (user?.email) {
+      fetchDossierStatus();
+    }
+  }, [user]);
+
   const handleFileChange = (field: keyof KycData, file: File | null) => {
     setKycData(prev => ({ ...prev, [field]: file }));
   };
 
-  const handleKycSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      updateUser({ submissionDate: new Date().toISOString() });
-      setShowInvoice(true);
-    }, 2500);
-  };
+  const handleKycSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setLoading(true);
+  
+  try {
+    const token = localStorage.getItem('token');
+    const requestData = {
+      produits: []
+    };
+    
+    console.log('📤 Création du dossier avec:', requestData);
+    
+    // 1. Créer le dossier
+    const createResponse = await axios.post('http://localhost:8080/api/exportateur/dossier/creer', requestData, {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Dossier créé:', createResponse.data);
+    const demandeId = createResponse.data.demandeId;
+
+    // 2. MAPPING CORRECT des types de documents
+    const documentTypeMapping: Record<string, string> = {
+      rcCert: 'RC_CERT',
+      rcTranslation: 'RC_TRANSLATION',
+      rcLegalization: 'RC_LEGALIZATION',
+      statutes: 'STATUTES',
+      statutesTranslation: 'STATUTES_TRANSLATION',
+      tinCert: 'TIN_CERT',
+      passport: 'PASSPORT',
+      designationPV: 'DESIGNATION_PV',
+      solvencyCert: 'SOLVENCY_CERT',
+      annualAccounts: 'ANNUAL_ACCOUNTS',
+      externalAudit: 'EXTERNAL_AUDIT'
+    };
+
+    // 3. Upload séquentiel des documents
+    for (const [field, file] of Object.entries(kycData)) {
+      if (file) {
+        const documentType = documentTypeMapping[field];
+        
+        if (!documentType) {
+          console.warn(`⚠️ Type de document non mappé pour ${field}`);
+          continue;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file as File);
+        formData.append('documentType', documentType);
+        
+        console.log(`📤 Uploading ${field} as ${documentType}...`);
+        
+        await axios.post(
+          `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`, 
+          formData,
+          {
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+        console.log(`✅ ${field} upload réussi`);
+      }
+    }
+
+    // 4. Soumettre le dossier
+    await axios.post(`http://localhost:8080/api/exportateur/dossier/${demandeId}/soumettre`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    setShowInvoice(true);
+    
+  } catch (error: any) {
+    console.error('❌ Erreur globale:', error);
+    alert(error.message || 'Une erreur est survenue');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleGoToTerminal = () => {
     setShowInvoice(false);
     setShowTerminal(true);
   };
 
-  const handlePaymentComplete = (e: React.FormEvent) => {
+  const handlePaymentComplete = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
+    
+    try {
+      // Simuler le paiement (à remplacer par un vrai appel API)
+      setTimeout(async () => {
+        setLoading(false);
+        updateUserStatus('PENDING_VERIFICATION');
+        setShowTerminal(false);
+        
+        // Mettre à jour le statut dans le backend
+        const token = localStorage.getItem('token');
+        await axios.post('http://localhost:8080/api/payment/confirm', {
+          demandeId: dossierInfo?.demandeId
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }, 2000);
+    } catch (error) {
+      console.error('Erreur de paiement:', error);
       setLoading(false);
-      updateUserStatus('PENDING_VERIFICATION');
-      setShowTerminal(false);
-    }, 2000);
+    }
   };
 
   const handlePayLater = () => {
@@ -149,9 +326,9 @@ const ExporterSpace: React.FC = () => {
     setLoading(true);
     setIsAiModalOpen(false);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.REACT_APP_API_KEY || '' });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash-exp',
         contents: `En tant qu'expert en douane tunisienne, réponds : ${userQuestion}`,
       });
       setAiAnalysis(response.text || 'Erreur.');
@@ -168,12 +345,11 @@ const ExporterSpace: React.FC = () => {
     { id: 2, name: "Attestation TIN/VAT", status: 'En attente', date: '2025-05-12', history: [{ status: 'Soumis', date: '2025-05-12', comment: 'En attente.' }] },
   ];
 
-  // --- RENDU : FACTURE PRO-FORMA (VERSION COMPACTE ET DOUCE) ---
+  // --- RENDU : FACTURE PRO-FORMA ---
   if (showInvoice) {
     return (
       <div className="max-w-xl mx-auto py-8 px-4 animate-fade-in-scale">
         <div className="bg-white rounded-[2.5rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden">
-          {/* Header Compact */}
           <div className="p-8 bg-slate-50/50 border-b border-dashed border-slate-200 flex justify-between items-center">
             <div className="flex items-center gap-3">
                <img src="https://upload.wikimedia.org/wikipedia/commons/c/ce/Coat_of_arms_of_Tunisia.svg" alt="Coat of Arms" className="w-8 h-8 grayscale opacity-60" />
@@ -184,11 +360,10 @@ const ExporterSpace: React.FC = () => {
             </div>
             <div className="text-right">
                <h2 className="text-sm font-black italic uppercase text-slate-900 tracking-tighter">Note Pro-Forma</h2>
-               <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">N° TN-{Math.floor(1000 + Math.random() * 9000)}</p>
+               <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">N° {dossierInfo?.reference || 'TN-' + Math.floor(1000 + Math.random() * 9000)}</p>
             </div>
           </div>
 
-          {/* Corps Reçu */}
           <div className="p-10 space-y-8">
             <div className="space-y-3">
               <h3 className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-400 mb-4 text-center">Récapitulatif des Frais</h3>
@@ -207,7 +382,6 @@ const ExporterSpace: React.FC = () => {
               </div>
             </div>
 
-            {/* Total Section (Plus Doux) */}
             <div className="py-6 px-8 bg-slate-50 rounded-[1.5rem] flex justify-between items-center border border-slate-100">
                <div className="flex flex-col">
                   <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Net à payer</span>
@@ -216,7 +390,6 @@ const ExporterSpace: React.FC = () => {
                <span className="text-4xl font-black italic text-slate-900 tracking-tighter">500,000 <span className="text-lg">DT</span></span>
             </div>
 
-            {/* Actions Contextuelles */}
             <div className="space-y-3 pt-4">
               <button 
                 onClick={handleGoToTerminal}
@@ -297,8 +470,8 @@ const ExporterSpace: React.FC = () => {
     );
   }
 
-  // --- RENDU : FORMULAIRE KYC ---
-  if (user?.status === 'PROFILE_INCOMPLETE') {
+  // --- RENDU : PREMIÈRE CONNEXION / DOSSIER INCOMPLET ---
+  if (!dossierInfo?.hasDossier || user?.status === 'PROFILE_INCOMPLETE') {
     const requiredFields: (keyof KycData)[] = [
       'rcCert', 'rcTranslation', 'rcLegalization', 
       'statutes', 'statutesTranslation', 'tinCert', 
@@ -313,8 +486,12 @@ const ExporterSpace: React.FC = () => {
         <div className="mb-12">
           <div className="flex justify-between items-end mb-4">
             <div>
-              <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">Dossier de Conformité</h2>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Enregistrement obligatoire des documents</p>
+              <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">
+                {!dossierInfo?.hasDossier ? "Dossier de Conformité" : "Compléter votre dossier"}
+              </h2>
+              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">
+                {dossierInfo?.message || "Enregistrement obligatoire des documents"}
+              </p>
             </div>
             <div className="text-right">
               <span className="text-2xl font-black italic text-tunisia-red tracking-tighter">{Math.round(progress)}%</span>
@@ -417,8 +594,8 @@ const ExporterSpace: React.FC = () => {
     );
   }
 
-  // --- RENDU : DASHBOARD ---
-  if (user?.status === 'PENDING_VERIFICATION') {
+  // --- RENDU : DOSSIER EN ATTENTE DE VALIDATION ---
+  if (dossierInfo?.status === 'SOUMISE' || dossierInfo?.status === 'EN_ATTENTE_PAIEMENT' || user?.status === 'PENDING_VERIFICATION') {
     return (
       <div className="max-w-2xl mx-auto py-24 text-center animate-fade-in-scale">
         <div className="bg-white rounded-[3rem] p-12 shadow-2xl border border-emerald-100 mb-8">
@@ -427,10 +604,10 @@ const ExporterSpace: React.FC = () => {
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-4 uppercase italic tracking-tighter">Analyse en cours</h2>
           <p className="text-slate-500 font-medium leading-relaxed mb-8">
-            Vos frais ont été acquittés. Le Comité de Pilotage (COPIL) examine actuellement votre dossier. Réponse estimée sous 48h.
+            {dossierInfo?.message || "Vos frais ont été acquittés. Le Comité de Pilotage (COPIL) examine actuellement votre dossier. Réponse estimée sous 48h."}
           </p>
           <div className="mt-8 p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-            ID TRANSACTION : {Math.random().toString(36).substring(7).toUpperCase()}
+            RÉFÉRENCE : {dossierInfo?.reference || Math.random().toString(36).substring(7).toUpperCase()}
           </div>
         </div>
         <button onClick={() => updateUserStatus('VERIFIED')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95">
@@ -440,8 +617,9 @@ const ExporterSpace: React.FC = () => {
     );
   }
 
+  // --- RENDU : DASHBOARD PRINCIPAL (DOCUMENTS VALIDÉS) ---
   const daysRemaining = getRemainingDays();
-  const isPaymentPending = user?.status === 'PAYMENT_PENDING';
+  const isPaymentPending = user?.status === 'PAYMENT_PENDING' || dossierInfo?.status === 'PAYEE';
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-scale">
@@ -472,7 +650,7 @@ const ExporterSpace: React.FC = () => {
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight italic uppercase">Dashboard Exportateur</h2>
           <div className="mt-1">
-             {user?.status === 'VERIFIED' ? (
+             {dossierInfo?.status === 'VALIDEE' || user?.status === 'VERIFIED' ? (
                 <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                    Profil Vérifié & Agréé
@@ -480,7 +658,7 @@ const ExporterSpace: React.FC = () => {
              ) : (
                 <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
                    <i className="fas fa-exclamation-triangle"></i>
-                   Profil Non Vérifié
+                   {dossierInfo?.status || "Profil Non Vérifié"}
                 </p>
              )}
           </div>
@@ -488,6 +666,31 @@ const ExporterSpace: React.FC = () => {
         <button onClick={() => setIsAiModalOpen(true)} className="mt-4 md:mt-0 bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all">
           <i className="fas fa-robot mr-2"></i> Support Expert IA
         </button>
+      </div>
+
+      {/* PIPELINE DE STATUT TYPE JENKINS */}
+      <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-12 text-center">Pipeline de Conformité : {selectedDoc?.name || "Dossier Global"}</h3>
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <PipelineNode 
+            label="Soumission" 
+            status={selectedDoc ? 'success' : (dossierInfo?.hasDossier ? 'success' : 'processing')} 
+          />
+          <PipelineNode 
+            label="Analyse IA" 
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'processing') : (dossierInfo?.status === 'SOUMISE' ? 'processing' : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending'))} 
+          />
+          <PipelineNode 
+            label="Validation" 
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')} 
+          />
+          <PipelineNode 
+            label="Décision" 
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')} 
+            isLast={true} 
+          />
+        </div>
+        <br/>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -537,6 +740,47 @@ const ExporterSpace: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Modal IA */}
+      {isAiModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIsAiModalOpen(false)}>
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-black text-slate-900 mb-4">Support Expert IA</h3>
+            <form onSubmit={handleAiHelpSubmit}>
+              <textarea
+                className="w-full p-4 border-2 border-slate-100 rounded-2xl mb-4"
+                rows={4}
+                placeholder="Posez votre question sur la réglementation douanière..."
+                value={userQuestion}
+                onChange={(e) => setUserQuestion(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 bg-tunisia-red text-white py-3 rounded-2xl font-black uppercase tracking-widest">
+                  Envoyer
+                </button>
+                <button type="button" onClick={() => setIsAiModalOpen(false)} className="px-6 py-3 border-2 border-slate-200 rounded-2xl font-black uppercase tracking-widest">
+                  Annuler
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Réponse IA */}
+      {aiAnalysis && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setAiAnalysis(null)}>
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-xl font-black text-slate-900 mb-4">Réponse de l'Expert</h3>
+            <div className="p-6 bg-slate-50 rounded-2xl mb-6">
+              <p className="text-slate-700 whitespace-pre-wrap">{aiAnalysis}</p>
+            </div>
+            <button onClick={() => setAiAnalysis(null)} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest">
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

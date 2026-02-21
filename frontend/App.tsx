@@ -15,7 +15,7 @@ import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 
 // Define User types for the simulation
-export type UserRole = 'exporter' | 'importer' | 'validator' | 'admin';
+export type UserRole = 'EXPORTATEUR' | 'importer' | 'validator' | 'admin';
 export type ExporterStatus = 'SIGNED_UP' | 'PROFILE_INCOMPLETE' | 'PAYMENT_PENDING' | 'PENDING_VERIFICATION' | 'VERIFIED';
 
 export interface User {
@@ -143,7 +143,7 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/exporter" element={
-              <ProtectedRoute roles={['exporter']}>
+              <ProtectedRoute roles={['EXPORTATEUR']}>
                 <ExporterSpace />
               </ProtectedRoute>
             } />

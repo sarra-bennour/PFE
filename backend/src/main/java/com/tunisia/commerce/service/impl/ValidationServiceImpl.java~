@@ -1,0 +1,210 @@
+package com.tunisia.commerce.service.impl;
+
+import com.tunisia.commerce.entity.DemandeEnregistrement;
+import com.tunisia.commerce.entity.DemandeHistory;
+import com.tunisia.commerce.entity.Document;
+import com.tunisia.commerce.entity.ExportateurEtranger;
+import com.tunisia.commerce.enums.DemandeStatus;
+import com.tunisia.commerce.enums.DocumentStatus;
+import com.tunisia.commerce.enums.StatutAgrement;
+import com.tunisia.commerce.enums.UserStatus;
+import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
+import com.tunisia.commerce.repository.DocumentRepository;
+import com.tunisia.commerce.repository.ExportateurRepository;
+import com.tunisia.commerce.repository.UserRepository;
+import com.tunisia.commerce.service.EmailService;
+import com.tunisia.commerce.service.ValidationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class ValidationServiceImpl implements ValidationService {
+
+    private final DemandeEnregistrementRepository demandeRepository;
+    private final DocumentRepository documentRepository;
+    private final ExportateurRepository exportateurRepository;
+    private final UserRepository userRepository;
+    private final EmailService emailService;
+
+    @Override
+    public List<DemandeEnregistrement> getDemandesAAfficher(Long agentId, DemandeStatus status) {
+        if (status == null) {
+            return demandeRepository.findByStatusIn(List.of(
+                    DemandeStatus.SOUMISE,
+                    DemandeStatus.EN_COURS_VALIDATION,
+                    DemandeStatus.EN_ATTENTE_INFO
+            ));
+        }
+
+        if (status == DemandeStatus.EN_COURS_VALIDATION) {
+            return demandeRepository.findByAssignedTo(agentId);
+        }
+
+        return demandeRepository.findByStatus(status);
+    }
+
+    @Override
+    public DemandeEnregistrement assignerDemande(Long demandeId, Long agentId) {
+        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+        demande.setAssignedTo(agentId);
+        demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
+
+        // Ajouter à l'historique
+        DemandeHistory history = DemandeHistory.builder()
+                .demande(demande)
+                .newStatus(DemandeStatus.EN_COURS_VALIDATION)
+                .action("ASSIGNATION")
+                .comment("Dossier assigné à l'agent " + agentId)
+                .performedBy(userRepository.findById(agentId).orElse(null))
+                .performedAt(LocalDateTime.now())
+                .build();
+
+        demande.getHistory().add(history);
+
+        return demandeRepository.save(demande);
+    }
+
+    @Override
+    public void validerDocument(Long documentId, Long agentId, String comment, boolean isValide) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document non trouvé"));
+
+        document.setStatus(isValide ? DocumentStatus.VALIDE : DocumentStatus.REJETE);
+        document.setValidationComment(comment);
+        document.setValidatedAt(LocalDateTime.now());
+        document.setValidatedBy(userRepository.findById(agentId).orElse(null));
+
+        documentRepository.save(document);
+
+        // Vérifier si tous les documents sont validés
+        ExportateurEtranger exportateur = document.getExportateur();
+        List<Document> documentsEnAttente = documentRepository
+                .findByExportateurIdAndStatus(exportateur.getId(), DocumentStatus.EN_ATTENTE);
+
+        if (documentsEnAttente.isEmpty()) {
+            // Tous les documents sont validés, on peut passer à l'étape suivante
+            DemandeEnregistrement demande = demandeRepository
+                    .findByExportateurId(exportateur.getId())
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+            demande.setStatus(DemandeStatus.PAYEE); // En attente de paiement maintenant
+            demandeRepository.save(demande);
+
+            // Notifier l'exportateur que ses documents sont validés
+            emailService.sendDocumentsValidesNotification(
+                    exportateur.getEmail(),
+                    exportateur.getRaisonSociale()
+            );
+        }
+    }
+
+    @Override
+    public DemandeEnregistrement prendreDecisionFinale(Long demandeId, Long agentId,
+                                                       boolean isApprouve, String comment) {
+        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+        ExportateurEtranger exportateur = demande.getExportateur();
+
+        if (isApprouve) {
+            // Générer le numéro d'agrément
+            String numeroAgrement = "AGR-" + LocalDate.now().getYear() + "-" +
+                    String.format("%05d", exportateur.getId());
+
+            demande.setStatus(DemandeStatus.VALIDEE);
+            demande.setNumeroAgrement(numeroAgrement);
+            demande.setDateAgrement(LocalDate.now());
+
+            // Mettre à jour l'exportateur
+            exportateur.setStatutAgrement(StatutAgrement.VALIDE);
+            exportateur.setNumeroAgrement(numeroAgrement);
+            exportateur.setDateAgrement(LocalDate.now());
+            exportateur.setStatut(UserStatus.ACTIF);
+
+            emailService.sendDemandeApprouveeNotification(
+                    exportateur.getEmail(),
+                    exportateur.getRaisonSociale(),
+                    numeroAgrement
+            );
+        } else {
+            demande.setStatus(DemandeStatus.REJETEE);
+            exportateur.setStatutAgrement(StatutAgrement.REJETE);
+
+            emailService.sendDemandeRejeteeNotification(
+                    exportateur.getEmail(),
+                    exportateur.getRaisonSociale(),
+                    comment
+            );
+        }
+
+        demande.setDecisionDate(LocalDateTime.now());
+        demande.setDecisionComment(comment);
+
+        // Ajouter à l'historique
+        DemandeHistory history = DemandeHistory.builder()
+                .demande(demande)
+                .newStatus(demande.getStatus())
+                .action("DECISION_FINALE")
+                .comment(comment)
+                .performedBy(userRepository.findById(agentId).orElse(null))
+                .performedAt(LocalDateTime.now())
+                .build();
+
+        demande.getHistory().add(history);
+
+        exportateurRepository.save(exportateur);
+        return demandeRepository.save(demande);
+    }
+
+    @Override
+    public void demanderInformationsComplementaires(Long demandeId, Long agentId,
+                                                    String message, List<Long> documentsIds) {
+        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+        demande.setStatus(DemandeStatus.EN_ATTENTE_INFO);
+
+        // Marquer les documents concernés comme "à compléter"
+        if (documentsIds != null) {
+            documentsIds.forEach(docId -> {
+                Document doc = documentRepository.findById(docId).orElse(null);
+                if (doc != null) {
+                    doc.setStatus(DocumentStatus.A_COMPLETER);
+                    doc.setValidationComment("Document à compléter: " + message);
+                    documentRepository.save(doc);
+                }
+            });
+        }
+
+        // Ajouter à l'historique
+        DemandeHistory history = DemandeHistory.builder()
+                .demande(demande)
+                .newStatus(DemandeStatus.EN_ATTENTE_INFO)
+                .action("DEMANDE_INFO")
+                .comment(message)
+                .performedBy(userRepository.findById(agentId).orElse(null))
+                .performedAt(LocalDateTime.now())
+                .build();
+
+        demande.getHistory().add(history);
+        demandeRepository.save(demande);
+
+        // Notifier l'exportateur
+        emailService.sendInformationsRequisesNotification(
+                demande.getExportateur().getEmail(),
+                demande.getExportateur().getRaisonSociale(),
+                message
+        );
+    }
+
+    
+}

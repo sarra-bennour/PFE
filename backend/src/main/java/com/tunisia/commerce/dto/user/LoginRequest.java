@@ -1,4 +1,4 @@
-package com.tunisia.commerce.dto;
+package com.tunisia.commerce.dto.user;
 
 import lombok.Data;
 

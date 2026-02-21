@@ -1,4 +1,4 @@
-package com.tunisia.commerce.dto;
+package com.tunisia.commerce.dto.user;
 
 import lombok.Data;
 
@@ -14,4 +14,5 @@ public class ExportateurSignupRequest {
     private String tinNumber;
     private String email;
     private String password;
+    private String numeroTVA;
 }
