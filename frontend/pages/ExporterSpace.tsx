@@ -610,9 +610,9 @@ const ExporterSpace: React.FC = () => {
             RÉFÉRENCE : {dossierInfo?.reference || Math.random().toString(36).substring(7).toUpperCase()}
           </div>
         </div>
-        <button onClick={() => updateUserStatus('VERIFIED')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95">
+        {/* <button onClick={() => updateUserStatus('VERIFIED')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95">
           Simuler Approbation (Démo)
-        </button>
+        </button> */}
       </div>
     );
   }

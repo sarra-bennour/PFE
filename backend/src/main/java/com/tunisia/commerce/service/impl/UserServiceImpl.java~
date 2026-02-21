@@ -308,22 +308,10 @@ public class UserServiceImpl implements UserService {
 
         if (user instanceof ExportateurEtranger) {
             ExportateurEtranger exportateur = (ExportateurEtranger) user;
-
-            // MAPPER TOUS LES CHAMPS DE L'EXPORTATEUR
-            dto.setPaysOrigine(exportateur.getPaysOrigine());
-            dto.setRaisonSociale(exportateur.getRaisonSociale());
-            dto.setNumeroRegistreCommerce(exportateur.getNumeroRegistreCommerce());
-            dto.setAdresseLegale(exportateur.getAdresseLegale());
-            dto.setVille(exportateur.getVille());
-            dto.setSiteWeb(exportateur.getSiteWeb());
-            dto.setRepresentantLegal(exportateur.getRepresentantLegal());
-            dto.setNumeroTVA(exportateur.getNumeroTVA());
-            dto.setStatutAgrement(exportateur.getStatutAgrement());
-            dto.setNumeroAgrement(exportateur.getNumeroAgrement());
-            dto.setDateAgrement(exportateur.getDateAgrement());
-            dto.setEmailVerified(exportateur.isEmailVerified());
+            dto.setCompanyName(exportateur.getRaisonSociale());
+            dto.setCountry(exportateur.getPaysOrigine());
             dto.setTwoFactorEnabled(exportateur.isTwoFactorEnabled());
-            dto.setDocumentsCount(exportateur.getDocuments() != null ? exportateur.getDocuments().size() : 0);
+            dto.setEmailVerified(exportateur.isEmailVerified());
         }
 
         return dto;
