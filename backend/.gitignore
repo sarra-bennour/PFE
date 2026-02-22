@@ -50,3 +50,5 @@ application*.properties
 
 # Dossier de upload
 /upload/
+
+*~
