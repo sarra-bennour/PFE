@@ -45,7 +45,8 @@ application*.properties
 *.pem
 
 # Dossier de configuration
-/config/
+/src/main/java/com/tunisia/commerce/config/
+/src/main/resources/application.properties
 
 # Dossier de upload
 /upload/
