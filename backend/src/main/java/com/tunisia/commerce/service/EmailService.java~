@@ -1,6 +1,6 @@
 package com.tunisia.commerce.service;
 
-import com.tunisia.commerce.enums.NotificationType;
+import com.tunisia.commerce.enums.ValidationNotificationType;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
+
 
 @Service
 @RequiredArgsConstructor
@@ -216,6 +217,10 @@ public class EmailService {
                 return "Mise à jour concernant votre demande d'agrément";
             case INFORMATIONS_REQUISES:
                 return "Informations complémentaires requises - Portail National Tunisien";
+            case PAIEMENT_CONFIRME:
+                return "Confirmation de paiement - Portail National Tunisien";
+            case PAIEMENT_ECHOUE:
+                return "Échec de paiement - Portail National Tunisien";
             default:
                 return "Notification - Portail National Tunisien";
         }

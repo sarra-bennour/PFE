@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Arial', sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #1e3c72; color: white; padding: 20px; text-align: center; }
+        .content { padding: 30px; background: #f9f9f9; }
+        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+        .amount { font-size: 24px; color: #28a745; font-weight: bold; }
+        .reference { background: #e9ecef; padding: 10px; border-radius: 5px; margin: 20px 0; }
+        .button { display: inline-block; padding: 10px 20px; background: #dc3545; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Confirmation de paiement</h1>
+    </div>
+    <div class="content">
+        <p>Cher/Chère <span th:text="${companyName}">Nom de l'entreprise</span>,</p>
+
+        <p>Nous vous confirmons la réception de votre paiement pour le dossier de conformité.</p>
+
+        <div class="reference">
+            <p><strong>Référence de la demande :</strong> <span th:text="${demandeReference}">REF-123</span></p>
+            <p><strong>Référence de paiement :</strong> <span th:text="${paymentReference}">PAY-123</span></p>
+            <p><strong>Montant :</strong> <span class="amount" th:text="${amount} + ' DT'">500 DT</span></p>
+            <p><strong>Date :</strong> <span th:text="${date}">01/01/2024</span></p>
+        </div>
+
+        <p>Votre dossier est maintenant en cours de validation par nos services. Vous serez notifié dès qu'une décision sera prise.</p>
+
+        <p style="text-align: center; margin-top: 30px;">
+            <a th:href="${dashboardUrl}" class="button">Suivre mon dossier</a>
+        </p>
+
+        <p>Pour toute question, contactez notre support à <span th:text="${supportEmail}">support@tunisia-commerce.gov.tn</span></p>
+    </div>
+    <div class="footer">
+        <p>© 2024 Ministère du Commerce - République Tunisienne. Tous droits réservés.</p>
+    </div>
+</div>
+</body>
+</html>

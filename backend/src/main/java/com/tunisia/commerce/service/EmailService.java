@@ -217,6 +217,10 @@ public class EmailService {
                 return "Mise à jour concernant votre demande d'agrément";
             case INFORMATIONS_REQUISES:
                 return "Informations complémentaires requises - Portail National Tunisien";
+            case PAIEMENT_CONFIRME:
+                return "Confirmation de paiement - Portail National Tunisien";
+            case PAIEMENT_ECHOUE:
+                return "Échec de paiement - Portail National Tunisien";
             default:
                 return "Notification - Portail National Tunisien";
         }
@@ -235,6 +239,10 @@ public class EmailService {
                 return "email/demande-rejetee";
             case INFORMATIONS_REQUISES:
                 return "email/informations-requises";
+            case PAIEMENT_CONFIRME:
+                return "email/paiement-confirme";
+            case PAIEMENT_ECHOUE:
+                return "email/paiement-echoue";
             default:
                 return "email/notification-generique";
         }

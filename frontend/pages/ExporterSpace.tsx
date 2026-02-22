@@ -35,6 +35,16 @@ interface DossierResponse {
   documentsCount?: number;
 }
 
+// Interface pour la réponse de création de PaymentIntent
+interface CreatePaymentIntentResponse {
+  clientSecret: string;
+  paymentIntentId: string;
+  demandeId: number;
+  amount: number;
+  currency: string;
+  requiresAction: boolean;
+}
+
 // Composant de nœud de pipeline style Jenkins
 const PipelineNode = ({ label, status, isLast = false }: { 
   label: string, 
@@ -133,6 +143,7 @@ const ExporterSpace: React.FC = () => {
   
   const [showInvoice, setShowInvoice] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
 
   const [kycData, setKycData] = useState<KycData>({
     rcCert: null,
@@ -216,6 +227,14 @@ const ExporterSpace: React.FC = () => {
     console.log('✅ Dossier créé:', createResponse.data);
     const demandeId = createResponse.data.demandeId;
 
+    // Stocker le demandeId dans dossierInfo localement
+    setDossierInfo(prev => ({
+      ...prev,
+      demandeId: demandeId,
+      hasDossier: true,
+      status: 'BROUILLON'
+    } as DossierResponse));
+
     // 2. MAPPING CORRECT des types de documents
     const documentTypeMapping: Record<string, string> = {
       rcCert: 'RC_CERT',
@@ -266,6 +285,12 @@ const ExporterSpace: React.FC = () => {
       headers: { Authorization: `Bearer ${token}` }
     });
 
+    // Mettre à jour le statut
+    setDossierInfo(prev => ({
+      ...prev,
+      status: 'SOUMISE'
+    } as DossierResponse));
+
     setShowInvoice(true);
     
   } catch (error: any) {
@@ -281,27 +306,195 @@ const ExporterSpace: React.FC = () => {
     setShowTerminal(true);
   };
 
+  // Fonction pour créer le PaymentIntent via le backend
+  const handleCreatePaymentIntent = async () => {
+    // Vérifier que demandeId existe
+    if (!dossierInfo?.demandeId) {
+      throw new Error('ID de demande non trouvé');
+    }
+    
+    const token = localStorage.getItem('token');
+    
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/create-intent',
+      {
+        demandeId: dossierInfo.demandeId,
+        successUrl: window.location.origin + '/payment-success',
+        cancelUrl: window.location.origin + '/payment-cancel'
+      },
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('✅ PaymentIntent créé:', response.data);
+    
+    setPaymentIntentId(response.data.paymentIntentId);
+    
+    // Retourner l'ID du PaymentIntent pour l'étape suivante
+    return response.data.paymentIntentId;
+  };
+
+  // Fonction pour traiter le paiement via le backend
+  const handleProcessPayment = async (paymentIntentId: string) => {
+    const token = localStorage.getItem('token');
+    
+    // Récupérer les valeurs des champs de carte avec les bons placeholders
+    const cardNumberInput = document.querySelector('input[placeholder="4242 4242 4242 4242"]') as HTMLInputElement;
+    const expiryDateInput = document.querySelector('input[placeholder="12 / 34"]') as HTMLInputElement;
+    const cvvInput = document.querySelector('input[placeholder="123"]') as HTMLInputElement;
+    
+    if (!cardNumberInput || !expiryDateInput || !cvvInput) {
+      console.error('Inputs non trouvés:', { 
+        cardNumber: cardNumberInput, 
+        expiryDate: expiryDateInput, 
+        cvv: cvvInput 
+      });
+      throw new Error('Champs de carte non trouvés');
+    }
+    
+    const cardNumber = cardNumberInput.value;
+    const expiryDate = expiryDateInput.value;
+    const cvv = cvvInput.value;
+    const cardHolderName = user?.nom + ' ' + user?.prenom;
+    
+    // Vérifier que les champs ne sont pas vides
+    if (!cardNumber || !expiryDate || !cvv) {
+      throw new Error('Veuillez remplir tous les champs de carte');
+    }
+    
+    // Extraire mois et année avec vérification
+    const expiryParts = expiryDate.split('/').map(s => s.trim());
+    if (expiryParts.length !== 2) {
+      throw new Error('Format de date d\'expiration invalide. Utilisez MM/YY');
+    }
+    
+    const expMonth = parseInt(expiryParts[0]);
+    const expYear = parseInt(expiryParts[1]);
+    
+    // Vérifier que les valeurs sont valides
+    if (isNaN(expMonth) || isNaN(expYear)) {
+      throw new Error('Mois ou année d\'expiration invalide');
+    }
+    
+    // Préparer la requête de paiement
+    const paymentRequest = {
+      paymentIntentId: paymentIntentId,
+      demandeId: dossierInfo?.demandeId,
+      cardNumber: cardNumber.replace(/\s/g, ''),
+      cardHolderName: cardHolderName,
+      expMonth: expMonth,
+      expYear: expYear,
+      cvv: cvv,
+      amount: 500.0
+    };
+    
+    console.log('💳 Traitement du paiement...', paymentRequest);
+    
+    // Appeler le backend pour confirmer le paiement
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      paymentRequest,
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('✅ Réponse paiement:', response.data);
+    return response.data;
+  };
+
+  // Fonction pour rafraîchir les données du dossier
+  const refreshDossierData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      
+      const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setDossierInfo(response.data);
+      
+      // Mettre à jour le statut utilisateur
+      if (response.data.hasDossier) {
+        if (response.data.status === 'SOUMISE' || response.data.status === 'EN_ATTENTE_PAIEMENT') {
+          updateUserStatus('PENDING_VERIFICATION');
+        } else if (response.data.status === 'VALIDEE') {
+          updateUserStatus('VERIFIED');
+        } else if (response.data.status === 'BROUILLON') {
+          updateUserStatus('PROFILE_INCOMPLETE');
+        } else if (response.data.status === 'PAYEE') {
+          updateUserStatus('PAYMENT_PENDING');
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors du rafraîchissement:', error);
+    }
+  };
+
+  // Fonction principale de paiement CORRIGÉE
   const handlePaymentComplete = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     
     try {
-      // Simuler le paiement (à remplacer par un vrai appel API)
-      setTimeout(async () => {
+      // Vérifier que demandeId existe
+      if (!dossierInfo?.demandeId) {
+        alert('ID de demande non trouvé. Veuillez réessayer.');
         setLoading(false);
-        updateUserStatus('PENDING_VERIFICATION');
+        return;
+      }
+      
+      console.log('💰 Début du paiement pour la demande:', dossierInfo.demandeId);
+      
+      // Étape 1: Créer le PaymentIntent
+      const paymentIntentId = await handleCreatePaymentIntent();
+      
+      if (!paymentIntentId) {
+        throw new Error('Impossible de créer le PaymentIntent');
+      }
+      
+      // Étape 2: Traiter le paiement
+      const result = await handleProcessPayment(paymentIntentId);
+      
+      if (result.success) {
+        updateUserStatus('PAYMENT_PENDING'); // Mettre à jour le statut
         setShowTerminal(false);
+        alert(`Paiement effectué avec succès!\nRéférence: ${result.transactionId}`);
         
-        // Mettre à jour le statut dans le backend
-        const token = localStorage.getItem('token');
-        await axios.post('http://localhost:8080/api/payment/confirm', {
-          demandeId: dossierInfo?.demandeId
-        }, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      }, 2000);
-    } catch (error) {
-      console.error('Erreur de paiement:', error);
+        // Mettre à jour le statut localement
+        setDossierInfo(prev => ({
+          ...prev,
+          status: 'PAYEE'
+        } as DossierResponse));
+        
+        // Rafraîchir les données depuis le backend au lieu de recharger la page
+        await refreshDossierData();
+        
+        // Optionnel: rediriger vers le dashboard après un court délai
+        setShowInvoice(false);
+      } else {
+        alert('Erreur de paiement: ' + result.message);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Erreur:', error);
+      
+      // Vérifier si l'erreur est due à un token expiré
+      if (error.response?.status === 401) {
+        alert('Votre session a expiré. Veuillez vous reconnecter.');
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      } else {
+        alert(error.response?.data?.message || error.message || 'Erreur lors du paiement');
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -414,7 +607,7 @@ const ExporterSpace: React.FC = () => {
     );
   }
 
-  // --- RENDU : TERMINAL DE PAIEMENT ---
+  // --- RENDU : TERMINAL DE PAIEMENT (VOTRE INTERFACE) ---
   if (showTerminal) {
     return (
       <div className="max-w-md mx-auto py-12 px-4 animate-fade-in-scale">
@@ -431,7 +624,7 @@ const ExporterSpace: React.FC = () => {
              <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de carte</label>
                 <div className="relative">
-                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm" placeholder="•••• •••• •••• ••••" />
+                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm" placeholder="4242 4242 4242 4242" />
                   <i className="fas fa-lock absolute right-5 top-1/2 -translate-y-1/2 text-slate-200 text-xs"></i>
                 </div>
              </div>
@@ -439,17 +632,24 @@ const ExporterSpace: React.FC = () => {
              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Expiration</label>
-                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center" placeholder="MM / YY" />
+                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center" placeholder="12 / 34" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CVV</label>
-                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center" placeholder="•••" />
+                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center" placeholder="123" />
                 </div>
              </div>
 
              <div className="pt-6">
                 <button type="submit" disabled={loading} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-[0.98] flex items-center justify-center gap-3">
-                  {loading ? <i className="fas fa-circle-notch animate-spin"></i> : <><i className="fas fa-shield-halved text-emerald-500"></i> Payer 500,000 DT</>}
+                  {loading ? (
+                    <i className="fas fa-circle-notch animate-spin"></i>
+                  ) : (
+                    <>
+                      <i className="fas fa-shield-halved text-emerald-500"></i>
+                      Payer 500,000 DT
+                    </>
+                  )}
                 </button>
                 <button type="button" onClick={() => { setShowTerminal(false); setShowInvoice(true); }} className="w-full py-4 text-slate-400 font-black uppercase tracking-widest text-[9px] hover:text-slate-600 transition-colors mt-2">
                    Retour à la facture
@@ -463,7 +663,12 @@ const ExporterSpace: React.FC = () => {
                <i className="fas fa-key text-xl"></i>
                <i className="fas fa-user-shield text-xl"></i>
             </div>
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-300">Vos données bancaires sont cryptées et non stockées.</p>
+            <p className="text-[8px] font-black uppercase tracking-widest text-slate-300">
+              Paiement sécurisé par Stripe
+            </p>
+            <p className="text-[6px] font-black uppercase tracking-widest text-slate-400">
+              Test : 4242 4242 4242 4242 | 12/34 | 123
+            </p>
           </div>
         </div>
       </div>
@@ -610,21 +815,29 @@ const ExporterSpace: React.FC = () => {
             RÉFÉRENCE : {dossierInfo?.reference || Math.random().toString(36).substring(7).toUpperCase()}
           </div>
         </div>
-        {/* <button onClick={() => updateUserStatus('VERIFIED')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95">
-          Simuler Approbation (Démo)
-        </button> */}
       </div>
     );
   }
 
   // --- RENDU : DASHBOARD PRINCIPAL (DOCUMENTS VALIDÉS) ---
   const daysRemaining = getRemainingDays();
-  const isPaymentPending = user?.status === 'PAYMENT_PENDING' || dossierInfo?.status === 'PAYEE';
+  
+  // Vérifier correctement si le paiement est en attente
+  const isPaymentPending = 
+    (user?.status === 'PAYMENT_PENDING' && dossierInfo?.status !== 'PAYEE') || 
+    (dossierInfo?.status === 'EN_ATTENTE_PAIEMENT' && dossierInfo?.status !== 'PAYEE');
+
+  // Ne pas afficher la bannière si le statut est PAYEE
+  const shouldShowPaymentBanner = isPaymentPending && 
+    dossierInfo?.status !== 'PAYEE' && 
+    dossierInfo?.status !== 'VALIDEE';
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-scale">
       <br/>
-      {isPaymentPending && (
+      
+      {/* Bannière de paiement - Ne s'affiche que si nécessaire */}
+      {shouldShowPaymentBanner && (
         <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 border-4 border-tunisia-red/30 animate-fade-in-scale relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
              <i className="fas fa-clock text-[8rem] transform -rotate-12"></i>

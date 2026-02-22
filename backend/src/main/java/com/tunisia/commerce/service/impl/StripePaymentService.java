@@ -1,0 +1,452 @@
+package com.tunisia.commerce.service.impl;
+
+import com.stripe.Stripe;
+import com.stripe.exception.SignatureVerificationException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.Event;
+import com.stripe.model.EventDataObjectDeserializer;
+import com.stripe.model.PaymentIntent;
+import com.stripe.model.StripeObject;
+import com.stripe.net.Webhook;
+import com.stripe.param.PaymentIntentCreateParams;
+import com.tunisia.commerce.dto.payment.CreatePaymentIntentRequest;
+import com.tunisia.commerce.dto.payment.CreatePaymentIntentResponse;
+import com.tunisia.commerce.dto.payment.PaymentResponseDTO;
+import com.tunisia.commerce.entity.DemandeEnregistrement;
+import com.tunisia.commerce.entity.ExportateurEtranger;
+import com.tunisia.commerce.enums.DemandeStatus;
+import com.tunisia.commerce.enums.PaymentStatus;
+import com.tunisia.commerce.enums.ValidationNotificationType;
+import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
+import com.tunisia.commerce.repository.ExportateurRepository;
+import com.tunisia.commerce.service.EmailService;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+@Transactional
+public class StripePaymentService {
+
+    @Value("${stripe.api.key}")
+    private String stripeApiKey;
+
+    @Value("${stripe.webhook.secret}")
+    private String webhookSecret;
+
+    @Value("${app.dossier.fees}")
+    private double dossierFees;
+
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
+    private final DemandeEnregistrementRepository demandeRepository;
+    private final ExportateurRepository exportateurRepository;
+    private final EmailService emailService;
+
+    @PostConstruct
+    public void init() {
+        Stripe.apiKey = stripeApiKey;
+        log.info("Stripe API initialisé avec la clé: {}", stripeApiKey.substring(0, 8) + "...");
+    }
+
+    /**
+     * Créer un PaymentIntent Stripe
+     */
+    public CreatePaymentIntentResponse createPaymentIntent(Long exportateurId, CreatePaymentIntentRequest request) {
+        try {
+            // 1. Vérifier l'exportateur
+            ExportateurEtranger exportateur = exportateurRepository.findById(exportateurId)
+                    .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+            // 2. Récupérer la demande
+            DemandeEnregistrement demande = demandeRepository.findById(request.getDemandeId())
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+            // 3. Vérifier que la demande appartient à l'exportateur
+            if (!demande.getExportateur().getId().equals(exportateurId)) {
+                throw new RuntimeException("Accès non autorisé");
+            }
+
+            // 4. Vérifier que la demande peut être payée
+            if (demande.getStatus() != DemandeStatus.SOUMISE &&
+                    demande.getStatus() != DemandeStatus.EN_ATTENTE_PAIEMENT) {
+                throw new RuntimeException("Cette demande ne peut pas être payée (statut: " + demande.getStatus() + ")");
+            }
+
+            // 5. Préparer les métadonnées
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put("demandeId", demande.getId().toString());
+            metadata.put("exportateurId", exportateur.getId().toString());
+            metadata.put("reference", demande.getReference());
+            metadata.put("email", exportateur.getEmail());
+
+            // 6. Créer le PaymentIntent
+            PaymentIntentCreateParams params = PaymentIntentCreateParams.builder()
+                    .setAmount((long) (dossierFees * 100))
+                    .setCurrency("usd")
+                    .setDescription("Frais de dossier exportateur - " + demande.getReference())
+                    .putAllMetadata(metadata)
+                    .setReceiptEmail(exportateur.getEmail())
+                    .build();
+
+            PaymentIntent paymentIntent = PaymentIntent.create(params);
+
+            log.info("PaymentIntent créé: {} pour la demande {}", paymentIntent.getId(), demande.getId());
+
+            // 7. Mettre à jour la demande
+            demande.setPaymentStatus(PaymentStatus.INITIE);
+            demande.setPaymentReference(paymentIntent.getId());
+            demande.setPaymentAmount(BigDecimal.valueOf(dossierFees));
+            demandeRepository.save(demande);
+
+            // 8. Retourner la réponse
+            return CreatePaymentIntentResponse.builder()
+                    .clientSecret(paymentIntent.getClientSecret())
+                    .paymentIntentId(paymentIntent.getId())
+                    .demandeId(demande.getId())
+                    .amount(dossierFees)
+                    .currency(paymentIntent.getCurrency())
+                    .requiresAction(false)
+                    .build();
+
+        } catch (StripeException e) {
+            log.error("Erreur Stripe lors de la création du PaymentIntent", e);
+            throw new RuntimeException("Erreur de paiement: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Confirmer le paiement (après redirection depuis Stripe)
+     */
+    /**
+     * Confirmer le paiement avec les détails de la carte
+     */
+    public PaymentResponseDTO confirmPayment(Long exportateurId, Map<String, Object> paymentDetails) {
+        try {
+            String paymentIntentId = (String) paymentDetails.get("paymentIntentId");
+            String cardNumber = (String) paymentDetails.get("cardNumber");
+            String cardHolderName = (String) paymentDetails.get("cardHolderName");
+            Integer expMonth = (Integer) paymentDetails.get("expMonth");
+            Integer expYear = (Integer) paymentDetails.get("expYear");
+            String cvv = (String) paymentDetails.get("cvv");
+
+            log.info("Confirmation du paiement pour paymentIntentId: {}", paymentIntentId);
+
+            // Récupérer le PaymentIntent
+            PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
+
+            // Récupérer la demande depuis les métadonnées
+            String demandeIdStr = paymentIntent.getMetadata().get("demandeId");
+            if (demandeIdStr == null) {
+                throw new RuntimeException("DemandeId non trouvé dans les métadonnées");
+            }
+
+            Long demandeId = Long.parseLong(demandeIdStr);
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+            ExportateurEtranger exportateur = demande.getExportateur();
+
+            // Vérifier que l'exportateur correspond
+            if (!exportateur.getId().equals(exportateurId)) {
+                throw new RuntimeException("Accès non autorisé");
+            }
+
+            // Ici, dans un vrai projet, vous utiliseriez Stripe.js côté client
+            // ou vous feriez un appel à l'API Stripe avec les détails de la carte
+            // Pour cet exemple, on va simuler un paiement réussi
+
+            // Simuler un délai de traitement
+            Thread.sleep(1000);
+
+            // Simuler un paiement réussi
+            boolean success = true;
+
+            if (success) {
+                // Paiement réussi
+                demande.setPaymentStatus(PaymentStatus.REUSSI);
+                demande.setStatus(DemandeStatus.PAYEE);
+                demande.setSubmittedAt(LocalDateTime.now());
+                demandeRepository.save(demande);
+
+                // Envoyer la confirmation par email
+                sendPaymentConfirmationEmail(exportateur, demande);
+
+                return PaymentResponseDTO.builder()
+                        .success(true)
+                        .message("Paiement confirmé avec succès")
+                        .transactionId(paymentIntent.getId())
+                        .paymentReference(paymentIntent.getId())
+                        .amount(paymentIntent.getAmount() / 100.0)
+                        .paymentDate(LocalDateTime.now())
+                        .status("COMPLETED")
+                        .receiptUrl("/api/payment/receipt/" + demandeId)
+                        .timestamp(LocalDateTime.now())
+                        .build();
+            } else {
+                // Paiement échoué
+                demande.setPaymentStatus(PaymentStatus.ECHEC);
+                demandeRepository.save(demande);
+
+                return PaymentResponseDTO.builder()
+                        .success(false)
+                        .message("Paiement échoué")
+                        .transactionId(paymentIntent.getId())
+                        .timestamp(LocalDateTime.now())
+                        .build();
+            }
+
+        } catch (StripeException e) {
+            log.error("Erreur Stripe lors de la confirmation", e);
+            throw new RuntimeException("Erreur lors de la confirmation: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Erreur lors du traitement");
+        }
+    }
+
+    /**
+     * Confirmer le paiement après redirection (pour l'approche avec redirection Stripe)
+     */
+    public PaymentResponseDTO confirmPaymentRedirect(String paymentIntentId) {
+        try {
+            PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
+
+            // Récupérer la demande depuis les métadonnées
+            String demandeIdStr = paymentIntent.getMetadata().get("demandeId");
+            if (demandeIdStr == null) {
+                throw new RuntimeException("DemandeId non trouvé dans les métadonnées");
+            }
+
+            Long demandeId = Long.parseLong(demandeIdStr);
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+            // Vérifier le statut du paiement
+            if ("succeeded".equals(paymentIntent.getStatus())) {
+                demande.setPaymentStatus(PaymentStatus.REUSSI);
+                demande.setStatus(DemandeStatus.PAYEE);
+                demande.setSubmittedAt(LocalDateTime.now());
+                demandeRepository.save(demande);
+
+                return PaymentResponseDTO.builder()
+                        .success(true)
+                        .message("Paiement confirmé avec succès")
+                        .transactionId(paymentIntent.getId())
+                        .paymentReference(paymentIntent.getId())
+                        .amount(paymentIntent.getAmount() / 100.0)
+                        .paymentDate(LocalDateTime.now())
+                        .status("COMPLETED")
+                        .receiptUrl("/api/payment/receipt/" + demandeId)
+                        .timestamp(LocalDateTime.now())
+                        .build();
+            } else {
+                return PaymentResponseDTO.builder()
+                        .success(false)
+                        .message("Statut du paiement: " + paymentIntent.getStatus())
+                        .transactionId(paymentIntent.getId())
+                        .timestamp(LocalDateTime.now())
+                        .build();
+            }
+
+        } catch (StripeException e) {
+            log.error("Erreur Stripe lors de la confirmation", e);
+            throw new RuntimeException("Erreur lors de la confirmation: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Gérer les webhooks Stripe - VERSION CORRIGÉE
+     */
+    public String handleWebhook(String payload, String sigHeader) {
+        try {
+            // Utiliser Webhook.constructEvent au lieu de Event.constructEvent
+            Event event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
+
+            log.info("Webhook reçu: type={}", event.getType());
+
+            switch (event.getType()) {
+                case "payment_intent.succeeded":
+                    handlePaymentIntentSucceeded(event);
+                    break;
+                case "payment_intent.payment_failed":
+                    handlePaymentIntentFailed(event);
+                    break;
+                case "payment_intent.canceled":
+                    handlePaymentIntentCanceled(event);
+                    break;
+                default:
+                    log.info("Type de webhook non géré: {}", event.getType());
+            }
+
+            return "Webhook traité avec succès";
+
+        } catch (SignatureVerificationException e) {
+            log.error("Signature webhook invalide", e);
+            throw new RuntimeException("Signature webhook invalide");
+        } catch (Exception e) {
+            log.error("Erreur lors du traitement du webhook Stripe", e);
+            throw new RuntimeException("Erreur webhook: " + e.getMessage());
+        }
+    }
+
+    private void handlePaymentIntentSucceeded(Event event) {
+        PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
+        if (paymentIntent == null) return;
+
+        String demandeIdStr = paymentIntent.getMetadata().get("demandeId");
+        if (demandeIdStr != null) {
+            Long demandeId = Long.parseLong(demandeIdStr);
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId).orElse(null);
+
+            if (demande != null) {
+                demande.setPaymentStatus(PaymentStatus.REUSSI);
+                demande.setStatus(DemandeStatus.PAYEE);
+                demandeRepository.save(demande);
+
+                log.info("Paiement réussi pour la demande: {}", demandeId);
+
+                // Envoyer email de confirmation
+                sendPaymentConfirmationEmail(demande.getExportateur(), demande);
+            }
+        }
+    }
+
+    private void handlePaymentIntentFailed(Event event) {
+        PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
+        if (paymentIntent == null) return;
+
+        String demandeIdStr = paymentIntent.getMetadata().get("demandeId");
+        if (demandeIdStr != null) {
+            Long demandeId = Long.parseLong(demandeIdStr);
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId).orElse(null);
+
+            if (demande != null) {
+                demande.setPaymentStatus(PaymentStatus.ECHEC);
+                demandeRepository.save(demande);
+
+                log.info("Paiement échoué pour la demande: {}", demandeId);
+
+                // Récupérer le message d'erreur
+                String errorMessage = getErrorMessage(paymentIntent);
+
+                // Envoyer notification d'échec
+                sendPaymentFailureEmail(demande.getExportateur(), demande, errorMessage);
+            }
+        }
+    }
+
+    private void handlePaymentIntentCanceled(Event event) {
+        PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
+        if (paymentIntent == null) return;
+
+        String demandeIdStr = paymentIntent.getMetadata().get("demandeId");
+        if (demandeIdStr != null) {
+            Long demandeId = Long.parseLong(demandeIdStr);
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId).orElse(null);
+
+            if (demande != null) {
+                demande.setPaymentStatus(PaymentStatus.EN_ATTENTE);
+                demandeRepository.save(demande);
+
+                log.info("Paiement annulé pour la demande: {}", demandeId);
+            }
+        }
+    }
+
+    /**
+     * Extraire PaymentIntent de l'événement
+     */
+    private PaymentIntent getPaymentIntentFromEvent(Event event) {
+        EventDataObjectDeserializer dataObjectDeserializer = event.getDataObjectDeserializer();
+        if (dataObjectDeserializer.getObject().isPresent()) {
+            StripeObject stripeObject = dataObjectDeserializer.getObject().get();
+            if (stripeObject instanceof PaymentIntent) {
+                return (PaymentIntent) stripeObject;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Récupérer le message d'erreur du PaymentIntent
+     */
+    private String getErrorMessage(PaymentIntent paymentIntent) {
+        if (paymentIntent.getLastPaymentError() != null) {
+            String message = paymentIntent.getLastPaymentError().getMessage();
+            if (message != null && !message.isEmpty()) {
+                return message;
+            }
+            String code = paymentIntent.getLastPaymentError().getCode();
+            if (code != null && !code.isEmpty()) {
+                return code;
+            }
+        }
+        return "Transaction refusée";
+    }
+
+    // ==================== MÉTHODES D'ENVOI D'EMAIL ====================
+
+    private void sendPaymentConfirmationEmail(ExportateurEtranger exportateur, DemandeEnregistrement demande) {
+        try {
+            String companyName = exportateur.getRaisonSociale();
+            String toEmail = exportateur.getEmail();
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("paymentReference", demande.getPaymentReference());
+            params.put("amount", demande.getPaymentAmount() != null ?
+                    demande.getPaymentAmount().toString() : "500");
+            params.put("date", LocalDateTime.now().toString());
+            params.put("demandeReference", demande.getReference());
+            params.put("dashboardUrl", frontendUrl + "/exportateur");
+
+            emailService.sendValidationNotification(
+                    toEmail,
+                    companyName,
+                    ValidationNotificationType.PAIEMENT_CONFIRME,
+                    params
+            );
+
+            log.info("Email de confirmation de paiement envoyé à: {}", toEmail);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi de l'email de confirmation", e);
+        }
+    }
+
+    private void sendPaymentFailureEmail(ExportateurEtranger exportateur, DemandeEnregistrement demande, String errorMessage) {
+        try {
+            String companyName = exportateur.getRaisonSociale();
+            String toEmail = exportateur.getEmail();
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("errorMessage", errorMessage);
+            params.put("demandeReference", demande.getReference());
+            params.put("retryUrl", frontendUrl + "/exportateur");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    toEmail,
+                    companyName,
+                    ValidationNotificationType.INFORMATIONS_REQUISES,
+                    params
+            );
+
+            log.info("Email d'échec de paiement envoyé à: {}", toEmail);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi de l'email d'échec", e);
+        }
+    }
+}

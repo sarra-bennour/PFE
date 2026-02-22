@@ -142,7 +142,7 @@ const App: React.FC = () => {
                 <Profile />
               </ProtectedRoute>
             } />
-            <Route path="/exporter" element={
+            <Route path="/exportateur" element={
               <ProtectedRoute roles={['EXPORTATEUR']}>
                 <ExporterSpace />
               </ProtectedRoute>

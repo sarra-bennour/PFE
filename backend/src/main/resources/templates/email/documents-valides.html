@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Documents validés</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #28a745; color: white; padding: 20px; text-align: center; }
+        .content { padding: 30px; background: #f9f9f9; }
+        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Documents validés</h1>
+    </div>
+    <div class="content">
+        <p>Cher/Chère <span th:text="${companyName}">Nom de l'entreprise</span>,</p>
+
+        <p>Nous vous informons que vos documents ont été validés avec succès.</p>
+
+        <p>Vous pouvez maintenant procéder au paiement des frais de dossier.</p>
+
+        <p>Pour toute question, contactez notre support à <span th:text="${supportEmail}">support@tunisia-commerce.gov.tn</span></p>
+    </div>
+    <div class="footer">
+        <p>© 2024 Ministère du Commerce - République Tunisienne. Tous droits réservés.</p>
+    </div>
+</div>
+</body>
+</html>

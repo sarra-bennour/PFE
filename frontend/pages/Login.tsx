@@ -247,7 +247,6 @@ const Login: React.FC = () => {
       if (response.ok) {
         const loginResponse = await response.json();
 
-        console.log('User role:', loginResponse.user?.role);
         
         localStorage.setItem('token', loginResponse.token);
         localStorage.setItem('user', JSON.stringify(loginResponse.user));

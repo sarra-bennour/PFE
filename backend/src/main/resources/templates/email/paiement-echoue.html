@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Échec de paiement</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #dc3545; color: white; padding: 20px; text-align: center; }
+        .content { padding: 30px; background: #f9f9f9; }
+        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+        .error-message { background: #fff3f3; border-left: 4px solid #dc3545; padding: 15px; margin: 20px 0; }
+        .button { display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Échec de paiement</h1>
+    </div>
+    <div class="content">
+        <p>Cher/Chère <span th:text="${companyName}">Nom de l'entreprise</span>,</p>
+
+        <p>Le paiement pour votre dossier <strong th:text="${demandeReference}">REF-123</strong> a échoué.</p>
+
+        <div class="error-message">
+            <p><strong>Raison :</strong> <span th:text="${errorMessage}">Erreur de transaction</span></p>
+        </div>
+
+        <p>Vous pouvez réessayer le paiement en cliquant sur le bouton ci-dessous :</p>
+
+        <p style="text-align: center; margin-top: 30px;">
+            <a th:href="${retryUrl}" class="button">Réessayer le paiement</a>
+        </p>
+
+        <p>Si le problème persiste, contactez notre support à <span th:text="${supportEmail}">support@tunisia-commerce.gov.tn</span></p>
+    </div>
+    <div class="footer">
+        <p>© 2024 Ministère du Commerce - République Tunisienne. Tous droits réservés.</p>
+    </div>
+</div>
+</body>
+</html>
