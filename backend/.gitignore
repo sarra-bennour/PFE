@@ -46,3 +46,6 @@ application*.properties
 
 # Dossier de configuration
 /config/
+
+# Dossier de upload
+/upload/
