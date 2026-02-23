@@ -2,6 +2,7 @@ package com.tunisia.commerce.controller;
 
 import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.user.*;
+import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -245,4 +247,144 @@ public class AuthController {
         }
     }
 
+
+    @PutMapping("/profile")
+    public ResponseEntity<?> updateProfile(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody UpdateProfileRequest request) {
+        try {
+            // Vérifier l'authentification
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token d'authentification manquant"));
+            }
+
+            String token = authHeader.substring(7);
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token invalide ou expiré"));
+            }
+
+            String email = jwtUtil.extractUsername(token);
+            UserDTO updatedUser = userService.updateProfile(email, request);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Profil mis à jour avec succès",
+                    "user", updatedUser
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/deactivation-request")
+    public ResponseEntity<?> requestDeactivation(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody(required = false) DeactivationRequestDto requestDto) {
+        try {
+            // Vérifier l'authentification
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token d'authentification manquant"));
+            }
+
+            String token = authHeader.substring(7);
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token invalide ou expiré"));
+            }
+
+            String email = jwtUtil.extractUsername(token);
+
+            // Vérifier si l'utilisateur peut faire une demande
+            if (!userService.canCreateDeactivationRequest(email)) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "Vous avez déjà une demande de désactivation en cours"));
+            }
+
+            String reason = requestDto != null ? requestDto.getReason() : null;
+            boolean isUrgent = requestDto != null && requestDto.isUrgent();
+
+            userService.createDeactivationRequest(email, reason, isUrgent);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Demande de désactivation envoyée avec succès",
+                    "requestId", "Votre demande a été enregistrée"
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/deactivation-requests")
+    public ResponseEntity<?> getMyDeactivationRequests(
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            // Vérifier l'authentification
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token d'authentification manquant"));
+            }
+
+            String token = authHeader.substring(7);
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token invalide ou expiré"));
+            }
+
+            String email = jwtUtil.extractUsername(token);
+            List<DeactivationRequest> requests = userService.getUserDeactivationRequests(email);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "requests", requests
+            ));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/deactivation-requests/{requestId}/cancel")
+    public ResponseEntity<?> cancelDeactivationRequest(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long requestId) {
+        try {
+            // Vérifier l'authentification
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token d'authentification manquant"));
+            }
+
+            String token = authHeader.substring(7);
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token invalide ou expiré"));
+            }
+
+            String email = jwtUtil.extractUsername(token);
+            userService.cancelDeactivationRequest(email, requestId);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Demande de désactivation annulée avec succès"
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
 }

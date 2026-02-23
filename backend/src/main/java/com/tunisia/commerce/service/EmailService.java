@@ -221,6 +221,10 @@ public class EmailService {
                 return "Confirmation de paiement - Portail National Tunisien";
             case PAIEMENT_ECHOUE:
                 return "Échec de paiement - Portail National Tunisien";
+            case DEACTIVATION_REQUEST:
+                return "Demande de déactivation - Portail National Tunisien";
+            case DEACTIVATION_CONFIRMATION:
+                return "Confirmation de déactivation - Portail National Tunisien";
             default:
                 return "Notification - Portail National Tunisien";
         }
@@ -243,6 +247,10 @@ public class EmailService {
                 return "email/paiement-confirme";
             case PAIEMENT_ECHOUE:
                 return "email/paiement-echoue";
+            case DEACTIVATION_REQUEST:
+                return "email/deactivation-request";
+            case DEACTIVATION_CONFIRMATION:
+                return "email/deactivation-confirmation";
             default:
                 return "email/notification-generique";
         }

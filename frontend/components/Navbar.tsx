@@ -53,8 +53,8 @@ const Navbar: React.FC = () => {
   };
 
   const allNavLinks = [
-    { path: '/', label: 'nav_home', roles: [] },
-    { path: '/exporter', label: 'nav_exporter', roles: ['EXPORTATEUR'] }, // Modifié en majuscules
+    { path: '/', label: 'nav_home', roles: ['EXPORTATEUR'] },
+    { path: '/exportateur', label: 'nav_exporter', roles: ['EXPORTATEUR'] }, // Modifié en majuscules
     { path: '/importer', label: 'nav_importer', roles: ['IMPORTATEUR'] }, // Modifié en majuscules
     { path: '/validator', label: 'nav_validator', roles: ['VALIDATOR'] }, // Modifié
     { path: '/dashboard', label: 'nav_dashboard', roles: ['ADMIN', 'VALIDATOR'] }, // Modifié en majuscules

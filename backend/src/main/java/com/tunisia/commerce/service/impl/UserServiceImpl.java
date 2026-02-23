@@ -2,8 +2,8 @@ package com.tunisia.commerce.service.impl;
 
 import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.*;
-import com.tunisia.commerce.enums.UserRole;
-import com.tunisia.commerce.enums.UserStatus;
+import com.tunisia.commerce.entity.DeactivationRequest;
+import com.tunisia.commerce.enums.*;
 import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.EmailService;
 import com.tunisia.commerce.service.UserService;
@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,12 +29,19 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final ExportateurRepository exportateurRepository;
     private final ImportateurRepository importateurRepository;
+    private final DeactivationRequestRepository deactivationRequestRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
 
     @Value("${app.verification.expiry-hours}")
     private int verificationExpiryHours;
+
+    @Value("${app.frontend.url}")
+    private String frontendUrl;
+
+    @Value("${app.admin.email}")  // AJOUTEZ CETTE LIGNE
+    private String adminEmail;
 
     Logger logger = Logger.getLogger(getClass().getName());
 
@@ -571,6 +579,206 @@ public class UserServiceImpl implements UserService {
         if (!hasDigit) {
             logger.warning("Mot de passe sans chiffre - sécurité faible");
         }
+    }
+
+
+    @Override
+    @Transactional
+    public UserDTO updateProfile(String email, UpdateProfileRequest request) {
+        logger.info("=== MISE À JOUR DU PROFIL ===");
+        logger.info("Email: " + email);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        // Mettre à jour uniquement les champs fournis (non null)
+        if (request.getCompanyName() != null && !request.getCompanyName().isEmpty()) {
+            exportateur.setRaisonSociale(request.getCompanyName());
+            exportateur.setNom(request.getCompanyName()); // Mettre à jour aussi le champ nom dans User
+        }
+
+        if (request.getPhone() != null && !request.getPhone().isEmpty()) {
+            exportateur.setTelephone(request.getPhone());
+        }
+
+        if (request.getAddress() != null && !request.getAddress().isEmpty()) {
+            exportateur.setAdresseLegale(request.getAddress());
+        }
+
+        if (request.getCountry() != null && !request.getCountry().isEmpty()) {
+            exportateur.setPaysOrigine(request.getCountry());
+        }
+
+        if (request.getCity() != null && !request.getCity().isEmpty()) {
+            exportateur.setVille(request.getCity());
+        }
+
+        if (request.getTinNumber() != null && !request.getTinNumber().isEmpty()) {
+            exportateur.setNumeroRegistreCommerce(request.getTinNumber());
+        }
+
+        if (request.getWebsite() != null && !request.getWebsite().isEmpty()) {
+            exportateur.setSiteWeb(request.getWebsite());
+        }
+
+        if (request.getLegalRep() != null && !request.getLegalRep().isEmpty()) {
+            exportateur.setRepresentantLegal(request.getLegalRep());
+            exportateur.setPrenom(request.getLegalRep()); // Mettre à jour aussi le champ prenom dans User
+        }
+
+        ExportateurEtranger saved = exportateurRepository.save(exportateur);
+        logger.info("Profil mis à jour avec succès pour: " + saved.getEmail());
+
+        return mapToUserDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public void createDeactivationRequest(String email, String reason, boolean isUrgent) {
+        logger.info("=== DEMANDE DE DÉSACTIVATION DE COMPTE ===");
+        logger.info("Email: " + email);
+        logger.info("Urgent: " + isUrgent);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        // Vérifier si une demande est déjà en cours
+        boolean hasPendingRequest = deactivationRequestRepository.existsByUserIdAndStatusIn(
+                exportateur.getId(),
+                List.of(DeactivationStatus.PENDING, DeactivationStatus.IN_REVIEW)
+        );
+
+        if (hasPendingRequest) {
+            throw new RuntimeException("Une demande de désactivation est déjà en cours de traitement");
+        }
+
+        // Déterminer le type de demande
+        DeactivationRequestType requestType = isUrgent ?
+                DeactivationRequestType.URGENT :
+                (reason != null && !reason.isEmpty() ?
+                        DeactivationRequestType.WITH_REASON :
+                        DeactivationRequestType.WITHOUT_REASON);
+
+        // Créer et sauvegarder la demande
+        DeactivationRequest deactivationRequest = DeactivationRequest.builder()
+                .user(exportateur)
+                .reason(reason)
+                .requestType(requestType)
+                .status(DeactivationStatus.PENDING)
+                .isUrgent(isUrgent)
+                .notificationSent(false)
+                .build();
+
+        deactivationRequest = deactivationRequestRepository.save(deactivationRequest);
+        logger.info("Demande enregistrée avec ID: " + deactivationRequest.getId());
+
+        // Envoyer les emails
+        sendDeactivationEmails(exportateur, deactivationRequest, reason, isUrgent);
+
+        logger.info("Demande de désactivation créée avec succès pour: " + email);
+    }
+
+    private void sendDeactivationEmails(ExportateurEtranger exportateur,
+                                        DeactivationRequest request,
+                                        String reason,
+                                        boolean isUrgent) {
+
+        // Email à l'admin
+        Map<String, Object> adminParams = new HashMap<>();
+        adminParams.put("companyName", exportateur.getRaisonSociale());
+        adminParams.put("email", exportateur.getEmail());
+        adminParams.put("phone", exportateur.getTelephone());
+        adminParams.put("tinNumber", exportateur.getNumeroRegistreCommerce());
+        adminParams.put("country", exportateur.getPaysOrigine());
+        adminParams.put("requestId", request.getId().toString());
+        adminParams.put("requestDate", request.getRequestDate().toString());
+        adminParams.put("reason", reason);
+        adminParams.put("isUrgent", isUrgent);
+        adminParams.put("adminUrl", frontendUrl + "/#/admin/deactivation-requests/" + request.getId());
+
+        if (isUrgent) {
+            adminParams.put("urgentMessage", "⚠️ DEMANDE URGENTE À TRAITER IMMÉDIATEMENT ⚠️");
+            adminParams.put("processingDeadline", "24 heures");
+        }
+
+        emailService.sendValidationNotification(
+                adminEmail,
+                "Administration",
+                ValidationNotificationType.DEACTIVATION_REQUEST,
+                adminParams
+        );
+
+        // Email de confirmation à l'utilisateur
+        Map<String, Object> userParams = new HashMap<>();
+        userParams.put("companyName", exportateur.getRaisonSociale());
+        userParams.put("requestId", "DEM-" + String.format("%06d", request.getId()));
+        userParams.put("requestDate", request.getRequestDate().toString());
+        userParams.put("reason", reason);
+        userParams.put("dashboardUrl", frontendUrl + "/#/profile");
+        userParams.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+        if (isUrgent) {
+            userParams.put("processingTime", "sous 24h");
+            userParams.put("priorityMessage", "Votre demande a été marquée comme prioritaire.");
+        } else {
+            userParams.put("processingTime", "sous 48h");
+        }
+
+        emailService.sendValidationNotification(
+                exportateur.getEmail(),
+                exportateur.getRaisonSociale(),
+                ValidationNotificationType.DEACTIVATION_CONFIRMATION,
+                userParams
+        );
+
+        // Marquer la notification comme envoyée
+        request.setNotificationSent(true);
+        request.setNotificationDate(LocalDateTime.now());
+        deactivationRequestRepository.save(request);
+    }
+
+    // Méthode pour annuler une demande (par l'utilisateur)
+    @Transactional
+    public void cancelDeactivationRequest(String email, Long requestId) {
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        DeactivationRequest request = deactivationRequestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+        // Vérifier que la demande appartient bien à cet utilisateur
+        if (!request.getUser().getId().equals(exportateur.getId())) {
+            throw new RuntimeException("Cette demande ne vous appartient pas");
+        }
+
+        // Vérifier que la demande peut être annulée
+        if (request.getStatus() != DeactivationStatus.PENDING) {
+            throw new RuntimeException("Cette demande ne peut plus être annulée car elle est déjà en cours de traitement");
+        }
+
+        request.setStatus(DeactivationStatus.CANCELLED);
+        deactivationRequestRepository.save(request);
+
+        logger.info("Demande de désactivation annulée pour: " + email);
+    }
+
+    // Méthode pour récupérer l'historique des demandes d'un utilisateur
+    public List<DeactivationRequest> getUserDeactivationRequests(String email) {
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        return deactivationRequestRepository.findByUserIdOrderByRequestDateDesc(exportateur.getId());
+    }
+
+    // Méthode pour vérifier si l'utilisateur peut faire une nouvelle demande
+    public boolean canCreateDeactivationRequest(String email) {
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        return !deactivationRequestRepository.existsByUserIdAndStatusIn(
+                exportateur.getId(),
+                List.of(DeactivationStatus.PENDING, DeactivationStatus.IN_REVIEW)
+        );
     }
 
 }

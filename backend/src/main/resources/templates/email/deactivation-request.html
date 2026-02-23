@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Demande de désactivation</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+<div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="text-align: center; margin-bottom: 30px;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/c/ce/Coat_of_arms_of_Tunisia.svg"
+             alt="Tunisia Logo" style="width: 80px; opacity: 0.8;">
+        <h2 style="color: #e11d48; margin-top: 10px;">RÉPUBLIQUE TUNISIENNE</h2>
+        <h3>MINISTÈRE DU COMMERCE</h3>
+    </div>
+
+    <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px;">
+        <h3 style="color: #e11d48; margin-top: 0;">Demande de désactivation de compte</h3>
+
+        <p>Une demande de désactivation de compte a été soumise.</p>
+
+        <div style="background-color: white; padding: 20px; border-radius: 5px; margin: 20px 0;">
+            <h4 style="margin-top: 0; color: #333;">Détails du compte :</h4>
+
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 8px 0; font-weight: bold; width: 40%;">Raison sociale :</td>
+                    <td style="padding: 8px 0;" th:text="${companyName}">Nom de l'entreprise</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Email :</td>
+                    <td style="padding: 8px 0;" th:text="${email}">email@example.com</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Téléphone :</td>
+                    <td style="padding: 8px 0;" th:text="${phone}">+216 00 000 000</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Numéro registre :</td>
+                    <td style="padding: 8px 0;" th:text="${tinNumber}">RC-12345</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Pays d'origine :</td>
+                    <td style="padding: 8px 0;" th:text="${country}">Tunisie</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0; font-weight: bold;">Date de la demande :</td>
+                    <td style="padding: 8px 0;" th:text="${requestDate}">01/01/2024</td>
+                </tr>
+            </table>
+
+            <div th:if="${reason != null}" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <h4 style="margin-top: 0;">Raison fournie :</h4>
+                <p style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; font-style: italic;"
+                   th:text="${reason}">Raison de la désactivation</p>
+            </div>
+
+            <div th:unless="${reason != null}" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="color: #6c757d;"><em>Aucune raison fournie</em></p>
+            </div>
+        </div>
+
+        <p>Veuillez traiter cette demande dans les plus brefs délais en vous connectant à l'interface d'administration.</p>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a th:href="${adminUrl}"
+               style="background-color: #e11d48; color: white; padding: 12px 30px;
+                          text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Accéder à l'interface admin
+            </a>
+        </div>
+    </div>
+
+    <div style="margin-top: 30px; font-size: 12px; color: #6c757d; text-align: center;">
+        <p>Cet email est généré automatiquement. Merci de ne pas y répondre.</p>
+        <p>© 2024 Ministère du Commerce - République Tunisienne. Tous droits réservés.</p>
+    </div>
+</div>
+</body>
+</html>
