@@ -1,23 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
 import ResetPasswordForm from '../components/ResetPasswordForm';
+import { useNavigate } from 'react-router-dom';
+
+// Types pour les données du dossier
+interface Document {
+  id: number;
+  fileName: string;
+  documentType: string;
+  status: string;
+  uploadedAt: string;
+  validatedAt?: string;
+  fileType: string;
+}
+
+interface DemandeInfo {
+  id: number;
+  reference: string;
+  status: string;
+  submittedAt?: string;
+}
 
 const Profile: React.FC = () => {
   const { t } = useTranslation();
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [deactivationReason, setDeactivationReason] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
-  const [deactivationRequested, setDeactivationRequested] = useState(false); // NOUVEAU : état pour suivre si la demande a été envoyée
+  const [deactivationRequested, setDeactivationRequested] = useState(false);
+  const [showFullDossier, setShowFullDossier] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   
+  // États pour les données du dossier
+  const [dossierStatus, setDossierStatus] = useState<any>(null);
+  const [demandeInfo, setDemandeInfo] = useState<DemandeInfo | null>(null);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [loadingDossier, setLoadingDossier] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<{ name: string, url: string, type: 'pdf' | 'image' } | null>(null);
+
   const [formData, setFormData] = useState({
     companyName: user?.companyName || user?.raisonSociale || '',
     phone: user?.telephone || user?.phone || '',
@@ -28,6 +56,294 @@ const Profile: React.FC = () => {
     website: user?.website || user?.siteWeb || '',
     legalRep: user?.legalRep || user?.representantLegal || ''
   });
+
+  // Nettoyage des URLs Blob
+  useEffect(() => {
+    return () => {
+      if (previewDoc?.url && previewDoc.url.startsWith('blob:')) {
+        URL.revokeObjectURL(previewDoc.url);
+      }
+    };
+  }, [previewDoc]);
+
+  // ========== CHARGEMENT DES DONNÉES DU DOSSIER ==========
+  useEffect(() => {
+    if (user && (user.role === 'EXPORTATEUR' || user.role === 'exporter')) {
+      fetchDossierStatus();
+    }
+  }, [user]);
+
+  const fetchAllDocuments = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8080/api/exportateur/documents', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setDocuments(data.documents);
+      }
+    } catch (err) {
+      console.error('Erreur chargement documents:', err);
+    }
+  };
+
+  const fetchDossierStatus = async () => {
+    setLoadingDossier(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8080/api/exportateur/dossier/statut', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setDossierStatus(data);
+        
+        if (data.hasDossier && data.demandeId) {
+          setDemandeInfo({
+            id: data.demandeId,
+            reference: data.reference || 'N/A',
+            status: data.status,
+            submittedAt: data.submittedAt
+          });
+          
+          await fetchAllDocuments();
+        }
+      }
+    } catch (err) {
+      console.error('Erreur chargement dossier:', err);
+    } finally {
+      setLoadingDossier(false);
+    }
+  };
+
+  // Fonction pour prévisualiser un document
+  const handlePreviewDocument = async (documentId: number, fileName: string, fileType: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const fileUrl = `http://localhost:8080/api/exportateur/documents/${documentId}/file`;
+      
+      const response = await fetch(fileUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        
+        setPreviewDoc({
+          name: fileName,
+          url: url,
+          type: fileType.toLowerCase() === 'pdf' ? 'pdf' : 'image'
+        });
+      } else {
+        setError('Impossible de charger le document');
+      }
+    } catch (err) {
+      console.error('Erreur prévisualisation:', err);
+      setError('Erreur lors de la prévisualisation du document');
+    }
+  };
+
+  // Fonction pour obtenir le nom d'affichage d'un document selon son type
+  const getDocumentDisplayName = (docType: string, defaultName: string): string => {
+    switch(docType) {
+      // Documents registre de commerce
+      case 'RC_CERT':
+        return 'Registre du commerce';
+      case 'RC_TRANSLATION':
+        return 'Traduction du registre de commerce';
+      case 'RC_LEGALIZATION':
+        return 'Légalisation du registre de commerce';
+      
+      // Documents statuts
+      case 'STATUTES':
+        return 'Statuts de la société';
+      case 'STATUTES_TRANSLATION':
+        return 'Traduction des statuts';
+      
+      // Documents fiscaux
+      case 'TIN_CERT':
+        return 'Attestation fiscale';
+      
+      // Documents représentant
+      case 'PASSPORT':
+        return 'Passeport du gérant';
+      case 'DESIGNATION_PV':
+        return 'PV de désignation du gérant';
+      
+      // Documents financiers
+      case 'SOLVENCY_CERT':
+        return 'Certificat de solvabilité';
+      case 'ANNUAL_ACCOUNTS':
+        return 'Comptes annuels';
+      case 'EXTERNAL_AUDIT':
+        return 'Rapport d\'audit externe';
+      
+      default:
+        return defaultName;
+    }
+  };
+
+  // Fonction pour obtenir l'icône selon le type de document
+  const getDocumentIcon = (docType: string): string => {
+    switch(docType) {
+      case 'RC_CERT':
+      case 'RC_TRANSLATION':
+      case 'RC_LEGALIZATION':
+        return 'fa-building';
+      
+      case 'STATUTES':
+      case 'STATUTES_TRANSLATION':
+        return 'fa-file-contract';
+      
+      case 'TIN_CERT':
+        return 'fa-file-invoice-dollar';
+      
+      case 'PASSPORT':
+        return 'fa-passport';
+      
+      case 'DESIGNATION_PV':
+        return 'fa-file-signature';
+      
+      case 'SOLVENCY_CERT':
+        return 'fa-university';
+      
+      case 'ANNUAL_ACCOUNTS':
+        return 'fa-chart-pie';
+      
+      case 'EXTERNAL_AUDIT':
+        return 'fa-chart-line';
+      
+      default:
+        return 'fa-file';
+    }
+  };
+
+  // ========== MAPPER LES DOCUMENTS RÉELS VERS LE FORMAT AFFICHAGE ==========
+  const getDisplayDocuments = () => {
+    if (documents.length > 0) {
+      // On filtre pour n'afficher que les 4 documents principaux
+      const mainDocs = documents.filter(doc => 
+        ['RC_CERT', 'STATUTES', 'TIN_CERT', 'PASSPORT'].includes(doc.documentType)
+      );
+      
+      return mainDocs.map(doc => ({
+        id: doc.id,
+        name: getDocumentDisplayName(doc.documentType, doc.fileName),
+        status: doc.status === 'VALIDE' ? 'Validé' : 
+                doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
+        date: new Date(doc.uploadedAt).toLocaleDateString('fr-FR'),
+        icon: getDocumentIcon(doc.documentType),
+        fileType: doc.fileType,
+        fileName: doc.fileName
+      }));
+    }
+    
+    // Sinon, données mock basées sur le statut de la demande
+    if (dossierStatus?.status === 'VALIDEE') {
+      return [
+        { id: null, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf" },
+        { id: null, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf" },
+        { id: null, name: "Attestation fiscale", status: "Validé", date: "12/01/2024", icon: "fa-file-invoice-dollar", fileType: "pdf" },
+        { id: null, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg" }
+      ];
+    } else if (dossierStatus?.status === 'EN_COURS_VALIDATION' || dossierStatus?.status === 'SOUMISE') {
+      return [
+        { id: null, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf" },
+        { id: null, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf" },
+        { id: null, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf" },
+        { id: null, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg" }
+      ];
+    } else {
+      // Données par défaut
+      return [
+        { id: null, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf" },
+        { id: null, name: "Registre du commerce", status: "En cours", date: "15/02/2024", icon: "fa-building", fileType: "pdf" },
+        { id: null, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf" },
+        { id: null, name: "Passeport du gérant", status: "En cours", date: "15/02/2024", icon: "fa-passport", fileType: "jpg" }
+      ];
+    }
+  };
+
+  // ========== MAPPER POUR LE DOSSIER COMPLET ==========
+  const getFullDossierData = () => {
+    if (documents.length > 0) {
+      // Catégorie Identité
+      const identiteDocs = documents.filter(doc => 
+        ['RC_CERT', 'RC_TRANSLATION', 'RC_LEGALIZATION', 'STATUTES', 'STATUTES_TRANSLATION', 'PASSPORT', 'DESIGNATION_PV'].includes(doc.documentType)
+      );
+      
+      // Catégorie Fiscalité & Finance
+      const fiscaliteDocs = documents.filter(doc => 
+        ['TIN_CERT', 'SOLVENCY_CERT', 'ANNUAL_ACCOUNTS', 'EXTERNAL_AUDIT'].includes(doc.documentType)
+      );
+      
+      const result = [];
+      
+      if (identiteDocs.length > 0) {
+        result.push({
+          section: "Identité",
+          docs: identiteDocs.map(doc => ({
+            id: doc.id,
+            name: getDocumentDisplayName(doc.documentType, doc.fileName),
+            status: doc.status === 'VALIDE' ? 'Validé' : 
+                    doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
+            icon: getDocumentIcon(doc.documentType),
+            fileType: doc.fileType,
+            onClick: () => handlePreviewDocument(doc.id, getDocumentDisplayName(doc.documentType, doc.fileName), doc.fileType)
+          }))
+        });
+      }
+      
+      if (fiscaliteDocs.length > 0) {
+        result.push({
+          section: "Fiscalité & Finance",
+          docs: fiscaliteDocs.map(doc => ({
+            id: doc.id,
+            name: getDocumentDisplayName(doc.documentType, doc.fileName),
+            status: doc.status === 'VALIDE' ? 'Validé' : 
+                    doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
+            icon: getDocumentIcon(doc.documentType),
+            fileType: doc.fileType,
+            onClick: () => handlePreviewDocument(doc.id, getDocumentDisplayName(doc.documentType, doc.fileName), doc.fileType)
+          }))
+        });
+      }
+      
+      return result.length > 0 ? result : mockFullDossierData;
+    }
+    
+    return mockFullDossierData;
+  };
+
+  const mockFullDossierData = [
+    { section: "Identité", docs: [
+      { name: "Registre du commerce", status: "En cours", icon: "fa-building", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Traduction du registre", status: "En cours", icon: "fa-language", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Légalisation registre", status: "En cours", icon: "fa-stamp", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Statuts de la société", status: "En cours", icon: "fa-file-contract", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Traduction des statuts", status: "En cours", icon: "fa-language", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Passeport du gérant", status: "En cours", icon: "fa-passport", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "PV de désignation", status: "En cours", icon: "fa-file-signature", onClick: () => alert("Document mock - pas de prévisualisation") }
+    ]},
+    { section: "Fiscalité & Finance", docs: [
+      { name: "Attestation fiscale", status: "En cours", icon: "fa-file-invoice-dollar", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Certificat de solvabilité", status: "En cours", icon: "fa-university", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Comptes annuels", status: "En cours", icon: "fa-chart-pie", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { name: "Rapport d'audit externe", status: "En cours", icon: "fa-chart-line", onClick: () => alert("Document mock - pas de prévisualisation") }
+    ]}
+  ];
 
   if (!user) return null;
 
@@ -128,7 +444,6 @@ const Profile: React.FC = () => {
         throw new Error(data.error || 'Erreur lors de la demande de désactivation');
       }
 
-      // ✅ MARQUER LA DEMANDE COMME ENVOYÉE
       setDeactivationRequested(true);
       setSuccessMessage('Demande de désactivation envoyée avec succès. Un administrateur va traiter votre demande.');
       setIsDeactivating(false);
@@ -209,13 +524,13 @@ const Profile: React.FC = () => {
                             (user.statut === 'ACTIF' || user.emailVerified === true);
   const remainingDays = getRemainingDays();
 
-  // Mock Data pour le certificat
+  // Mock Data pour le certificat (à remplacer par les vraies données)
   const certData = {
     enTete: "RÉPUBLIQUE TUNISIENNE - MINISTÈRE DU COMMERCE",
     titre: "CERTIFICAT D'ENREGISTREMENT D'EXPORTATEUR ÉTRANGER",
     infos: {
-      numeroCertificat: user.numeroAgrement || "CERT-NEE-2024-001234",
-      nee: user.numeroAgrement || "NEE-TUN-2024-05789-XD",
+      numeroCertificat: user.numeroAgrement || demandeInfo?.reference || "CERT-NEE-2024-001234",
+      nee: user.numeroAgrement || demandeInfo?.reference || "NEE-TUN-2024-05789-XD",
       societe: user.companyName || user.raisonSociale || "ABC Electronics GmbH",
       pays: user.country || user.paysOrigine || "Allemagne",
       representant: user.legalRep || user.representantLegal || "Hans Müller",
@@ -235,6 +550,10 @@ const Profile: React.FC = () => {
     const role = user.role?.toUpperCase() || 'EXPORTATEUR';
     return roleColors[role] || roleColors['EXPORTATEUR'];
   };
+
+  // Obtenir les documents à afficher
+  const displayDocuments = getDisplayDocuments();
+  const fullDossierData = getFullDossierData();
 
   return (
     <div className="max-w-5xl mx-auto py-8">
@@ -494,7 +813,6 @@ const Profile: React.FC = () => {
                  </div>
 
                  <div className="pt-4 border-t border-slate-50">
-                    {/* SI LA DEMANDE A DÉJÀ ÉTÉ ENVOYÉE */}
                     {deactivationRequested ? (
                       <div className="text-center py-4 bg-green-50 rounded-xl border border-green-100">
                         <div className="flex items-center justify-center gap-2 text-green-600 mb-1">
@@ -508,7 +826,6 @@ const Profile: React.FC = () => {
                         </p>
                       </div>
                     ) : (
-                      /* SI LA DEMANDE N'A PAS ENCORE ÉTÉ ENVOYÉE */
                       !isDeactivating ? (
                         <button 
                           onClick={() => setIsDeactivating(true)}
@@ -786,9 +1103,236 @@ const Profile: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* DOSSIER DE CONFORMITÉ - AVEC DONNÉES RÉELLES */}
+          {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+            <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
+              <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Dossier de Conformité
+                  </h3>
+                  {loadingDossier && (
+                    <i className="fas fa-spinner fa-spin text-slate-300 text-xs"></i>
+                  )}
+                </div>
+                {demandeInfo && (
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 bg-slate-50 text-slate-400 text-[8px] font-black uppercase rounded-full border border-slate-100">
+                      {demandeInfo.reference}
+                    </span>
+                    <span className={`px-3 py-1 text-[8px] font-black uppercase rounded-full ${
+                      demandeInfo.status === 'VALIDEE' ? 'bg-emerald-50 text-emerald-600' :
+                      demandeInfo.status === 'SOUMISE' || demandeInfo.status === 'EN_COURS_VALIDATION' ? 'bg-blue-50 text-blue-600' :
+                      'bg-amber-50 text-amber-600'
+                    }`}>
+                      {demandeInfo.status === 'VALIDEE' ? 'Validé' :
+                       demandeInfo.status === 'SOUMISE' ? 'Soumis' :
+                       demandeInfo.status === 'EN_COURS_VALIDATION' ? 'En cours' :
+                       demandeInfo.status === 'EN_ATTENTE_INFO' ? 'Info requise' :
+                       demandeInfo.status || 'Brouillon'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {displayDocuments.map((doc, i) => (
+                  <div 
+                    key={i} 
+                    onClick={() => doc.id && handlePreviewDocument(doc.id, doc.fileName, doc.fileType)}
+                    className={`flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-50 hover:border-slate-200 transition-all group ${doc.id ? 'cursor-pointer' : 'cursor-default'}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-100 group-hover:scale-110 transition-transform">
+                        <i className={`fas ${doc.icon} text-slate-400`}></i>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{doc.name}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Mis à jour le {doc.date}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${
+                        doc.status === 'Validé' ? 'text-emerald-600 bg-emerald-50' : 
+                        doc.status === 'Rejeté' ? 'text-red-600 bg-red-50' :
+                        'text-amber-600 bg-amber-50'
+                      }`}>
+                        {doc.status}
+                      </span>
+                      {doc.id && (
+                        <div className="mt-1 text-[8px] text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <i className="fas fa-eye mr-1"></i> Cliquer pour voir
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div 
+                onClick={() => setShowFullDossier(true)} 
+                className="mt-8 p-6 bg-slate-900 rounded-[2rem] flex items-center justify-between group cursor-pointer overflow-hidden relative"
+              >
+                <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
+                    <i className="fas fa-folder-open text-white"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au dossier complet</p>
+                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Gérer vos documents et certifications</p>
+                  </div>
+                </div>
+                <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
+      {/* MODAL DOSSIER COMPLET */}
+      {showFullDossier && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-xl" onClick={() => setShowFullDossier(false)}></div>
+          <div className="relative bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-fade-in-scale">
+            <div className="p-10">
+              <div className="flex justify-between items-center mb-10 pb-6 border-b border-slate-50">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-xl shadow-lg">
+                    <i className="fas fa-folder-open"></i>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Dossier de Conformité Complet</h3>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                      {demandeInfo?.reference || 'NEE-TUN-2024-05789-XD'}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowFullDossier(false)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-colors">
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+
+              <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2 custom-scrollbar">
+                {fullDossierData.map((group, i) => (
+                  <div key={i} className="space-y-3">
+                    <h4 className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-300 ml-2">{group.section}</h4>
+                    <div className="grid grid-cols-1 gap-2">
+                      {group.docs.map((doc, j) => (
+                        <div 
+                          key={j} 
+                          onClick={doc.onClick || (() => {})}
+                          className={`flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-50 hover:border-slate-200 transition-all ${doc.onClick ? 'cursor-pointer' : 'cursor-default'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <i className={`fas ${doc.icon} text-slate-400 w-5 text-center`}></i>
+                            <span className="text-xs font-bold text-slate-700">{doc.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[7px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${
+                              doc.status === 'Validé' ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'
+                            }`}>
+                              {doc.status}
+                            </span>
+                            {doc.onClick && (
+                              <i className="fas fa-eye text-slate-300 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-10 pt-8 border-t border-slate-50 flex gap-4">
+                <button 
+                  onClick={() => {
+                    setShowFullDossier(false);
+                    navigate('/exporter');
+                  }}
+                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fas fa-external-link-alt"></i> Espace Gestion
+                </button>
+                <button 
+                  onClick={() => setShowFullDossier(false)}
+                  className="flex-1 py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:text-slate-900 transition-all border border-slate-100"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PREVIEW DOCUMENT */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm" onClick={() => setPreviewDoc(null)}></div>
+          <div className="relative bg-white w-full max-w-4xl h-[85vh] rounded-[3rem] shadow-2xl overflow-hidden animate-fade-in-scale flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
+                  <i className={`fas ${previewDoc.type === 'pdf' ? 'fa-file-pdf text-red-500' : 'fa-file-image text-blue-500'}`}></i>
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">{previewDoc.name}</h3>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Aperçu du document officiel</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => window.open(previewDoc.url, '_blank')}
+                  className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-all"
+                  title="Ouvrir dans un nouvel onglet"
+                >
+                  <i className="fas fa-external-link-alt text-xs"></i>
+                </button>
+                <button 
+                  onClick={() => {
+                    if (previewDoc?.url && previewDoc.url.startsWith('blob:')) {
+                      URL.revokeObjectURL(previewDoc.url);
+                    }
+                    setPreviewDoc(null);
+                  }} 
+                  className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center hover:bg-black transition-all"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-grow bg-slate-100 overflow-hidden relative">
+              {previewDoc.type === 'pdf' ? (
+                <iframe 
+                  src={`${previewDoc.url}#toolbar=0`} 
+                  className="w-full h-full border-none"
+                  title={previewDoc.name}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center p-8 overflow-auto">
+                  <img 
+                    src={previewDoc.url} 
+                    alt={previewDoc.name} 
+                    className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 bg-white border-t border-slate-100 flex justify-center">
+              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-300">
+                Document sécurisé par le Ministère du Commerce - République Tunisienne
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* MODAL CHANGEMENT DE MOT DE PASSE */}
       {isChangingPassword && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">

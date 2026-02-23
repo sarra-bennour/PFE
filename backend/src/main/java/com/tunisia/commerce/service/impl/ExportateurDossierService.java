@@ -29,6 +29,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +45,7 @@ public class ExportateurDossierService {
 
     // Dossier de stockage des fichiers
     private final String UPLOAD_DIR = "uploads/documents/";
+    private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
 
     /**
      * Créer un nouveau dossier de conformité
@@ -242,12 +245,78 @@ public class ExportateurDossierService {
         }
     }*/
 
+    /**
+     * Récupérer un document par son ID en vérifiant qu'il appartient à l'exportateur
+     */
+    public DocumentDTO getDocumentById(Long documentId, Long exportateurId) {
+        logger.info("Récupération du document ID: " + documentId + " pour l'exportateur: " + exportateurId);
+
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
+
+        // Vérifier que le document appartient bien à l'exportateur
+        if (!document.getExportateur().getId().equals(exportateurId)) {
+            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
+        }
+
+        return convertToDTO(document);
+    }
+
+    /**
+     * Récupérer le fichier du document
+     */
+    public org.springframework.core.io.Resource getDocumentFile(Long documentId, Long exportateurId) {
+        logger.info("Téléchargement du fichier du document ID: " + documentId + " pour l'exportateur: " + exportateurId);
+
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
+
+        // Vérifier que le document appartient bien à l'exportateur
+        if (!document.getExportateur().getId().equals(exportateurId)) {
+            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
+        }
+
+        try {
+            Path filePath = Paths.get(document.getFilePath());
+            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
+
+            if (resource.exists() && resource.isReadable()) {
+                return resource;
+            } else {
+                throw new RuntimeException("Le fichier n'existe pas ou n'est pas accessible");
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors de la lecture du fichier: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Récupérer tous les documents d'un exportateur
+     */
+    public List<DocumentDTO> getAllDocumentsByExportateur(Long exportateurId) {
+        logger.info("Récupération de tous les documents pour l'exportateur: " + exportateurId);
+
+        ExportateurEtranger exportateur = exportateurRepository.findById(exportateurId)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        List<Document> documents = documentRepository.findByExportateurId(exportateurId);
+
+        return documents.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Mapper Document -> DocumentDTO
+     */
+
     private DocumentDTO convertToDTO(Document document) {
         if (document == null) return null;
 
         return DocumentDTO.builder()
                 .id(document.getId())
                 .fileName(document.getFileName())
+                .filePath(document.getFilePath())
                 .fileType(document.getFileType())
                 .fileSize(document.getFileSize())
                 .documentType(document.getDocumentType())

@@ -291,6 +291,112 @@ public class ExportateurController {
                 .build());
     }
 
+
+    /**
+     * Récupérer un document spécifique par son ID
+     */
+    @GetMapping("/documents/{documentId}")
+    public ResponseEntity<?> getDocument(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long documentId) {
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            // Récupérer le document via le service
+            DocumentDTO document = dossierService.getDocumentById(documentId, exportateur.getId());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "document", document
+            ));
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                            "success", false,
+                            "error", e.getMessage()
+                    ));
+        }
+    }
+
+    /**
+     * Télécharger/Afficher le fichier du document
+     */
+    @GetMapping("/documents/{documentId}/file")
+    public ResponseEntity<?> downloadDocument(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long documentId) {
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            // Récupérer le fichier via le service
+            org.springframework.core.io.Resource resource = dossierService.getDocumentFile(documentId, exportateur.getId());
+            DocumentDTO documentInfo = dossierService.getDocumentById(documentId, exportateur.getId());
+
+            // Déterminer le Content-Type
+            String contentType = "application/octet-stream";
+            if (documentInfo.getFileType() != null) {
+                switch (documentInfo.getFileType().toLowerCase()) {
+                    case "pdf":
+                        contentType = "application/pdf";
+                        break;
+                    case "jpg":
+                    case "jpeg":
+                        contentType = "image/jpeg";
+                        break;
+                    case "png":
+                        contentType = "image/png";
+                        break;
+                    case "gif":
+                        contentType = "image/gif";
+                        break;
+                }
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + documentInfo.getFileName() + "\"")
+                    .body(resource);
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                            "success", false,
+                            "error", e.getMessage()
+                    ));
+        }
+    }
+
+    /**
+     * Récupérer tous les documents de l'exportateur
+     */
+    @GetMapping("/documents")
+    public ResponseEntity<?> getAllDocuments(
+            @RequestHeader("Authorization") String authHeader) {
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            // Récupérer tous les documents via le service
+            List<DocumentDTO> documents = dossierService.getAllDocumentsByExportateur(exportateur.getId());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "documents", documents
+            ));
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "success", false,
+                            "error", e.getMessage()
+                    ));
+        }
+    }
+
     // ==================== MÉTHODES PRIVÉES CORRIGÉES ====================
 
     private ExportateurEtranger getExportateurFromToken(String authHeader) {
