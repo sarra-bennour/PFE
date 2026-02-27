@@ -78,9 +78,9 @@ public class ExportateurDossierService {
             request.getProduits().forEach(produitDTO -> {
                 Product product = Product.builder()
                         .hsCode(produitDTO.getHsCode())
-                        .productCategory(produitDTO.getCategorie())
-                        .productName(produitDTO.getNom())
-                        .brandName(produitDTO.getMarque())
+                        .category(produitDTO.getCategory())
+                        .productName(produitDTO.getProductName())
+                        .brandName(produitDTO.getBrandName())
                         .exportateur(exportateur)
                         .build();
                 productRepository.save(product);

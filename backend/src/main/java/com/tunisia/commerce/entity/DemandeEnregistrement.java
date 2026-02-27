@@ -23,7 +23,7 @@ public class DemandeEnregistrement {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne
+    @ManyToOne
     @JoinColumn(name = "exportateur_id" , referencedColumnName = "id")
     @ToString.Exclude
     private ExportateurEtranger exportateur;

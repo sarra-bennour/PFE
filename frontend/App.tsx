@@ -13,6 +13,8 @@ import ExporterSignUp from './pages/ExporterSignUp';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
+import ProductDeclaration from './pages/ProductDeclaration';
+import DeclarationsList from './pages/DeclarationsList';
 
 // Define User types for the simulation
 export type UserRole = 'EXPORTATEUR' | 'importer' | 'validator' | 'admin';
@@ -145,6 +147,16 @@ const App: React.FC = () => {
             <Route path="/exportateur" element={
               <ProtectedRoute roles={['EXPORTATEUR']}>
                 <ExporterSpace />
+              </ProtectedRoute>
+            } />
+            <Route path="/declare-product" element={
+              <ProtectedRoute roles={['EXPORTATEUR']}>
+                <ProductDeclaration />
+              </ProtectedRoute>
+            } />
+            <Route path="/declarations" element={
+              <ProtectedRoute roles={['EXPORTATEUR']}>
+                <DeclarationsList />
               </ProtectedRoute>
             } />
             <Route path="/importer" element={

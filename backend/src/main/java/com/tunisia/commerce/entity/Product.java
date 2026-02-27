@@ -17,34 +17,46 @@ public class Product {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "hs_code", nullable = false)
-    private String hsCode; // Code NGP
+    @Column(name = "product_type")
+    private String productType; // "alimentaire" or "industriel"
 
-    @Column(name = "product_category", nullable = false)
-    private String productCategory;
+    @Column(name = "category", nullable = false)
+    private String category;
+
+    @Column(name = "hs_code", nullable = false)
+    private String hsCode;
 
     @Column(name = "product_name", nullable = false)
     private String productName;
 
+    @Column(name = "is_linked_to_brand")
+    private Boolean isLinkedToBrand;
+
     @Column(name = "brand_name")
     private String brandName;
 
-    @Column(name = "is_brand_owned")
-    private Boolean isBrandOwned;
+    @Column(name = "is_brand_owner")
+    private Boolean isBrandOwner;
 
     @Column(name = "has_brand_license")
     private Boolean hasBrandLicense;
 
-    @Column(name = "processing_type")
-    private String processingType;
+    @Column(name = "product_state")
+    private String productState;
 
-    @Column(name = "annual_export_capacity")
-    private String annualExportCapacity;
+    @Column(name = "origin_country", nullable = false)
+    private String originCountry;
+
+    @Column(name = "annual_quantity_value")
+    private String annualQuantityValue;
+
+    @Column(name = "annual_quantity_unit")
+    private String annualQuantityUnit;
+
+    @Column(name = "commercial_brand_name")
+    private String commercialBrandName;
 
     @ManyToOne
     @JoinColumn(name = "exportateur_id")
     private ExportateurEtranger exportateur;
-
-    /*@OneToMany(mappedBy = "product", cascade = CascadeType.ALL)
-    private List<ProductDocument> documents = new ArrayList<>();*/
 }

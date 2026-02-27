@@ -24,6 +24,7 @@ public class DossierResponseDTO {
     private List<String> prochainesEtapes;
     private ExportateurInfoDTO exportateurInfo;
     private int documentsCount;
+    private int declarationsCount;
 
     /// ✅ Méthode utilitaire pour créer une réponse d'erreur (optionnelle)
     public static DossierResponseDTO error(String message) {

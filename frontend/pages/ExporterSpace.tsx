@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { GoogleGenAI } from '@google/genai';
 import { useAuth } from '../App';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 // Définition de l'interface pour les données KYC
 interface KycData {
@@ -133,6 +134,7 @@ const FileUploadBox = ({
 const ExporterSpace: React.FC = () => {
   const { t } = useTranslation();
   const { user, updateUserStatus, updateUser } = useAuth();
+  const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
   const [dossierInfo, setDossierInfo] = useState<DossierResponse | null>(null);
@@ -158,6 +160,34 @@ const ExporterSpace: React.FC = () => {
     annualAccounts: null,
     externalAudit: null,
   });
+
+  // Au début du composant
+useEffect(() => {
+  const token = localStorage.getItem('token');
+  console.log('🔑 Token complet:', token);
+  
+  if (token) {
+    // Décoder le token pour voir son contenu
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(window.atob(base64));
+    console.log('📦 Payload du token:', payload);
+  }
+}, []);
+
+  const productDeclarations = [
+    { 
+      id: 'DEC-2026-0215', 
+      product: 'Camembert Président 250g', 
+      status: 'En cours de validation par les autorités', 
+      date: '24/02/2026',
+      ngp: '0406',
+      category: 'Produits laitiers',
+      history: [
+        { event: 'Déclaration soumise le 24/02/2026', type: 'submission' }
+      ]
+    }
+  ];
 
   // Vérifier le statut du dossier au chargement
   useEffect(() => {
@@ -880,6 +910,65 @@ const ExporterSpace: React.FC = () => {
           <i className="fas fa-robot mr-2"></i> Support Expert IA
         </button>
       </div>
+{/* HERO SECTION : DÉCLARATIONS DE PRODUITS */}
+      <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 opacity-[0.03] pointer-events-none">
+          <i className="fas fa-box-open text-[25rem] transform rotate-12"></i>
+        </div>
+        
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+            <div>
+              <h2 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Mes Déclarations</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Gestion des lots de marchandises en cours</p>
+            </div>
+            <div className="flex items-center gap-4 w-full md:w-auto">
+              <button 
+                onClick={() => navigate('/declare-product')}
+                className="bg-tunisia-red text-white px-8 py-4 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group whitespace-nowrap"
+              >
+                <i className="fas fa-plus-circle"></i>
+                <span className="text-[10px] font-black uppercase tracking-widest">Nouvelle</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-2">Total Déclarations</span>
+              <div className="text-3xl font-black text-slate-900 italic tracking-tighter">01</div>
+            </div>
+            <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100">
+              <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest block mb-2">En cours</span>
+              <div className="text-3xl font-black text-amber-600 italic tracking-tighter">01</div>
+            </div>
+            <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+              <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest block mb-2">Validées</span>
+              <div className="text-3xl font-black text-emerald-600 italic tracking-tighter">00</div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div 
+              onClick={() => navigate('/declarations')}
+              className="p-6 bg-slate-900 rounded-[2rem] flex items-center justify-between group cursor-pointer overflow-hidden relative"
+            >
+               <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
+               <div className="flex items-center gap-4 relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
+                    <i className="fas fa-list-check text-white"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au Registre Complet</p>
+                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Consultez, filtrez et suivez l'état de toutes vos déclarations</p>
+                  </div>
+               </div>
+               <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
 
       {/* PIPELINE DE STATUT TYPE JENKINS */}
       <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
@@ -907,7 +996,7 @@ const ExporterSpace: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+        <div className="lg:col-span-2 space-y-8 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
           <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-8">Statut des Documents KYC</h3>
           <div className="space-y-4">
             {mockDocuments.map((doc) => (

@@ -53,11 +53,16 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         try {
+
             // Appeler d'abord login pour vérifier le mot de passe
             LoginResponse response = userService.login(request);
 
             // Ensuite vérifier si l'email est vérifié
             UserDTO user = response.getUser();
+
+            // Dans votre AuthController, lors du login
+            String token = jwtUtil.generateToken(user.getEmail(), "ROLE_" + user.getRole().name());
+            System.out.println("🔑 Token généré pour " + user.getEmail() + ": " + token);
 
             // Vérifier si l'email est vérifié (pour les exportateurs)
             if (user.getRole() == UserRole.EXPORTATEUR && !user.isEmailVerified()) {

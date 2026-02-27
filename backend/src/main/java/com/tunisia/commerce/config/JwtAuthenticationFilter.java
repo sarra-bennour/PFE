@@ -10,6 +10,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
 import java.io.IOException;
 import java.util.Collections;
 
@@ -35,10 +36,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = authHeader.substring(7);
 
         try {
-            String email = jwtUtil.extractUsername(token);
-            String role = jwtUtil.extractRole(token);
+            // CORRECTION : Utiliser validateToken sans email d'abord
+            if (jwtUtil.validateToken(token)) {
+                String email = jwtUtil.extractUsername(token);
+                String role = jwtUtil.extractRole(token);
 
-            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null && jwtUtil.validateToken(token,email)) {
+                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
                                     email,
@@ -47,9 +50,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             );
 
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                    System.out.println("✅ Authentification réussie pour: " + email + " avec rôle: " + role);
+                }
+            } else {
+                System.out.println("❌ Token invalide ou expiré");
             }
         } catch (Exception e) {
-            // Token invalide, continuer sans authentification
+            System.out.println("❌ Erreur d'authentification: " + e.getMessage());
+            SecurityContextHolder.clearContext();
         }
 
         filterChain.doFilter(request, response);

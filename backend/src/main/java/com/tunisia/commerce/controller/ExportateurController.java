@@ -9,6 +9,7 @@ import com.tunisia.commerce.entity.User;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.DocumentType;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
+import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.service.impl.ExportateurDossierService;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -24,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
@@ -35,6 +37,7 @@ public class ExportateurController {
     private final JwtUtil jwtUtil;
     private final ExportateurRepository exportateurRepository;
     private final DemandeEnregistrementRepository demandeRepository;
+    private final DocumentRepository documentRepository;
 
     /**
      * Récupérer le statut du dossier de l'exportateur connecté
@@ -43,23 +46,31 @@ public class ExportateurController {
     public ResponseEntity<DossierResponseDTO> getDossierStatut(
             @RequestHeader("Authorization") String authHeader) {
 
+        System.out.println("\n========== DÉBUT getDossierStatut ==========");
+
         try {
             // 1. Valider le token et récupérer l'exportateur
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            System.out.println("✅ Exportateur trouvé ID: " + exportateur.getId());
 
-            if (exportateur == null) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(DossierResponseDTO.error("Exportateur non trouvé"));
-            }
+            // 2. RECHERCHER UNIQUEMENT LE DOSSIER DE CONFORMITÉ (KYC)
+            // Qui commence par "DOS-" dans la référence
+            Optional<DemandeEnregistrement> dossierConformiteOpt =
+                    demandeRepository.findDossierConformiteByExportateurId(exportateur.getId());
 
-            // 2. Vérifier si l'exportateur a déjà une demande
-            DemandeEnregistrement demande = demandeRepository
-                    .findByExportateurId(exportateur.getId())
-                    .orElse(null);
+            // 3. Chercher aussi les déclarations de produits (pour info)
+            List<DemandeEnregistrement> declarationsProduits =
+                    demandeRepository.findDeclarationsProduitsByExportateurId(exportateur.getId());
+
+            System.out.println("📊 Dossier conformité présent: " + dossierConformiteOpt.isPresent());
+            System.out.println("📊 Déclarations produits trouvées: " + declarationsProduits.size());
 
             DossierResponseDTO response;
 
-            if (demande == null) {
+            if (dossierConformiteOpt.isEmpty()) {
+                // PAS DE DOSSIER DE CONFORMITÉ
+                System.out.println("ℹ️ Aucun dossier de conformité trouvé");
+
                 response = DossierResponseDTO.builder()
                         .success(true)
                         .hasDossier(false)
@@ -72,39 +83,49 @@ public class ExportateurController {
                                 "Télécharger les documents requis",
                                 "Soumettre le dossier pour validation"
                         ))
+                        .declarationsCount(declarationsProduits.size()) // Ajoutez ce champ dans DossierResponseDTO
                         .timestamp(LocalDateTime.now())
                         .build();
             } else {
+                // DOSSIER DE CONFORMITÉ EXISTANT
+                DemandeEnregistrement dossier = dossierConformiteOpt.get();
+                System.out.println("✅ Dossier conformité trouvé ID: " + dossier.getId());
+                System.out.println("   - Référence: " + dossier.getReference());
+                System.out.println("   - Statut: " + dossier.getStatus());
+
                 response = DossierResponseDTO.builder()
                         .success(true)
                         .hasDossier(true)
-                        .demandeId(demande.getId())
-                        .status(demande.getStatus().name())
-                        .reference(demande.getReference())
-                        .submittedAt(demande.getSubmittedAt())
-                        .message(getStatusMessage(demande.getStatus()))
-                        .requiresCompletion(demande.getStatus() == DemandeStatus.EN_ATTENTE_INFO)
-                        .prochainesEtapes(getProchainesEtapes(demande.getStatus()))
+                        .demandeId(dossier.getId())
+                        .status(dossier.getStatus().name())
+                        .reference(dossier.getReference())
+                        .submittedAt(dossier.getSubmittedAt())
+                        .message(getStatusMessage(dossier.getStatus()))
+                        .requiresCompletion(dossier.getStatus() == DemandeStatus.EN_ATTENTE_INFO)
+                        .prochainesEtapes(getProchainesEtapes(dossier.getStatus()))
                         .exportateurInfo(ExportateurInfoDTO.fromEntity(exportateur))
                         .documentsCount(getDocumentsCount(exportateur))
+                        .declarationsCount(declarationsProduits.size()) // Ajoutez ce champ
                         .timestamp(LocalDateTime.now())
                         .build();
             }
 
+            System.out.println("✅ Réponse construite avec succès");
+            System.out.println("========== FIN getDossierStatut ==========\n");
+
             return ResponseEntity.ok(response);
 
         } catch (ExpiredJwtException e) {
+            System.err.println("❌ Token expiré: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(DossierResponseDTO.error("Token expiré. Veuillez vous reconnecter."));
-        } catch (MalformedJwtException | SignatureException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(DossierResponseDTO.error("Token invalide. Veuillez vous reconnecter."));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(DossierResponseDTO.error(e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("❌ Erreur: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(DossierResponseDTO.error("Erreur technique: " + e.getMessage()));
         }
     }
-
     /**
      * Créer un nouveau dossier de conformité
      */
@@ -190,8 +211,10 @@ public class ExportateurController {
     /**
      * Télécharger un document pour le dossier
      */
+    // Dans ExportateurController.java, modifiez uploadDocument :
+
     @PostMapping("/dossier/{demandeId}/documents")
-    public ResponseEntity<DocumentResponseDTO> uploadDocument(
+    public ResponseEntity<?> uploadDocument(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable("demandeId") Long demandeId,
             @RequestParam("file") MultipartFile file,
@@ -220,15 +243,42 @@ public class ExportateurController {
                     .build());
 
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest()
+            e.printStackTrace(); // IMPORTANT pour voir l'erreur dans les logs
+
+            // Différencier les types d'erreurs
+            if (e.getMessage().contains("non trouvé") || e.getMessage().contains("autorisation")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(DocumentResponseDTO.builder()
+                                .success(false)
+                                .message(e.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build());
+            } else if (e.getMessage().contains("type de document")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(DocumentResponseDTO.builder()
+                                .success(false)
+                                .message(e.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build());
+            } else {
+                // Erreur interne du serveur
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(DocumentResponseDTO.builder()
+                                .success(false)
+                                .message("Erreur interne du serveur: " + e.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(DocumentResponseDTO.builder()
                             .success(false)
-                            .message(e.getMessage())
+                            .message("Erreur inattendue: " + e.getMessage())
                             .timestamp(LocalDateTime.now())
                             .build());
         }
     }
-
     /**
      * Soumettre le dossier pour validation
      */

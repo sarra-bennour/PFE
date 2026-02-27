@@ -39,7 +39,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
-                        .requestMatchers("/api/exporter/**").hasAuthority("EXPORTATEUR")
+                        .requestMatchers("/api/exportateur/**").hasAuthority("EXPORTATEUR")
                         .requestMatchers("/api/importer/**").hasAuthority("IMPORTATEUR")
                         .anyRequest().authenticated()
                 )

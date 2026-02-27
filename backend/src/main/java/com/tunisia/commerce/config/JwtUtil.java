@@ -37,20 +37,30 @@ public class JwtUtil {
     }
 
     public String extractUsername(String token) {
-        return extractAllClaims(token).getSubject();
+        try {
+            return extractAllClaims(token).getSubject();
+        } catch (Exception e) {
+            System.out.println("❌ Erreur extraction username: " + e.getMessage());
+            return null;
+        }
     }
 
     public String extractRole(String token) {
-        return extractAllClaims(token).get("role", String.class);
+        try {
+            return extractAllClaims(token).get("role", String.class);
+        } catch (Exception e) {
+            System.out.println("❌ Erreur extraction role: " + e.getMessage());
+            return null;
+        }
     }
-
 
     public Date extractExpiration(String token) {
-        return extractAllClaims(token).getExpiration();
-    }
-
-    public Long getExpirationTime(String token) {
-        return extractExpiration(token).getTime();
+        try {
+            return extractAllClaims(token).getExpiration();
+        } catch (Exception e) {
+            System.out.println("❌ Erreur extraction expiration: " + e.getMessage());
+            return null;
+        }
     }
 
     private Claims extractAllClaims(String token) {
@@ -61,24 +71,60 @@ public class JwtUtil {
                 .getBody();
     }
 
-    public boolean validateToken(String token, String email) {
-        final String extractedEmail = extractUsername(token);
-        return (extractedEmail.equals(email) && !isTokenExpired(token));
-    }
-
-    private boolean isTokenExpired(String token) {
-        return extractAllClaims(token).getExpiration().before(new Date());
-    }
-
+    // CORRECTION : Simplifier la validation
     public boolean validateToken(String token) {
         try {
             Jwts.parserBuilder()
                     .setSigningKey(getSigningKey())
                     .build()
                     .parseClaimsJws(token);
-            return !isTokenExpired(token);
+
+            // Vérifier aussi l'expiration
+            Date expiration = extractExpiration(token);
+            if (expiration != null && expiration.before(new Date())) {
+                System.out.println("❌ Token expiré");
+                return false;
+            }
+
+            System.out.println("✅ Token valide");
+            return true;
+        } catch (ExpiredJwtException e) {
+            System.out.println("❌ Token expiré: " + e.getMessage());
+            return false;
+        } catch (MalformedJwtException e) {
+            System.out.println("❌ Token malformé: " + e.getMessage());
+            return false;
+        } catch (SignatureException e) {
+            System.out.println("❌ Signature invalide: " + e.getMessage());
+            return false;
+        } catch (Exception e) {
+            System.out.println("❌ Erreur validation token: " + e.getMessage());
+            return false;
+        }
+    }
+
+    // Garder pour compatibilité
+    public boolean validateToken(String token, String email) {
+        try {
+            String extractedEmail = extractUsername(token);
+            return extractedEmail != null &&
+                    extractedEmail.equals(email) &&
+                    validateToken(token);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    public Long getExpirationTime(String token) {
+        try {
+            Date expiration = extractExpiration(token);
+            if (expiration != null) {
+                return expiration.getTime();
+            }
+            return null;
+        } catch (Exception e) {
+            System.out.println("❌ Erreur récupération expiration: " + e.getMessage());
+            return null;
         }
     }
 }

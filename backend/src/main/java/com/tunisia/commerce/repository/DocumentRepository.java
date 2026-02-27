@@ -13,7 +13,7 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     List<Document> findByExportateurIdAndStatus(Long exportateurId, DocumentStatus status);
     List<Document> findByDemandeId(Long demandeId);
     Optional<Document> findByIdAndExportateurId(Long id, Long exportateurId);
-    long countByExportateurId(Long exportateurId);
+    int countByExportateurId(Long exportateurId);
     List<Document> findByExportateurId(Long exportateurId);
 }
 
