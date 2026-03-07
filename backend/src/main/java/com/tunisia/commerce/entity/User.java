@@ -49,6 +49,13 @@ public class User {
     @Column(name = "user_role", nullable = false)
     private UserRole role;
 
+    @Column(name = "failed_login_attempts")
+    @Builder.Default
+    private Integer failedLoginAttempts = 0;
+
+    @Column(name = "last_failed_login_attempt")
+    private LocalDateTime lastFailedLoginAttempt;
+
     @PrePersist
     protected void onCreate() {
         dateCreation = LocalDateTime.now();

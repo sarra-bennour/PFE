@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth, UserRole, ExporterStatus, User } from '../App';
 import ExporterSignUp from './ExporterSignUp';
 import ForgotPassword from './ForgotPassword';
 import TwoFactorAuth from './TwoFactorAuth';
-import ResetPasswordForm from '../components/ResetPasswordForm'; // AJOUTÉ
+import ResetPasswordForm from '../components/ResetPasswordForm';
+import FormAlert from '../components/FormAlert';
 
 const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -13,7 +14,6 @@ const Login: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
   
-  // AJOUTÉ: Nouveau view pour le reset password
   const [view, setView] = useState<'login' | 'signup' | 'forgot_password' | 'two_factor' | 'reset_password'>('login');
   const [loading, setLoading] = useState(false);
   const [mobileStep, setMobileStep] = useState(1);
@@ -21,54 +21,92 @@ const Login: React.FC = () => {
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [resetToken, setResetToken] = useState<string | null>(null); // AJOUTÉ
+  const [resetToken, setResetToken] = useState<string | null>(null);
+
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [showEmailError, setShowEmailError] = useState(false);
+  const [showPasswordError, setShowPasswordError] = useState(false);
   
-  const [verificationStatus, setVerificationStatus] = useState<{
+  const [alert, setAlert] = useState<{
     show: boolean;
-    type: 'success' | 'error' | null;
+    type: 'success' | 'error';
     message: string;
+    position?: 'top' | 'above-email'; // AJOUTÉ: position de l'alerte
   }>({
     show: false,
-    type: null,
-    message: ''
+    type: 'error',
+    message: '',
+    position: 'top'
   });
   
   const [showPin, setShowPin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string>('');
 
   const CARD_HEIGHT = 750;
 
-  // MODIFIÉ: useEffect pour vérifier le token d'email ET le token de reset
+  // Fonction de validation qui retourne un booléen sans setter l'état
+  const isValidEmail = useCallback((email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }, []);
+
+  // Fonction pour valider l'email (required + format)
+  const validateAndSetEmailError = useCallback((emailValue: string): boolean => {
+    if (!emailValue || emailValue.trim() === '') {
+      setEmailError("L'adresse e-mail est requise.");
+      return false;
+    }
+    else if (!isValidEmail(emailValue)) {
+      setEmailError("L'adresse e-mail saisie n'est pas valide. Veuillez vérifier le format (ex: nom@domaine.com).");
+      return false;
+    } else {
+      setEmailError('');
+      return true;
+    }
+  }, [isValidEmail]);
+
+  // Fonction pour valider le mot de passe (required)
+  const validateAndSetPasswordError = useCallback((passwordValue: string): boolean => {
+    if (!passwordValue || passwordValue.trim() === '') {
+      setPasswordError("Le mot de passe est requis.");
+      return false;
+    } else {
+      setPasswordError('');
+      return true;
+    }
+  }, []);
+
+  // isFormValid utilise les validations sans setter l'état
+  const isFormValid = useMemo((): boolean => {
+    const isEmailValid = email && email.trim() !== '' && isValidEmail(email);
+    const isPasswordValid = password && password.trim() !== '';
+    return isEmailValid && isPasswordValid && !loading;
+  }, [email, password, loading, isValidEmail]);
+
   useEffect(() => {
     const emailToken = searchParams.get('token');
-    const resetTokenParam = searchParams.get('reset-token'); // MODIFIÉ: Utiliser reset-token au lieu de token
+    const resetTokenParam = searchParams.get('reset-token');
     
     if (emailToken) {
-      // Token de vérification d'email
       handleEmailVerification(emailToken);
     }
     
     if (resetTokenParam) {
-      // Token de réinitialisation de mot de passe
       handleResetPasswordToken(resetTokenParam);
     }
   }, [searchParams]);
 
-  // NOUVELLE FONCTION: Gérer le token de réinitialisation
   const handleResetPasswordToken = (token: string) => {
     setResetToken(token);
-    setView('reset_password'); // Affiche directement la 5ème couche
-    setVerificationStatus({
-      show: true,
-      type: null,
-      message: 'Validation du lien de réinitialisation...'
-    });
-    
-    // Valider le token via l'API
+    setView('reset_password');
+    showAlert('info', 'Validation du lien de réinitialisation...', 'above-email');
     validateResetToken(token);
   };
 
-  // NOUVELLE FONCTION: Valider le token de réinitialisation
   const validateResetToken = async (token: string) => {
     try {
       const response = await fetch(`http://localhost:8080/api/auth/validate-reset-token?token=${token}`, {
@@ -81,35 +119,19 @@ const Login: React.FC = () => {
       const data = await response.json();
       
       if (response.ok && data.valid) {
-        setVerificationStatus({
-          show: true,
-          type: 'success',
-          message: '✅ Lien de réinitialisation valide. Vous pouvez maintenant définir votre nouveau mot de passe.'
-        });
+        showAlert('success', '✅ Lien de réinitialisation valide. Vous pouvez maintenant définir votre nouveau mot de passe.', 'above-email');
       } else {
-        setVerificationStatus({
-          show: true,
-          type: 'error',
-          message: `❌ ${data.error || 'Le lien de réinitialisation est invalide ou a expiré'}`
-        });
+        showAlert('error', `❌ ${data.error || 'Le lien de réinitialisation est invalide ou a expiré'}`, 'above-email');
       }
     } catch (error) {
       console.error('Erreur lors de la validation:', error);
-      setVerificationStatus({
-        show: true,
-        type: 'error',
-        message: '❌ Erreur de validation du lien'
-      });
+      showAlert('error', '❌ Erreur de validation du lien', 'above-email');
     }
   };
 
   const handleEmailVerification = async (token: string) => {
     setLoading(true);
-    setVerificationStatus({
-      show: true,
-      type: null,
-      message: 'Vérification de votre email en cours...'
-    });
+    showAlert('info', 'Vérification de votre email en cours...', 'above-email');
 
     try {
       const response = await fetch(`http://localhost:8080/api/auth/verify-email?token=${token}`, {
@@ -122,39 +144,37 @@ const Login: React.FC = () => {
       const data = await response.json();
       
       if (response.ok) {
-        setVerificationStatus({
-          show: true,
-          type: 'success',
-          message: '✅ Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.'
-        });
-        
+        showAlert('success', '✅ Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.', 'above-email');
         navigate('/login', { replace: true });
       } else {
-        setVerificationStatus({
-          show: true,
-          type: 'error',
-          message: `❌ ${data.error || 'Échec de la vérification de l\'email'}`
-        });
+        showAlert('error', `❌ ${data.error || 'Échec de la vérification de l\'email'}`, 'above-email');
       }
     } catch (error) {
       console.error('Erreur lors de la vérification:', error);
-      setVerificationStatus({
-        show: true,
-        type: 'error',
-        message: '❌ Erreur de connexion au serveur'
-      });
+      showAlert('error', '❌ Erreur de connexion au serveur', 'above-email');
     } finally {
       setLoading(false);
     }
   };
 
+  // MODIFIÉ: showAlert accepte maintenant une position
+  const showAlert = (type: 'success' | 'error' | 'info', message: string, position: 'top' | 'above-email' = 'top') => {
+    const alertType = type === 'info' ? 'success' : type;
+    setAlert({
+      show: true,
+      type: alertType,
+      message: message,
+      position: position
+    });
+  };
+
+  const closeAlert = () => {
+    setAlert({ show: false, type: 'error', message: '', position: 'top' });
+  };
+
   const handleResendVerificationEmail = async () => {
-    if (!email) {
-      setVerificationStatus({
-        show: true,
-        type: 'error',
-        message: 'Veuillez d\'abord entrer votre email'
-      });
+    if (!unverifiedEmail) {
+      showAlert('error', 'Veuillez d\'abord entrer votre email', 'above-email');
       return;
     }
 
@@ -165,31 +185,19 @@ const Login: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: unverifiedEmail }),
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        setVerificationStatus({
-          show: true,
-          type: 'success',
-          message: '📧 Email de vérification renvoyé ! Vérifiez votre boîte de réception.'
-        });
+        showAlert('success', '📧 Email de vérification renvoyé ! Vérifiez votre boîte de réception.', 'top');
       } else {
-        setVerificationStatus({
-          show: true,
-          type: 'error',
-          message: data.error || 'Échec du renvoi de l\'email'
-        });
+        showAlert('error', data.error || 'Échec du renvoi de l\'email', 'top');
       }
     } catch (error) {
       console.error('Erreur:', error);
-      setVerificationStatus({
-        show: true,
-        type: 'error',
-        message: '❌ Erreur de connexion au serveur'
-      });
+      showAlert('error', '❌ Erreur de connexion au serveur', 'top');
     } finally {
       setLoading(false);
     }
@@ -200,37 +208,50 @@ const Login: React.FC = () => {
   };
 
   const executeLogin = (userEmail: string, userData?: any) => {
-  // Si on a déjà les données utilisateur du backend, on les utilise
-  if (userData) {
-    login(userData, localStorage.getItem('token'));
-    navigate(`/${userData.role.toLowerCase()}`);
-    return;
-  }
+    if (userData) {
+      login(userData, localStorage.getItem('token'));
+      navigate(`/${userData.role.toLowerCase()}`);
+      return;
+    }
 
-  // Fallback pour les cas où on n'a pas les données (ancien code)
-  let role: UserRole = 'EXPORTATEUR';
-  let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
-  
-  if (userEmail.includes('admin')) role = 'admin';
-  if (userEmail.includes('validator')) role = 'validator';
-  if (userEmail.includes('importer')) role = 'importer';
-
-  const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
-
-  login({ 
-    email: userEmail, 
-    role, 
-    status, 
-    companyName: 'Opérateur International',
-    isTwoFactorEnabled: is2FA
-  }, localStorage.getItem('token')); // Ajouter le token même pour le fallback
+    let role: UserRole = 'EXPORTATEUR';
+    let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
     
-  navigate(`/${role}`);
-};
+    if (userEmail.includes('admin')) role = 'admin';
+    if (userEmail.includes('validator')) role = 'validator';
+    if (userEmail.includes('importer')) role = 'importer';
+
+    const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
+
+    login({ 
+      email: userEmail, 
+      role, 
+      status, 
+      companyName: 'Opérateur International',
+      isTwoFactorEnabled: is2FA
+    }, localStorage.getItem('token'));
+      
+    navigate(`/${role}`);
+  };
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    
+    const isEmailValid = validateAndSetEmailError(email);
+    const isPasswordValid = validateAndSetPasswordError(password);
+    
+    setShowEmailError(true);
+    setShowPasswordError(true);
+    
+    if (!isEmailValid || !isPasswordValid) {
+      return;
+    }
+
+    setLoading(true);  
+    closeAlert();
 
     try {
       const response = await fetch('http://localhost:8080/api/auth/login', {
@@ -244,36 +265,55 @@ const Login: React.FC = () => {
         }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const loginResponse = await response.json();
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
 
+        login(data.user, data.token);
         
-        localStorage.setItem('token', loginResponse.token);
-        localStorage.setItem('user', JSON.stringify(loginResponse.user));
-
-        login(loginResponse.user, loginResponse.token);
-        
-        if (loginResponse.requiresTwoFactor) {
+        if (data.requiresTwoFactor) {
           setView('two_factor');
         } else {
-          executeLogin(email, loginResponse.user);
+          // MODIFIÉ: Afficher l'alerte de succès au-dessus de l'email
+          showAlert('success', '✅ Connexion réussie ! Redirection en cours...', 'above-email');
+          setTimeout(() => {
+            executeLogin(email, data.user);
+          }, 1500);
         }
       } else {
-        const error = await response.json();
-        
-        if (error.error === 'EMAIL_NOT_VERIFIED') {
-          setVerificationStatus({
-            show: true,
-            type: 'error',
-            message: `❌ Email non vérifié. Un lien de vérification a été envoyé à ${email}.`
-          });
-        } else {
-          alert(`Erreur: ${error.message || 'Échec de la connexion'}`);
+        // MODIFIÉ: Les erreurs restent en haut
+        switch (data.error) {
+          case 'EMAIL_NOT_VERIFIED':
+            setUnverifiedEmail(email);
+            showAlert('error', `❌ ${data.message || 'Email non vérifié. Veuillez vérifier votre email avant de vous connecter.'}`, 'above-email');
+            break;
+          case 'INVALID_CREDENTIALS':
+            showAlert('error', `❌ ${data.message || 'Email ou mot de passe incorrect'}`, 'above-email');
+            break;
+          case 'ACCOUNT_LOCKED':
+            showAlert('error', `❌ ${data.message || 'Compte temporairement verrouillé. Réessayez plus tard.'}`, 'above-email');
+            break;
+          case 'MAX_ATTEMPTS_EXCEEDED':
+            showAlert('error', `❌ ${data.message || 'Trop de tentatives échouées. Compte verrouillé.'}`, 'above-email');
+            break;
+          case 'ACCOUNT_DISABLED':
+            showAlert('error', `❌ ${data.message || 'Compte désactivé. Contactez l\'administrateur.'}`, 'above-email');
+            break;
+          case 'USER_NOT_FOUND':
+            showAlert('error', `❌ ${data.message || 'Aucun compte trouvé avec cet email'}`, 'above-email');
+            break;
+          case 'PASSWORD_EXPIRED':
+            showAlert('error', `❌ ${data.message || 'Votre mot de passe a expiré. Veuillez le réinitialiser.'}`, 'above-email');
+            break;
+          default:
+            showAlert('error', `❌ ${data.message || 'Échec de la connexion'}`, 'above-email');
         }
       }
     } catch (error) {
       console.error('Erreur lors de la connexion:', error);
-      alert('Erreur de connexion au serveur');
+      showAlert('error', '❌ Erreur de connexion au serveur', 'above-email');
     } finally {
       setLoading(false);
     }
@@ -284,6 +324,7 @@ const Login: React.FC = () => {
     if (matricule.length !== 10 || pin.length !== 6) return;
 
     setLoading(true);
+    closeAlert();
     
     try {
       const response = await fetch('http://localhost:8080/api/auth/login/mobile', {
@@ -297,21 +338,20 @@ const Login: React.FC = () => {
         }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const loginResponse = await response.json();
-        console.log('Login mobile réussi:', loginResponse);
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
         
-        localStorage.setItem('token', loginResponse.token);
-        localStorage.setItem('user', JSON.stringify(loginResponse.user));
-        
+        showAlert('success', '✅ Authentification mobile réussie', 'top');
         setMobileStep(2);
       } else {
-        const error = await response.json();
-        alert(`Erreur: ${error.message || 'Échec de la connexion mobile'}`);
+        showAlert('error', data.message || 'Échec de la connexion mobile', 'top');
       }
     } catch (error) {
       console.error('Erreur lors de la connexion mobile:', error);
-      alert('Erreur de connexion au serveur');
+      showAlert('error', '❌ Erreur de connexion au serveur', 'top');
     } finally {
       setLoading(false);
     }
@@ -321,7 +361,10 @@ const Login: React.FC = () => {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      executeLogin(email);
+      showAlert('success', '✅ Code 2FA validé avec succès', 'top');
+      setTimeout(() => {
+        executeLogin(email);
+      }, 1500);
     }, 1000);
   };
 
@@ -355,41 +398,35 @@ const Login: React.FC = () => {
         companyName
       });
       
+      showAlert('success', '✅ Connexion mobile réussie !', 'top');
+      
       if (role === 'admin') navigate('/admin');
       else navigate(`/${role}`);
     }, 1000);
   };
 
-  // MODIFIÉ: Fonction pour gérer le retour depuis le reset password
   const handleResetPasswordBack = () => {
     setView('login');
     setResetToken(null);
     navigate('/login', { replace: true });
   };
 
-  // MODIFIÉ: Fonction pour gérer le succès de réinitialisation
   const handleResetPasswordSuccess = () => {
-    setVerificationStatus({
-      show: true,
-      type: 'success',
-      message: '✅ Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.'
-    });
+    showAlert('success', '✅ Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.', 'top');
     
-    // Revenir à la page de login après un délai
     setTimeout(() => {
       setView('login');
       setResetToken(null);
     }, 3000);
   };
 
-  // MODIFIÉ: Fonction getShutterTransform avec 5ème layer
   const getShutterTransform = () => {
     switch (view) {
       case 'login': return 'translateY(0)';
       case 'signup': return `translateY(-${CARD_HEIGHT}px)`;
       case 'forgot_password': return `translateY(-${CARD_HEIGHT * 2}px)`;
       case 'two_factor': return `translateY(-${CARD_HEIGHT * 3}px)`;
-      case 'reset_password': return `translateY(-${CARD_HEIGHT * 4}px)`; // NOUVEAU
+      case 'reset_password': return `translateY(-${CARD_HEIGHT * 4}px)`;
       default: return 'translateY(0)';
     }
   };
@@ -401,54 +438,30 @@ const Login: React.FC = () => {
         style={{ height: `${CARD_HEIGHT}px` }}
       >
         
-        {/* Notification de vérification d'email */}
-        {verificationStatus.show && (
-          <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg ${
-            verificationStatus.type === 'success' 
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-              : verificationStatus.type === 'error'
-                ? 'bg-red-50 border-red-200 text-red-800'
-                : 'bg-blue-50 border-blue-200 text-blue-800'
-          } border-2 rounded-2xl p-4 shadow-lg animate-fade-in-scale`}>
-            <div className="flex items-start gap-3">
-              {verificationStatus.type === 'success' && (
-                <i className="fas fa-check-circle text-emerald-500 text-lg mt-0.5"></i>
-              )}
-              {verificationStatus.type === 'error' && (
-                <i className="fas fa-exclamation-triangle text-red-500 text-lg mt-0.5"></i>
-              )}
-              {verificationStatus.type === null && (
-                <i className="fas fa-spinner fa-spin text-blue-500 text-lg mt-0.5"></i>
-              )}
-              <div className="flex-1">
-                <p className="text-sm font-bold mb-1">
-                  {verificationStatus.type === 'success' ? 'Succès' : 
-                   verificationStatus.type === 'error' ? 'Attention' : 'Information'}
-                </p>
-                <p className="text-xs">{verificationStatus.message}</p>
-                
-                {verificationStatus.type === 'error' && verificationStatus.message.includes('non vérifié') && (
-                  <button
-                    onClick={handleResendVerificationEmail}
-                    disabled={loading}
-                    className="mt-3 text-xs font-bold text-tunisia-red hover:underline flex items-center gap-2"
-                  >
-                    <i className="fas fa-paper-plane"></i>
-                    {loading ? 'Envoi en cours...' : 'Renvoyer l\'email de vérification'}
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={() => setVerificationStatus({ show: false, type: null, message: '' })}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
+        {/* MODIFIÉ: Alertes en haut (position top) */}
+        {alert.show && alert.position === 'top' && (
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg">
+            <FormAlert 
+              type={alert.type}
+              message={alert.message}
+              onClose={closeAlert}
+            />
           </div>
         )}
 
-        {/* Floating Language Switcher */}
+        {alert.show && alert.message.includes('non vérifié') && unverifiedEmail && alert.position === 'top' && (
+          <div className="absolute top-48 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg">
+            <button
+              onClick={handleResendVerificationEmail}
+              disabled={loading}
+              className="w-full px-5 py-3 bg-tunisia-red text-white rounded-2xl text-xs font-bold hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+            >
+              <i className="fas fa-paper-plane"></i>
+              {loading ? 'Envoi en cours...' : 'Renvoyer l\'email de vérification'}
+            </button>
+          </div>
+        )}
+
         <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[100] flex bg-white/90 backdrop-blur-md px-1.5 py-1.5 rounded-2xl shadow-xl border border-slate-100 ring-4 ring-black/5">
           <button 
             onClick={() => changeLanguage('fr')}
@@ -470,18 +483,15 @@ const Login: React.FC = () => {
           </button>
         </div>
 
-        {/* Vertical Shutter Container - MODIFIÉ pour 5 couches */}
         <div 
           className="w-full transition-transform duration-1000 cubic-bezier(0.85, 0, 0.15, 1) flex flex-col"
           style={{ 
             transform: getShutterTransform(),
-            height: `${CARD_HEIGHT * 5}px` // MODIFIÉ: 5 couches maintenant
+            height: `${CARD_HEIGHT * 5}px`
           }}
         >
           
-          {/* LAYER 1: LOGIN */}
           <div className="w-full flex flex-col md:flex-row" style={{ height: `${CARD_HEIGHT}px` }}>
-            {/* National Login */}
             <div className="flex-1 bg-emerald-600 text-white p-12 flex flex-col justify-center items-center text-center md:text-left relative overflow-hidden">
               <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
               <div className="max-w-xs w-full z-10">
@@ -555,8 +565,18 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* International Login */}
-            <div className="flex-1 bg-white p-12 flex flex-col justify-center items-center">
+            <div className="flex-1 bg-white p-12 flex flex-col justify-center items-center relative">
+              {/* MODIFIÉ: Alerte au-dessus de l'email */}
+              {alert.show && alert.position === 'above-email' && (
+                <div className="absolute top-32 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg">
+                  <FormAlert 
+                    type={alert.type}
+                    message={alert.message}
+                    onClose={closeAlert}
+                  />
+                </div>
+              )}
+
               <div className="max-w-xs w-full">
                 <div className="mb-10 text-center md:text-left">
                   <div className="w-16 h-16 bg-red-50 text-tunisia-red rounded-3xl flex items-center justify-center mb-6 shadow-xl border border-red-100 mx-auto md:mx-0">
@@ -570,13 +590,25 @@ const Login: React.FC = () => {
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail</label>
                       <input 
-                        required 
-                        type="email" 
+                        type="text"
                         value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                        className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm" 
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          setShowEmailError(false);
+                        }} 
+                        onBlur={() => {
+                          setEmailTouched(true);
+                          validateAndSetEmailError(email);
+                          setShowEmailError(true);
+                        }}
+                        className={`w-full px-5 py-4 rounded-2xl border-2 ${emailError && showEmailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50 bg-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
                         placeholder="export@company.com" 
                       />
+                      {emailError && showEmailError && (
+                        <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
+                          <i className="fas fa-circle-exclamation mr-1"></i> {emailError}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
@@ -587,11 +619,18 @@ const Login: React.FC = () => {
                       </div>
                       <div className="relative">
                         <input 
-                          required 
                           type={showPassword ? "text" : "password"} 
                           value={password} 
-                          onChange={(e) => setPassword(e.target.value)} 
-                          className="w-full pl-5 pr-12 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm" 
+                          onChange={(e) => {
+                            setPassword(e.target.value);
+                            setShowPasswordError(false);
+                          }}
+                          onBlur={() => {
+                            setPasswordTouched(true);
+                            validateAndSetPasswordError(password);
+                            setShowPasswordError(true);
+                          }}
+                          className={`w-full pl-5 pr-12 py-4 rounded-2xl border-2 ${passwordError && showPasswordError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50 bg-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
                           placeholder="••••••••" 
                         />
                         <button 
@@ -602,12 +641,17 @@ const Login: React.FC = () => {
                           <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
                         </button>
                       </div>
+                      {passwordError && showPasswordError && (
+                        <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
+                          <i className="fas fa-circle-exclamation mr-1"></i> {passwordError}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <button 
                     type="submit"
-                    disabled={loading}
-                    className={`w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={!isFormValid}
+                    className={`w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all ${!isFormValid ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {loading ? 'Connexion...' : 'Se Connecter'}
                   </button>
@@ -621,7 +665,6 @@ const Login: React.FC = () => {
             </div>
           </div>
 
-          {/* LAYER 2: SIGNUP */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <ExporterSignUp 
               embedded={true} 
@@ -629,14 +672,12 @@ const Login: React.FC = () => {
             />
           </div>
 
-          {/* LAYER 3: FORGOT PASSWORD */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <ForgotPassword 
               onBack={() => setView('login')} 
             />
           </div>
 
-          {/* LAYER 4: 2FA */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <TwoFactorAuth 
               loading={loading}
@@ -645,10 +686,8 @@ const Login: React.FC = () => {
             />
           </div>
 
-          {/* NOUVEAU LAYER 5: RESET PASSWORD */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <div className="h-full w-full flex flex-col md:flex-row">
-              {/* Colonne de gauche : Visuel/Information */}
               <div className="flex-1 bg-slate-900 text-white p-12 flex flex-col justify-center items-center text-center relative overflow-hidden">
                 <div className="absolute inset-0 opacity-5">
                   <i className="fas fa-lock text-[20rem] absolute -bottom-10 -right-10"></i>
@@ -664,7 +703,6 @@ const Login: React.FC = () => {
                 </div>
               </div>
 
-              {/* Colonne de droite : Formulaire de réinitialisation */}
               <div className="flex-1 bg-white p-12 flex flex-col justify-center items-center relative">
                 <button 
                   onClick={handleResetPasswordBack}
@@ -682,7 +720,6 @@ const Login: React.FC = () => {
                       </p>
                     </div>
                     
-                    {/* Utilisation du composant ResetPasswordForm avec le token */}
                     <ResetPasswordForm 
                       token={resetToken}
                       requireCurrentPassword={false} 

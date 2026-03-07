@@ -4,12 +4,17 @@ import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.enums.UserRole;
+import com.tunisia.commerce.exception.AuthException;
 import com.tunisia.commerce.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +26,8 @@ public class AuthController {
 
     private final UserService userService;
     private final JwtUtil jwtUtil;
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
 
 
     // Méthode privée pour extraire l'email depuis le token
@@ -53,42 +60,60 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         try {
+            log.info("Tentative de connexion pour l'email: {}", request.getEmail());
 
-            // Appeler d'abord login pour vérifier le mot de passe
             LoginResponse response = userService.login(request);
 
-            // Ensuite vérifier si l'email est vérifié
-            UserDTO user = response.getUser();
+            log.info("Connexion réussie pour: {}", request.getEmail());
 
-            // Dans votre AuthController, lors du login
-            String token = jwtUtil.generateToken(user.getEmail(), "ROLE_" + user.getRole().name());
-            System.out.println("🔑 Token généré pour " + user.getEmail() + ": " + token);
+            Map<String, Object> successResponse = new HashMap<>();
+            successResponse.put("success", true);
+            successResponse.put("token", response.getToken());
+            successResponse.put("requiresTwoFactor", response.isRequiresTwoFactor());
+            successResponse.put("user", response.getUser());
+            successResponse.put("timestamp", LocalDateTime.now().toString());
 
-            // Vérifier si l'email est vérifié (pour les exportateurs)
-            if (user.getRole() == UserRole.EXPORTATEUR && !user.isEmailVerified()) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(Map.of(
-                                "error", "EMAIL_NOT_VERIFIED",
-                                "message", "Veuillez vérifier votre email avant de vous connecter",
-                                "email", user.getEmail()
-                        ));
+            return ResponseEntity.ok(successResponse);
+
+        } catch (AuthException e) {
+            log.warn("Échec de connexion pour {}: {} - {}",
+                    request.getEmail(), e.getErrorCode(), e.getMessage());
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("timestamp", LocalDateTime.now().toString());
+
+            // Ajouter des informations supplémentaires selon le type d'erreur
+            switch (e.getErrorCode()) {
+                case "ACCOUNT_LOCKED":
+                    if (e.getArgs().length > 0) {
+                        errorResponse.put("minutesRemaining", e.getArgs()[0]);
+                    }
+                    break;
+                case "INVALID_CREDENTIALS":
+                    if (e.getArgs().length > 0) {
+                        errorResponse.put("remainingAttempts", e.getArgs()[0]);
+                    }
+                    break;
+                case "EMAIL_NOT_VERIFIED":
+                    errorResponse.put("email", request.getEmail());
+                    break;
             }
 
-            return ResponseEntity.ok(response);
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
 
-        } catch (RuntimeException e) {
-            // Si c'est une erreur "email non vérifié", la traiter spécifiquement
-            if (e.getMessage() != null && e.getMessage().contains("Email non vérifié")) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(Map.of(
-                                "error", "EMAIL_NOT_VERIFIED",
-                                "message", e.getMessage(),
-                                "email", request.getEmail()
-                        ));
-            }
+        } catch (Exception e) {
+            log.error("Erreur inattendue lors de la connexion pour {}", request.getEmail(), e);
 
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", e.getMessage()));
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", "SERVER_ERROR");
+            errorResponse.put("message", "Une erreur interne est survenue. Veuillez réessayer plus tard.");
+            errorResponse.put("timestamp", LocalDateTime.now().toString());
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 

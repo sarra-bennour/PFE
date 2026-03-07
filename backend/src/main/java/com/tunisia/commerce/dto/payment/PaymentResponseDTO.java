@@ -21,4 +21,8 @@ public class PaymentResponseDTO {
     private String status;
     private String receiptUrl;
     private LocalDateTime timestamp;
+
+    // Nouveaux champs optionnels
+    private String cardHolderName;
+    private String emailDestination;
 }

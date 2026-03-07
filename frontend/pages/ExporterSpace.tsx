@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import { useAuth } from '../App';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import FormAlert from '../components/FormAlert';
 
 // Définition de l'interface pour les données KYC
 interface KycData {
@@ -146,6 +147,28 @@ const ExporterSpace: React.FC = () => {
   const [showInvoice, setShowInvoice] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+  const [formError, setFormError] = useState('');
+
+  // États pour le paiement
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [paymentEmail, setPaymentEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [expiryMonth, setExpiryMonth] = useState('');
+  const [expiryYear, setExpiryYear] = useState('');
+  const [cvv, setCvv] = useState('');
+
+  const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
+  const currentYear = new Date().getFullYear() % 100;
+  const years = Array.from({ length: 11 }, (_, i) => (currentYear + i).toString());
+
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 16) value = value.slice(0, 16);
+    const formatted = value.replace(/(\d{4})(?=\d)/g, '$1 ');
+    setCardNumber(formatted);
+    if (formError) setFormError('');
+  };
 
   const [kycData, setKycData] = useState<KycData>({
     rcCert: null,
@@ -368,57 +391,36 @@ useEffect(() => {
     return response.data.paymentIntentId;
   };
 
-  // Fonction pour traiter le paiement via le backend
+  // Fonction pour traiter le paiement via le backend - CORRIGÉE
   const handleProcessPayment = async (paymentIntentId: string) => {
     const token = localStorage.getItem('token');
     
-    // Récupérer les valeurs des champs de carte avec les bons placeholders
-    const cardNumberInput = document.querySelector('input[placeholder="4242 4242 4242 4242"]') as HTMLInputElement;
-    const expiryDateInput = document.querySelector('input[placeholder="12 / 34"]') as HTMLInputElement;
-    const cvvInput = document.querySelector('input[placeholder="123"]') as HTMLInputElement;
-    
-    if (!cardNumberInput || !expiryDateInput || !cvvInput) {
-      console.error('Inputs non trouvés:', { 
-        cardNumber: cardNumberInput, 
-        expiryDate: expiryDateInput, 
-        cvv: cvvInput 
-      });
-      throw new Error('Champs de carte non trouvés');
-    }
-    
-    const cardNumber = cardNumberInput.value;
-    const expiryDate = expiryDateInput.value;
-    const cvv = cvvInput.value;
-    const cardHolderName = user?.nom + ' ' + user?.prenom;
+    // Utiliser les états au lieu de document.querySelector
+    const cardNumberValue = cardNumber;
+    const expiryMonthValue = expiryMonth;
+    const expiryYearValue = expiryYear;
+    const cvvValue = cvv;
+    const cardHolderValue = cardHolder;
+    const emailValue = paymentEmail;
     
     // Vérifier que les champs ne sont pas vides
-    if (!cardNumber || !expiryDate || !cvv) {
+    if (!cardNumberValue || !expiryMonthValue || !expiryYearValue || !cvvValue || !cardHolderValue || !emailValue) {
       throw new Error('Veuillez remplir tous les champs de carte');
     }
     
-    // Extraire mois et année avec vérification
-    const expiryParts = expiryDate.split('/').map(s => s.trim());
-    if (expiryParts.length !== 2) {
-      throw new Error('Format de date d\'expiration invalide. Utilisez MM/YY');
-    }
-    
-    const expMonth = parseInt(expiryParts[0]);
-    const expYear = parseInt(expiryParts[1]);
-    
-    // Vérifier que les valeurs sont valides
-    if (isNaN(expMonth) || isNaN(expYear)) {
-      throw new Error('Mois ou année d\'expiration invalide');
-    }
+    // Nettoyer le numéro de carte
+    const cleanCardNumber = cardNumberValue.replace(/\s/g, '');
     
     // Préparer la requête de paiement
     const paymentRequest = {
       paymentIntentId: paymentIntentId,
       demandeId: dossierInfo?.demandeId,
-      cardNumber: cardNumber.replace(/\s/g, ''),
-      cardHolderName: cardHolderName,
-      expMonth: expMonth,
-      expYear: expYear,
-      cvv: cvv,
+      cardNumber: cleanCardNumber,
+      cardHolderName: cardHolderValue,
+      receiptEmail: emailValue,
+      expMonth: parseInt(expiryMonthValue),
+      expYear: parseInt(expiryYearValue),
+      cvv: cvvValue,
       amount: 500.0
     };
     
@@ -468,10 +470,45 @@ useEffect(() => {
     }
   };
 
-  // Fonction principale de paiement CORRIGÉE
+  // Fonction principale de paiement - CORRIGÉE
   const handlePaymentComplete = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setFormError('');
+    setEmailError('');
+
+    // Validation
+    if (!cardHolder.trim()) {
+      setEmailError("Veuillez saisir le nom du détenteur de la carte.");
+      setLoading(false);
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(paymentEmail)) {
+      setEmailError("Veuillez saisir une adresse e-mail valide pour le reçu.");
+      setLoading(false);
+      return;
+    }
+
+    const cleanCard = cardNumber.replace(/\s/g, '');
+    if (cleanCard.length !== 16) {
+      setFormError("Le numéro de carte doit comporter 16 chiffres.");
+      setLoading(false);
+      return;
+    }
+
+    if (!expiryMonth || !expiryYear) {
+      setFormError("Veuillez sélectionner la date d'expiration.");
+      setLoading(false);
+      return;
+    }
+
+    if (cvv.length !== 3) {
+      setFormError("Le code CVV doit comporter 3 chiffres.");
+      setLoading(false);
+      return;
+    }
     
     try {
       // Vérifier que demandeId existe
@@ -497,6 +534,15 @@ useEffect(() => {
         updateUserStatus('PAYMENT_PENDING'); // Mettre à jour le statut
         setShowTerminal(false);
         alert(`Paiement effectué avec succès!\nRéférence: ${result.transactionId}`);
+
+        // Reset payment fields
+        setCardNumber('');
+        setCardHolder('');
+        setPaymentEmail('');
+        setExpiryMonth('');
+        setExpiryYear('');
+        setCvv('');
+        setEmailError('');
         
         // Mettre à jour le statut localement
         setDossierInfo(prev => ({
@@ -504,10 +550,9 @@ useEffect(() => {
           status: 'PAYEE'
         } as DossierResponse));
         
-        // Rafraîchir les données depuis le backend au lieu de recharger la page
+        // Rafraîchir les données depuis le backend
         await refreshDossierData();
         
-        // Optionnel: rediriger vers le dashboard après un court délai
         setShowInvoice(false);
       } else {
         alert('Erreur de paiement: ' + result.message);
@@ -637,7 +682,7 @@ useEffect(() => {
     );
   }
 
-  // --- RENDU : TERMINAL DE PAIEMENT (VOTRE INTERFACE) ---
+  // --- RENDU : TERMINAL DE PAIEMENT (AVEC LISTES DÉROULANTES) ---
   if (showTerminal) {
     return (
       <div className="max-w-md mx-auto py-12 px-4 animate-fade-in-scale">
@@ -650,23 +695,95 @@ useEffect(() => {
             </div>
           </div>
 
-          <form onSubmit={handlePaymentComplete} className="space-y-6">
+          <form onSubmit={handlePaymentComplete} className="space-y-5">
+            {formError && (
+               <FormAlert 
+                 message={formError} 
+                 type="error" 
+                 onClose={() => setFormError('')} 
+               />
+             )}
+             <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom du détenteur</label>
+                <input 
+                  type="text" 
+                  value={cardHolder}
+                  onChange={(e) => { setCardHolder(e.target.value.toUpperCase()); if (formError) setFormError(''); }}
+                  className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !cardHolder ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm uppercase`} 
+                  placeholder="NOM PRÉNOM"  
+                />
+             </div>
+
+             <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Adresse e-mail (Reçu)</label>
+                <input 
+                  type="text" 
+                  value={paymentEmail}
+                  onChange={(e) => { 
+                    setPaymentEmail(e.target.value); 
+                    if (emailError) setEmailError(''); 
+                  }}
+                  className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${emailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
+                  placeholder="votre@email.com" 
+                />
+                {emailError && (
+                  <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
+                    <i className="fas fa-circle-exclamation mr-1"></i> {emailError}
+                  </p>
+                )}
+             </div>
+             
              <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de carte</label>
                 <div className="relative">
-                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm" placeholder="4242 4242 4242 4242" />
-                  <i className="fas fa-lock absolute right-5 top-1/2 -translate-y-1/2 text-slate-200 text-xs"></i>
+                  <input 
+                    type="text" 
+                    value={cardNumber}
+                    onChange={handleCardNumberChange}
+                    className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && cardNumber.replace(/\s/g, '').length !== 16 ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
+                    placeholder="4242 4242 4242 4242" 
+                  />
+                  <i className="fas fa-credit-card absolute right-5 top-1/2 -translate-y-1/2 text-slate-200 text-xs"></i>
                 </div>
              </div>
 
-             <div className="grid grid-cols-2 gap-4">
+             <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mois</label>
+                  <select 
+                    value={expiryMonth}
+                    onChange={(e) => { setExpiryMonth(e.target.value); if (formError) setFormError(''); }}
+                    className={`w-full px-4 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !expiryMonth ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer`}
+                  >
+                    <option value="">MM</option>
+                    {months.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
                 <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Expiration</label>
-                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center" placeholder="12 / 34" />
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Année</label>
+                  <select 
+                    value={expiryYear}
+                    onChange={(e) => { setExpiryYear(e.target.value); if (formError) setFormError(''); }}
+                    className={`w-full px-4 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !expiryYear ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer`}
+                  >
+                    <option value="">YY</option>
+                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CVV</label>
-                  <input required type="text" className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-slate-50 focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center" placeholder="123" />
+                  <input 
+                    type="text" 
+                    value={cvv}
+                    onChange={(e) => { 
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 3);
+                      setCvv(value);
+                      if (formError) setFormError(''); 
+                    }}
+                    className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && cvv.length !== 3 ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center`} 
+                    placeholder="123" 
+                    maxLength={3}
+                  />
                 </div>
              </div>
 

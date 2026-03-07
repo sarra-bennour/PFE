@@ -38,7 +38,7 @@ public class DemandeEnregistrementService {
     private final UserRepository userRepository;
 
     private static final String REFERENCE_PREFIX = "DEC";
-    private static final String UPLOAD_DIR = "uploads/documents/";
+    private static final String UPLOAD_DIR = "uploads/produits/";
 
     @Transactional
     public DemandeEnregistrementDTO createDemande(DemandeEnregistrementRequestDTO request) {

@@ -31,6 +31,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.logging.Logger;
 
 @Service
 @RequiredArgsConstructor
@@ -53,6 +54,9 @@ public class StripePaymentService {
     private final DemandeEnregistrementRepository demandeRepository;
     private final ExportateurRepository exportateurRepository;
     private final EmailService emailService;
+
+    private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
+
 
     @PostConstruct
     public void init() {
@@ -127,9 +131,6 @@ public class StripePaymentService {
     }
 
     /**
-     * Confirmer le paiement (après redirection depuis Stripe)
-     */
-    /**
      * Confirmer le paiement avec les détails de la carte
      */
     public PaymentResponseDTO confirmPayment(Long exportateurId, Map<String, Object> paymentDetails) {
@@ -137,11 +138,13 @@ public class StripePaymentService {
             String paymentIntentId = (String) paymentDetails.get("paymentIntentId");
             String cardNumber = (String) paymentDetails.get("cardNumber");
             String cardHolderName = (String) paymentDetails.get("cardHolderName");
+            String receiptEmail = (String) paymentDetails.get("receiptEmail");
             Integer expMonth = (Integer) paymentDetails.get("expMonth");
             Integer expYear = (Integer) paymentDetails.get("expYear");
             String cvv = (String) paymentDetails.get("cvv");
 
             log.info("Confirmation du paiement pour paymentIntentId: {}", paymentIntentId);
+            log.info("Détails: cardHolder={}, receiptEmail={}", cardHolderName, receiptEmail);
 
             // Récupérer le PaymentIntent
             PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
@@ -163,10 +166,6 @@ public class StripePaymentService {
                 throw new RuntimeException("Accès non autorisé");
             }
 
-            // Ici, dans un vrai projet, vous utiliseriez Stripe.js côté client
-            // ou vous feriez un appel à l'API Stripe avec les détails de la carte
-            // Pour cet exemple, on va simuler un paiement réussi
-
             // Simuler un délai de traitement
             Thread.sleep(1000);
 
@@ -180,8 +179,12 @@ public class StripePaymentService {
                 demande.setSubmittedAt(LocalDateTime.now());
                 demandeRepository.save(demande);
 
-                // Envoyer la confirmation par email
-                sendPaymentConfirmationEmail(exportateur, demande);
+                // Envoyer la confirmation par email en utilisant l'email saisi par l'utilisateur
+                String emailDestination = receiptEmail != null && !receiptEmail.isEmpty()
+                        ? receiptEmail
+                        : exportateur.getEmail();
+
+                sendPaymentConfirmationEmail(exportateur, demande, emailDestination, cardHolderName);
 
                 return PaymentResponseDTO.builder()
                         .success(true)
@@ -199,6 +202,11 @@ public class StripePaymentService {
                 demande.setPaymentStatus(PaymentStatus.ECHEC);
                 demandeRepository.save(demande);
 
+                // Envoyer notification d'échec si nécessaire
+                if (receiptEmail != null && !receiptEmail.isEmpty()) {
+                    sendPaymentFailureEmail(exportateur, demande, "Transaction refusée", receiptEmail);
+                }
+
                 return PaymentResponseDTO.builder()
                         .success(false)
                         .message("Paiement échoué")
@@ -215,6 +223,73 @@ public class StripePaymentService {
             throw new RuntimeException("Erreur lors du traitement");
         }
     }
+
+    // Méthode pour l'échec de paiement
+    private void sendPaymentFailureEmail(ExportateurEtranger exportateur,
+                                         DemandeEnregistrement demande,
+                                         String errorMessage,
+                                         String emailDestination) {
+        try {
+            String companyName = exportateur.getRaisonSociale();
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("errorMessage", errorMessage);
+            params.put("demandeReference", demande.getReference());
+            params.put("retryUrl", frontendUrl + "/#/exportateur");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+            params.put("paymentReference", demande.getPaymentReference());
+
+            emailService.sendValidationNotification(
+                    emailDestination,
+                    companyName,
+                    ValidationNotificationType.PAIEMENT_ECHOUE,
+                    params
+            );
+
+            log.info("Email d'échec de paiement envoyé à: {}", emailDestination);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi de l'email d'échec", e);
+        }
+    }
+
+    /**
+     * Envoyer la confirmation de paiement par email en utilisant le service existant
+     */
+    private void sendPaymentConfirmationEmail(ExportateurEtranger exportateur,
+                                              DemandeEnregistrement demande,
+                                              String emailDestination,
+                                              String cardHolderName) {
+        try {
+            String companyName = exportateur.getRaisonSociale();
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("paymentReference", demande.getPaymentReference() != null ?
+                    demande.getPaymentReference() : demande.getId().toString());
+            params.put("amount", demande.getPaymentAmount() != null ?
+                    demande.getPaymentAmount().toString() : "500");
+            params.put("date", LocalDateTime.now().toString());
+            params.put("demandeReference", demande.getReference());
+            params.put("cardHolderName", cardHolderName);  // Nom du détenteur de la carte
+            params.put("dashboardUrl", frontendUrl + "/#/exportateur");
+            params.put("receiptUrl", "/api/payment/receipt/" + demande.getId());
+
+            // Utilisation de la méthode générique du EmailService
+            emailService.sendValidationNotification(
+                    emailDestination,  // Email du destinataire (celui saisi dans le formulaire)
+                    companyName,
+                    ValidationNotificationType.PAIEMENT_CONFIRME,  // Type défini dans votre énumération
+                    params
+            );
+
+            logger.info("Email de confirmation de paiement envoyé à: {}"+ emailDestination);
+
+        } catch (Exception e) {
+            logger.warning("Erreur lors de l'envoi de l'email de confirmation"+ e);
+            // Ne pas bloquer le processus de paiement en cas d'erreur d'email
+        }
+    }
+
 
     /**
      * Confirmer le paiement après redirection (pour l'approche avec redirection Stripe)
@@ -317,12 +392,20 @@ public class StripePaymentService {
 
                 log.info("Paiement réussi pour la demande: {}", demandeId);
 
-                // Envoyer email de confirmation
-                sendPaymentConfirmationEmail(demande.getExportateur(), demande);
+                // Envoyer email de confirmation via le service
+                String emailDestination = paymentIntent.getReceiptEmail() != null
+                        ? paymentIntent.getReceiptEmail()
+                        : demande.getExportateur().getEmail();
+
+                sendPaymentConfirmationEmail(
+                        demande.getExportateur(),
+                        demande,
+                        emailDestination,
+                        demande.getExportateur().getRaisonSociale()  // Nom par défaut
+                );
             }
         }
     }
-
     private void handlePaymentIntentFailed(Event event) {
         PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
         if (paymentIntent == null) return;

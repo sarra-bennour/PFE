@@ -215,35 +215,6 @@ public class ExportateurDossierService {
         return "DOS-" + dateStr + "-" + uniqueId;
     }
 
-    /*private void updateExportateurInfo(ExportateurEtranger exportateur, CreerDossierRequest request) {
-        if (request.getRaisonSociale() != null) {
-            exportateur.setRaisonSociale(request.getRaisonSociale());
-        }
-        if (request.getAdresseLegale() != null) {
-            exportateur.setAdresseLegale(request.getAdresseLegale());
-        }
-        if (request.getVille() != null) {
-            exportateur.setVille(request.getVille());
-        }
-        if (request.getPaysOrigine() != null) {
-            exportateur.setPaysOrigine(request.getPaysOrigine());
-        }
-        if (request.getTelephone() != null) {
-            exportateur.setTelephone(request.getTelephone());
-        }
-        if (request.getSiteWeb() != null) {
-            exportateur.setSiteWeb(request.getSiteWeb());
-        }
-        if (request.getRepresentantLegal() != null) {
-            exportateur.setRepresentantLegal(request.getRepresentantLegal());
-        }
-        if (request.getNumeroRegistreCommerce() != null) {
-            exportateur.setNumeroRegistreCommerce(request.getNumeroRegistreCommerce());
-        }
-        if (request.getNumeroTVA() != null) {
-            exportateur.setNumeroTVA(request.getNumeroTVA());
-        }
-    }*/
 
     /**
      * Récupérer un document par son ID en vérifiant qu'il appartient à l'exportateur

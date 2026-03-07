@@ -4,6 +4,7 @@ import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.enums.*;
+import com.tunisia.commerce.exception.AuthException;
 import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.EmailService;
 import com.tunisia.commerce.service.UserService;
@@ -16,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -40,7 +42,7 @@ public class UserServiceImpl implements UserService {
     @Value("${app.frontend.url}")
     private String frontendUrl;
 
-    @Value("${app.admin.email}")  // AJOUTEZ CETTE LIGNE
+    @Value("${spring.mail.username}")
     private String adminEmail;
 
     Logger logger = Logger.getLogger(getClass().getName());
@@ -206,42 +208,109 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = AuthException.class)  // ← 1. AJOUTER ICI
     public LoginResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+        try {
+            // 1. Vérifier si l'utilisateur existe
+            User user = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(AuthException::userNotFound);
 
-        // Vérifier le mot de passe pour les exportateurs et administrateurs
-        if (user.getRole() == UserRole.EXPORTATEUR || user.getRole() == UserRole.ADMIN) {
-            ExportateurEtranger exportateur = exportateurRepository.findByEmail(request.getEmail())
-                    .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+            // 2. Vérifier le statut
+            String currentStatus = userRepository.getUserStatus(request.getEmail());
 
-            if (!passwordEncoder.matches(request.getPassword(), exportateur.getPasswordHash())) {
-                throw new IllegalArgumentException("Mot de passe incorrect");
+            if (UserStatus.INACTIF.name().equals(currentStatus)) {
+                LocalDateTime lastAttempt = userRepository.getLastFailedAttempt(request.getEmail());
+
+                if (lastAttempt != null) {
+                    LocalDateTime unlockTime = lastAttempt.plusMinutes(30);
+                    if (LocalDateTime.now().isAfter(unlockTime)) {
+                        userRepository.lockAccount(request.getEmail(), UserStatus.ACTIF.name());
+                        logger.info("Compte automatiquement débloqué pour: {}"+ request.getEmail());
+                    } else {
+                        long minutesRemaining = Duration.between(LocalDateTime.now(), unlockTime).toMinutes();
+                        throw AuthException.accountLocked((int) minutesRemaining);
+                    }
+                } else {
+                    throw AuthException.accountDisabled();
+                }
             }
+
+            // 3. Vérifier le mot de passe
+            boolean passwordMatches = false;
+            ExportateurEtranger exportateur = null;
+
+            if (user.getRole() == UserRole.EXPORTATEUR || user.getRole() == UserRole.ADMIN) {
+                exportateur = exportateurRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                passwordMatches = passwordEncoder.matches(request.getPassword(), exportateur.getPasswordHash());
+            }
+
+            if (!passwordMatches) {
+                // 4. Incrémenter les tentatives
+                userRepository.incrementFailedAttempts(request.getEmail());
+
+                // 5. FORCER L'ÉCRITURE IMMÉDIATE EN BASE
+                userRepository.flush();  // ← 2. AJOUTER CETTE LIGNE
+
+                logger.info("=== Tentative échouée pour {} ==="+ request.getEmail());
+
+                // 6. Lire la valeur depuis la base
+                int currentAttempts = userRepository.getFailedAttempts(request.getEmail());
+                logger.info("Tentatives actuelles en base: {}"+ currentAttempts);
+
+                if (currentAttempts >= 5) {
+                    userRepository.lockAccount(request.getEmail(), UserStatus.INACTIF.name());
+                    userRepository.flush();  // ← AJOUTER ICI AUSSI
+                    logger.info("⚠️ Compte désactivé après {} tentatives"+ currentAttempts);
+                    throw AuthException.maxAttemptsExceeded(30);
+                }
+
+                int remainingAttempts = 5 - currentAttempts;
+                logger.info("Tentatives restantes: {}"+ remainingAttempts);
+                throw AuthException.invalidCredentials(remainingAttempts);
+            }
+
+            // 7. Succès
+            userRepository.resetFailedAttempts(request.getEmail());
+            userRepository.flush();  // ← AJOUTER ICI
+            logger.info("✅ Connexion réussie pour {}"+ request.getEmail());
+
+            // 8. Recharger l'utilisateur
+            User refreshedUser = userRepository.findByEmail(request.getEmail())
+                    .orElseThrow(AuthException::userNotFound);
+
+            // 9. Vérifier l'email
+            if (refreshedUser.getRole() == UserRole.EXPORTATEUR) {
+                ExportateurEtranger freshExportateur = exportateurRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                if (!freshExportateur.isEmailVerified()) {
+                    throw AuthException.emailNotVerified(request.getEmail());
+                }
+            }
+
+            // 10. Générer le token
+            String token = jwtUtil.generateToken(refreshedUser.getEmail(), refreshedUser.getRole().name());
+
+            return LoginResponse.builder()
+                    .token(token)
+                    .requiresTwoFactor(isTwoFactorEnabled(refreshedUser))
+                    .user(mapToUserDTO(refreshedUser))
+                    .build();
+
+        } catch (AuthException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.warning("Erreur inattendue"+ e);
+            throw new RuntimeException("Erreur lors de la connexion: " + e.getMessage());
         }
-
-        // Mettre à jour la dernière connexion
-        user.setLastLogin(LocalDateTime.now());
-        userRepository.save(user);
-        System.out.println("userrrrrrrr"+ user);
-
-        // Générer le token JWT
-        String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
-
-        // Vérifier si 2FA est activé
-        boolean requires2FA = false;
-        if (user instanceof ExportateurEtranger) {
-            requires2FA = ((ExportateurEtranger) user).isTwoFactorEnabled();
-        }
-
-        return LoginResponse.builder()
-                .token(token)
-                .requiresTwoFactor(requires2FA)
-                .user(mapToUserDTO(user))
-                .build();
     }
 
+    private boolean isTwoFactorEnabled(User user) {
+        if (user instanceof ExportateurEtranger) {
+            return ((ExportateurEtranger) user).isTwoFactorEnabled();
+        }
+        return false;
+    }
     @Override
     @Transactional
     public LoginResponse mobileLogin(MobileLoginRequest request) {
