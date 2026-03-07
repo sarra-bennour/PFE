@@ -47,6 +47,16 @@ interface CreatePaymentIntentResponse {
   requiresAction: boolean;
 }
 
+// Interface pour la réponse de paiement
+interface PaymentResult {
+  success: boolean;
+  message: string;
+  transactionId?: string;
+  paymentReference?: string;
+  amount?: number;
+  status?: string;
+}
+
 // Composant de nœud de pipeline style Jenkins
 const PipelineNode = ({ label, status, isLast = false }: { 
   label: string, 
@@ -148,6 +158,10 @@ const ExporterSpace: React.FC = () => {
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
+  
+  // États pour les alertes de paiement
+  const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // États pour le paiement
   const [cardNumber, setCardNumber] = useState('');
@@ -168,6 +182,7 @@ const ExporterSpace: React.FC = () => {
     const formatted = value.replace(/(\d{4})(?=\d)/g, '$1 ');
     setCardNumber(formatted);
     if (formError) setFormError('');
+    if (paymentError) setPaymentError(null);
   };
 
   const [kycData, setKycData] = useState<KycData>({
@@ -348,7 +363,7 @@ useEffect(() => {
     
   } catch (error: any) {
     console.error('❌ Erreur globale:', error);
-    alert(error.message || 'Une erreur est survenue');
+    setPaymentError(error.message || 'Une erreur est survenue lors de la soumission du dossier');
   } finally {
     setLoading(false);
   }
@@ -357,6 +372,9 @@ useEffect(() => {
   const handleGoToTerminal = () => {
     setShowInvoice(false);
     setShowTerminal(true);
+    // Reset des alertes
+    setPaymentSuccess(null);
+    setPaymentError(null);
   };
 
   // Fonction pour créer le PaymentIntent via le backend
@@ -470,12 +488,14 @@ useEffect(() => {
     }
   };
 
-  // Fonction principale de paiement - CORRIGÉE
+  // Fonction principale de paiement - CORRIGÉE AVEC ALERTES
   const handlePaymentComplete = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setFormError('');
     setEmailError('');
+    setPaymentError(null);
+    setPaymentSuccess(null);
 
     // Validation
     if (!cardHolder.trim()) {
@@ -513,7 +533,7 @@ useEffect(() => {
     try {
       // Vérifier que demandeId existe
       if (!dossierInfo?.demandeId) {
-        alert('ID de demande non trouvé. Veuillez réessayer.');
+        setPaymentError('ID de demande non trouvé. Veuillez réessayer.');
         setLoading(false);
         return;
       }
@@ -531,10 +551,17 @@ useEffect(() => {
       const result = await handleProcessPayment(paymentIntentId);
       
       if (result.success) {
-        updateUserStatus('PAYMENT_PENDING'); // Mettre à jour le statut
-        setShowTerminal(false);
-        alert(`Paiement effectué avec succès!\nRéférence: ${result.transactionId}`);
+        // Afficher l'alerte de succès
+        setPaymentSuccess({
+          success: true,
+          message: 'Paiement effectué avec succès!',
+          paymentReference: result.paymentReference,
+          amount: result.amount,
+          status: result.status
+        });
 
+        updateUserStatus('PAYMENT_PENDING');
+        
         // Reset payment fields
         setCardNumber('');
         setCardHolder('');
@@ -553,9 +580,15 @@ useEffect(() => {
         // Rafraîchir les données depuis le backend
         await refreshDossierData();
         
-        setShowInvoice(false);
+        // Fermer le terminal après 3 secondes
+        setTimeout(() => {
+          setShowTerminal(false);
+          setShowInvoice(false);
+          setPaymentSuccess(null);
+        }, 3000);
+        
       } else {
-        alert('Erreur de paiement: ' + result.message);
+        setPaymentError(result.message || 'Erreur de paiement');
       }
       
     } catch (error: any) {
@@ -563,11 +596,13 @@ useEffect(() => {
       
       // Vérifier si l'erreur est due à un token expiré
       if (error.response?.status === 401) {
-        alert('Votre session a expiré. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        window.location.href = '/login';
+        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+        }, 2000);
       } else {
-        alert(error.response?.data?.message || error.message || 'Erreur lors du paiement');
+        setPaymentError(error.response?.data?.message || error.message || 'Erreur lors du paiement');
       }
     } finally {
       setLoading(false);
@@ -682,7 +717,7 @@ useEffect(() => {
     );
   }
 
-  // --- RENDU : TERMINAL DE PAIEMENT (AVEC LISTES DÉROULANTES) ---
+  // --- RENDU : TERMINAL DE PAIEMENT (AVEC LISTES DÉROULANTES ET ALERTES) ---
   if (showTerminal) {
     return (
       <div className="max-w-md mx-auto py-12 px-4 animate-fade-in-scale">
@@ -695,21 +730,55 @@ useEffect(() => {
             </div>
           </div>
 
+          {/* ALERTE DE SUCCÈS */}
+          {paymentSuccess && (
+            <div className="mb-6 animate-fade-in-scale">
+              <FormAlert 
+                type="success"
+                message={
+                  <div>
+                    <p className="font-bold mb-1">{paymentSuccess.message}</p>
+                    {paymentSuccess.amount && (
+                      <p className="text-xs opacity-90">Montant: {paymentSuccess.amount} DT</p>
+                    )}
+                    <p className="text-xs opacity-75 mt-2">Redirection dans quelques instants...</p>
+                  </div>
+                }
+                onClose={() => setPaymentSuccess(null)}
+              />
+            </div>
+          )}
+
+          {/* ALERTE D'ERREUR */}
+          {paymentError && (
+            <div className="mb-6 animate-fade-in-scale">
+              <FormAlert 
+                type="error"
+                message={paymentError}
+                onClose={() => setPaymentError(null)}
+              />
+            </div>
+          )}
+
+          {/* ALERTE D'ERREUR DE FORMULAIRE */}
+          {formError && (
+            <div className="mb-4">
+              <FormAlert 
+                message={formError} 
+                type="error" 
+                onClose={() => setFormError('')} 
+              />
+            </div>
+          )}
+
           <form onSubmit={handlePaymentComplete} className="space-y-5">
-            {formError && (
-               <FormAlert 
-                 message={formError} 
-                 type="error" 
-                 onClose={() => setFormError('')} 
-               />
-             )}
              <div className="space-y-1.5">
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom du détenteur</label>
                 <input 
                   type="text" 
                   value={cardHolder}
-                  onChange={(e) => { setCardHolder(e.target.value.toUpperCase()); if (formError) setFormError(''); }}
-                  className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !cardHolder ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm uppercase`} 
+                  onChange={(e) => { setCardHolder(e.target.value.toUpperCase()); if (formError) setFormError(''); if (paymentError) setPaymentError(null); }}
+                  className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${emailError && !cardHolder ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm uppercase`} 
                   placeholder="NOM PRÉNOM"  
                 />
              </div>
@@ -722,6 +791,7 @@ useEffect(() => {
                   onChange={(e) => { 
                     setPaymentEmail(e.target.value); 
                     if (emailError) setEmailError(''); 
+                    if (paymentError) setPaymentError(null);
                   }}
                   className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${emailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
                   placeholder="votre@email.com" 
@@ -752,7 +822,7 @@ useEffect(() => {
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mois</label>
                   <select 
                     value={expiryMonth}
-                    onChange={(e) => { setExpiryMonth(e.target.value); if (formError) setFormError(''); }}
+                    onChange={(e) => { setExpiryMonth(e.target.value); if (formError) setFormError(''); if (paymentError) setPaymentError(null); }}
                     className={`w-full px-4 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !expiryMonth ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer`}
                   >
                     <option value="">MM</option>
@@ -763,7 +833,7 @@ useEffect(() => {
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Année</label>
                   <select 
                     value={expiryYear}
-                    onChange={(e) => { setExpiryYear(e.target.value); if (formError) setFormError(''); }}
+                    onChange={(e) => { setExpiryYear(e.target.value); if (formError) setFormError(''); if (paymentError) setPaymentError(null); }}
                     className={`w-full px-4 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !expiryYear ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer`}
                   >
                     <option value="">YY</option>
@@ -779,6 +849,7 @@ useEffect(() => {
                       const value = e.target.value.replace(/\D/g, '').slice(0, 3);
                       setCvv(value);
                       if (formError) setFormError(''); 
+                      if (paymentError) setPaymentError(null);
                     }}
                     className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && cvv.length !== 3 ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center`} 
                     placeholder="123" 
@@ -788,7 +859,7 @@ useEffect(() => {
              </div>
 
              <div className="pt-6">
-                <button type="submit" disabled={loading} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+                <button type="submit" disabled={loading || paymentSuccess !== null} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
                   {loading ? (
                     <i className="fas fa-circle-notch animate-spin"></i>
                   ) : (
@@ -798,7 +869,7 @@ useEffect(() => {
                     </>
                   )}
                 </button>
-                <button type="button" onClick={() => { setShowTerminal(false); setShowInvoice(true); }} className="w-full py-4 text-slate-400 font-black uppercase tracking-widest text-[9px] hover:text-slate-600 transition-colors mt-2">
+                <button type="button" onClick={() => { setShowTerminal(false); setShowInvoice(true); setPaymentError(null); setPaymentSuccess(null); }} className="w-full py-4 text-slate-400 font-black uppercase tracking-widest text-[9px] hover:text-slate-600 transition-colors mt-2">
                    Retour à la facture
                 </button>
              </div>
@@ -835,6 +906,17 @@ useEffect(() => {
 
     return (
       <div className="max-w-5xl mx-auto py-8 px-4 animate-fade-in-scale">
+        {/* ALERTE D'ERREUR POUR LA SOUMISSION DU DOSSIER */}
+        {paymentError && (
+          <div className="mb-6">
+            <FormAlert 
+              type="error"
+              message={paymentError}
+              onClose={() => setPaymentError(null)}
+            />
+          </div>
+        )}
+
         <div className="mb-12">
           <div className="flex justify-between items-end mb-4">
             <div>
