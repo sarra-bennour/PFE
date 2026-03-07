@@ -70,6 +70,7 @@ public class DemandeEnregistrementService {
         // Sauvegarder les produits avec tous les champs
         for (ProductRequestDTO productRequest : request.getProducts()) {
             Product product = mapToEntity(productRequest, exportateur);
+            product.setDemande(demande);
             productRepository.save(product);
         }
 
@@ -99,7 +100,6 @@ public class DemandeEnregistrementService {
                 .annualQuantityValue(dto.getAnnualQuantityValue())
                 .annualQuantityUnit(dto.getAnnualQuantityUnit())
                 .commercialBrandName(dto.getCommercialBrandName())
-                .exportateur(exportateur)
                 .build();
     }
     /**
@@ -143,7 +143,7 @@ public class DemandeEnregistrementService {
                         .orElseThrow(() -> new RuntimeException("Produit non trouvé avec ID: " + productId));
 
                 // Vérifier que le produit appartient à l'exportateur
-                if (!product.getExportateur().getId().equals(exportateurId)) {
+                if (!product.getDemande().getExportateur().getId().equals(exportateurId)) {
                     throw new RuntimeException("Ce produit ne vous appartient pas");
                 }
             }
@@ -300,10 +300,28 @@ public class DemandeEnregistrementService {
     }
 
     public List<DemandeEnregistrementDTO> getDemandesByExportateur(Long exportateurId) {
-        return demandeRepository.findByExportateurId(exportateurId).stream()
+        // Cette ligne doit retourner une List
+        List<DemandeEnregistrement> demandes = demandeRepository.findByExportateurId(exportateurId);
+
+        return demandes.stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Récupérer UNIQUEMENT les déclarations de produits (DEM-)
+     */
+    public List<DemandeEnregistrementDTO> getDeclarationsProduitsByExportateur(Long exportateurId) {
+        log.info("Récupération des déclarations de produits pour l'exportateur ID: {}", exportateurId);
+
+        List<DemandeEnregistrement> demandes = demandeRepository
+                .findDeclarationsProduitsByExportateurId(exportateurId);
+
+        return demandes.stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
 
     public List<DemandeEnregistrementDTO> getDemandesByStatus(DemandeStatus status) {
         return demandeRepository.findByStatus(status).stream()
@@ -354,7 +372,7 @@ public class DemandeEnregistrementService {
 
     private void validateRequiredDocuments(DemandeEnregistrement demande) {
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
-        List<Product> products = productRepository.findByExportateurId(demande.getExportateur().getId());
+        List<Product> products = productRepository.findByDemandeId(demande.getId());
 
         for (Product product : products) {
             if ("alimentaire".equals(product.getProductType())) {
@@ -453,7 +471,7 @@ public class DemandeEnregistrementService {
     }
 
     private DemandeEnregistrementDTO mapToDTO(DemandeEnregistrement demande) {
-        List<Product> products = productRepository.findByExportateurId(demande.getExportateur().getId());
+        List<Product> products = productRepository.findByDemandeId(demande.getId());
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
         List<DemandeHistory> history = historyRepository.findByDemandeIdOrderByPerformedAtDesc(demande.getId());
 
@@ -471,7 +489,6 @@ public class DemandeEnregistrementService {
                 .numeroAgrement(demande.getNumeroAgrement())
                 .dateAgrement(demande.getDateAgrement() != null ?
                         demande.getDateAgrement().atStartOfDay() : null)
-                .exportateur(mapExportateurToDTO(demande.getExportateur()))
                 .products(mapProductsToDTO(products))
                 .documents(documents.stream().map(this::convertToDTO).collect(Collectors.toList()))
                 .history(history.stream().map(this::mapHistoryToDTO).collect(Collectors.toList()))

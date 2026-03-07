@@ -15,5 +15,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     Optional<Document> findByIdAndExportateurId(Long id, Long exportateurId);
     int countByExportateurId(Long exportateurId);
     List<Document> findByExportateurId(Long exportateurId);
+    List<Document> findByDemandeIdAndProductId(Long demandeId, Long productId);
 }
 

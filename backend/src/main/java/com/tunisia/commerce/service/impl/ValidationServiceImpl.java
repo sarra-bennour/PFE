@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
+import java.util.logging.Logger;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +34,9 @@ public class ValidationServiceImpl implements ValidationService {
     private final ExportateurRepository exportateurRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+
+    private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
+
 
     @Override
     public List<DemandeEnregistrement> getDemandesAAfficher(Long agentId, DemandeStatus status) {
@@ -92,18 +97,40 @@ public class ValidationServiceImpl implements ValidationService {
 
         if (documentsEnAttente.isEmpty()) {
             // Tous les documents sont validés, on peut passer à l'étape suivante
-            DemandeEnregistrement demande = demandeRepository
-                    .findByExportateurId(exportateur.getId())
-                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
 
-            demande.setStatus(DemandeStatus.PAYEE); // En attente de paiement maintenant
-            demandeRepository.save(demande);
+            // CORRECTION 1 : Récupérer la demande de conformité (KYC)
+            Optional<DemandeEnregistrement> demandeConformiteOpt = demandeRepository
+                    .findDossierConformiteByExportateurId(exportateur.getId());
 
-            // Notifier l'exportateur que ses documents sont validés
-            emailService.sendDocumentsValidesNotification(
-                    exportateur.getEmail(),
-                    exportateur.getRaisonSociale()
-            );
+            if (demandeConformiteOpt.isPresent()) {
+                DemandeEnregistrement demande = demandeConformiteOpt.get();
+                demande.setStatus(DemandeStatus.PAYEE); // En attente de paiement maintenant
+                demandeRepository.save(demande);
+
+                // Notifier l'exportateur que ses documents sont validés
+                emailService.sendDocumentsValidesNotification(
+                        exportateur.getEmail(),
+                        exportateur.getRaisonSociale()
+                );
+            } else {
+                // CORRECTION 2 : Si c'est pour une déclaration de produit, prendre la plus récente
+                List<DemandeEnregistrement> declarations = demandeRepository
+                        .findDeclarationsProduitsByExportateurId(exportateur.getId());
+
+                if (!declarations.isEmpty()) {
+                    DemandeEnregistrement derniereDeclaration = declarations.get(0); // La plus récente
+                    derniereDeclaration.setStatus(DemandeStatus.PAYEE);
+                    demandeRepository.save(derniereDeclaration);
+
+                    emailService.sendDocumentsValidesNotification(
+                            exportateur.getEmail(),
+                            exportateur.getRaisonSociale()
+                    );
+                } else {
+                    logger.warning("Aucune demande trouvée pour l'exportateur ID: {}"+exportateur.getId());
+                    // Peut-être créer une nouvelle demande ?
+                }
+            }
         }
     }
 

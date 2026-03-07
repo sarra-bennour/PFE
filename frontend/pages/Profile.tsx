@@ -85,7 +85,16 @@ const Profile: React.FC = () => {
       const data = await response.json();
       
       if (data.success) {
-        setDocuments(data.documents);
+        const formattedDocuments = data.documents.map((doc: any, index: number) => ({
+          id: doc.id || index + 1,
+          fileName: doc.fileName || 'Document',
+          documentType: doc.documentType || 'UNKNOWN',
+          status: doc.status || 'EN_ATTENTE',
+          uploadedAt: doc.uploadedAt || new Date().toISOString(),
+          validatedAt: doc.validatedAt,
+          fileType: doc.fileType || 'application/pdf'
+        }));
+        setDocuments(formattedDocuments);
       }
     } catch (err) {
       console.error('Erreur chargement documents:', err);
@@ -127,33 +136,46 @@ const Profile: React.FC = () => {
 
   // Fonction pour prévisualiser un document
   const handlePreviewDocument = async (documentId: number, fileName: string, fileType: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      const fileUrl = `http://localhost:8080/api/exportateur/documents/${documentId}/file`;
-      
-      const response = await fetch(fileUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        
-        setPreviewDoc({
-          name: fileName,
-          url: url,
-          type: fileType.toLowerCase() === 'pdf' ? 'pdf' : 'image'
-        });
-      } else {
-        setError('Impossible de charger le document');
+  try {
+    const token = localStorage.getItem('token');
+    const fileUrl = `http://localhost:8080/api/exportateur/documents/${documentId}/file`;
+    
+    const response = await fetch(fileUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`
       }
-    } catch (err) {
-      console.error('Erreur prévisualisation:', err);
-      setError('Erreur lors de la prévisualisation du document');
+    });
+    
+    if (response.ok) {
+      const blob = await response.blob();
+      
+      // Déterminer le type MIME correct
+      let mimeType = 'application/octet-stream';
+      if (fileType.toLowerCase().includes('pdf')) {
+        mimeType = 'application/pdf';
+      } else if (fileType.toLowerCase().includes('jpg') || fileType.toLowerCase().includes('jpeg')) {
+        mimeType = 'image/jpeg';
+      } else if (fileType.toLowerCase().includes('png')) {
+        mimeType = 'image/png';
+      }
+      
+      // Créer un blob avec le bon type MIME
+      const correctBlob = new Blob([blob], { type: mimeType });
+      const url = URL.createObjectURL(correctBlob);
+      
+      setPreviewDoc({
+        name: fileName,
+        url: url,
+        type: fileType.toLowerCase().includes('pdf') ? 'pdf' : 'image'
+      });
+    } else {
+      setError('Impossible de charger le document');
     }
-  };
+  } catch (err) {
+    console.error('Erreur prévisualisation:', err);
+    setError('Erreur lors de la prévisualisation du document');
+  }
+};
 
   // Fonction pour obtenir le nom d'affichage d'un document selon son type
   const getDocumentDisplayName = (docType: string, defaultName: string): string => {
@@ -231,50 +253,54 @@ const Profile: React.FC = () => {
   };
 
   // ========== MAPPER LES DOCUMENTS RÉELS VERS LE FORMAT AFFICHAGE ==========
-  const getDisplayDocuments = () => {
-    if (documents.length > 0) {
-      // On filtre pour n'afficher que les 4 documents principaux
-      const mainDocs = documents.filter(doc => 
-        ['RC_CERT', 'STATUTES', 'TIN_CERT', 'PASSPORT'].includes(doc.documentType)
-      );
-      
-      return mainDocs.map(doc => ({
-        id: doc.id,
-        name: getDocumentDisplayName(doc.documentType, doc.fileName),
-        status: doc.status === 'VALIDE' ? 'Validé' : 
-                doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
-        date: new Date(doc.uploadedAt).toLocaleDateString('fr-FR'),
-        icon: getDocumentIcon(doc.documentType),
-        fileType: doc.fileType,
-        fileName: doc.fileName
-      }));
-    }
+const getDisplayDocuments = () => {
+  if (documents.length > 0) {
+    // Liste des 4 documents principaux à afficher
+    const mainDocTypes = ['RC_CERT', 'STATUTES', 'TIN_CERT', 'PASSPORT'];
     
-    // Sinon, données mock basées sur le statut de la demande
-    if (dossierStatus?.status === 'VALIDEE') {
-      return [
-        { id: null, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf" },
-        { id: null, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf" },
-        { id: null, name: "Attestation fiscale", status: "Validé", date: "12/01/2024", icon: "fa-file-invoice-dollar", fileType: "pdf" },
-        { id: null, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg" }
-      ];
-    } else if (dossierStatus?.status === 'EN_COURS_VALIDATION' || dossierStatus?.status === 'SOUMISE') {
-      return [
-        { id: null, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf" },
-        { id: null, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf" },
-        { id: null, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf" },
-        { id: null, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg" }
-      ];
-    } else {
-      // Données par défaut
-      return [
-        { id: null, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf" },
-        { id: null, name: "Registre du commerce", status: "En cours", date: "15/02/2024", icon: "fa-building", fileType: "pdf" },
-        { id: null, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf" },
-        { id: null, name: "Passeport du gérant", status: "En cours", date: "15/02/2024", icon: "fa-passport", fileType: "jpg" }
-      ];
-    }
-  };
+    // Filtrer pour n'avoir que les 4 types principaux
+    const mainDocs = documents.filter(doc => mainDocTypes.includes(doc.documentType));
+    
+    // Si on a moins de 4 documents, on prend les premiers disponibles
+    const docsToShow = mainDocs.length > 0 ? mainDocs : documents.slice(0, 4);
+    
+    return docsToShow.map(doc => ({
+      id: doc.id,
+      name: getDocumentDisplayName(doc.documentType, doc.fileName),
+      status: doc.status === 'VALIDE' ? 'Validé' : 
+              doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
+      date: new Date(doc.uploadedAt).toLocaleDateString('fr-FR'),
+      icon: getDocumentIcon(doc.documentType),
+      fileType: doc.fileType,
+      fileName: doc.fileName
+    }));
+  }
+  
+  // Sinon, données mock basées sur le statut de la demande
+  if (dossierStatus?.status === 'VALIDEE') {
+    return [
+      { id: 1, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
+      { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
+      { id: 3, name: "Attestation fiscale", status: "Validé", date: "12/01/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
+      { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
+    ];
+  } else if (dossierStatus?.status === 'EN_COURS_VALIDATION' || dossierStatus?.status === 'SOUMISE') {
+    return [
+      { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
+      { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
+      { id: 3, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
+      { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
+    ];
+  } else {
+    // Données par défaut
+    return [
+      { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
+      { id: 2, name: "Registre du commerce", status: "En cours", date: "15/02/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
+      { id: 3, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
+      { id: 4, name: "Passeport du gérant", status: "En cours", date: "15/02/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
+    ];
+  }
+};
 
   // ========== MAPPER POUR LE DOSSIER COMPLET ==========
   const getFullDossierData = () => {
@@ -301,7 +327,8 @@ const Profile: React.FC = () => {
                     doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
             icon: getDocumentIcon(doc.documentType),
             fileType: doc.fileType,
-            onClick: () => handlePreviewDocument(doc.id, getDocumentDisplayName(doc.documentType, doc.fileName), doc.fileType)
+            fileName: doc.fileName,
+            onClick: () => handlePreviewDocument(doc.id, doc.fileName, doc.fileType)
           }))
         });
       }
@@ -316,7 +343,8 @@ const Profile: React.FC = () => {
                     doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
             icon: getDocumentIcon(doc.documentType),
             fileType: doc.fileType,
-            onClick: () => handlePreviewDocument(doc.id, getDocumentDisplayName(doc.documentType, doc.fileName), doc.fileType)
+            fileName: doc.fileName,
+            onClick: () => handlePreviewDocument(doc.id, doc.fileName, doc.fileType)
           }))
         });
       }
@@ -329,19 +357,19 @@ const Profile: React.FC = () => {
 
   const mockFullDossierData = [
     { section: "Identité", docs: [
-      { name: "Registre du commerce", status: "En cours", icon: "fa-building", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Traduction du registre", status: "En cours", icon: "fa-language", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Légalisation registre", status: "En cours", icon: "fa-stamp", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Statuts de la société", status: "En cours", icon: "fa-file-contract", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Traduction des statuts", status: "En cours", icon: "fa-language", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Passeport du gérant", status: "En cours", icon: "fa-passport", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "PV de désignation", status: "En cours", icon: "fa-file-signature", onClick: () => alert("Document mock - pas de prévisualisation") }
+      { id: 101, name: "Registre du commerce", status: "En cours", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 102, name: "Traduction du registre", status: "En cours", icon: "fa-language", fileType: "pdf", fileName: "traduction.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 103, name: "Légalisation registre", status: "En cours", icon: "fa-stamp", fileType: "pdf", fileName: "legalisation.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 104, name: "Statuts de la société", status: "En cours", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 105, name: "Traduction des statuts", status: "En cours", icon: "fa-language", fileType: "pdf", fileName: "statuts_traduction.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 106, name: "Passeport du gérant", status: "En cours", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 107, name: "PV de désignation", status: "En cours", icon: "fa-file-signature", fileType: "pdf", fileName: "pv.pdf", onClick: () => alert("Document mock - pas de prévisualisation") }
     ]},
     { section: "Fiscalité & Finance", docs: [
-      { name: "Attestation fiscale", status: "En cours", icon: "fa-file-invoice-dollar", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Certificat de solvabilité", status: "En cours", icon: "fa-university", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Comptes annuels", status: "En cours", icon: "fa-chart-pie", onClick: () => alert("Document mock - pas de prévisualisation") },
-      { name: "Rapport d'audit externe", status: "En cours", icon: "fa-chart-line", onClick: () => alert("Document mock - pas de prévisualisation") }
+      { id: 108, name: "Attestation fiscale", status: "En cours", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 109, name: "Certificat de solvabilité", status: "En cours", icon: "fa-university", fileType: "pdf", fileName: "solvabilite.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 110, name: "Comptes annuels", status: "En cours", icon: "fa-chart-pie", fileType: "pdf", fileName: "comptes.pdf", onClick: () => alert("Document mock - pas de prévisualisation") },
+      { id: 111, name: "Rapport d'audit externe", status: "En cours", icon: "fa-chart-line", fileType: "pdf", fileName: "audit.pdf", onClick: () => alert("Document mock - pas de prévisualisation") }
     ]}
   ];
 

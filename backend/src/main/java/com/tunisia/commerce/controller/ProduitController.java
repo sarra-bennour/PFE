@@ -51,8 +51,7 @@ public class ProduitController {
             @RequestHeader("Authorization") String authHeader) {
 
         ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        // S'assurer que l'ID dans la requête correspond à l'exportateur connecté
-        request.setExportateurId(exportateur.getId());
+
 
         DemandeEnregistrementDTO created = demandeService.createDemande(request);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
@@ -183,7 +182,7 @@ public class ProduitController {
             @RequestHeader("Authorization") String authHeader) {
 
         ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        List<DemandeEnregistrementDTO> demandes = demandeService.getDemandesByExportateur(exportateur.getId());
+        List<DemandeEnregistrementDTO> demandes = demandeService.getDeclarationsProduitsByExportateur(exportateur.getId());
         return ResponseEntity.ok(demandes);
     }
 

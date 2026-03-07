@@ -2,10 +2,14 @@ package com.tunisia.commerce.repository;
 
 import com.tunisia.commerce.entity.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
-    List<Product> findByExportateurId(Long exportateurId);
+    @Query("SELECT p FROM Product p WHERE p.demande.exportateur.id = :exportateurId")
+    List<Product> findByExportateurId(@Param("exportateurId") Long exportateurId);
+    List<Product> findByDemandeId(Long demandeId);
 
 }

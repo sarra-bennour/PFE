@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -55,7 +56,7 @@ public class ExportateurDossierService {
                 .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
 
         // Vérifier si l'exportateur n'a pas déjà un dossier
-        if (demandeRepository.findByExportateurId(exportateurId).isPresent()) {
+        if (!demandeRepository.findByExportateurId(exportateurId).isEmpty()) {
             throw new RuntimeException("Un dossier existe déjà pour cet exportateur");
         }
 
@@ -81,7 +82,6 @@ public class ExportateurDossierService {
                         .category(produitDTO.getCategory())
                         .productName(produitDTO.getProductName())
                         .brandName(produitDTO.getBrandName())
-                        .exportateur(exportateur)
                         .build();
                 productRepository.save(product);
             });
@@ -276,6 +276,34 @@ public class ExportateurDossierService {
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * Récupérer UNIQUEMENT les documents du dossier d'agrément (DOS-)
+     */
+    public List<DocumentDTO> getDossierAgrementByExportateur(Long exportateurId) {
+        logger.info("Récupération des documents du dossier d'agrément pour l'exportateur ID: " + exportateurId);
+
+        // Récupérer la demande d'agrément
+        Optional<DemandeEnregistrement> demandeOpt = demandeRepository
+                .findDossierConformiteByExportateurId(exportateurId);
+
+        if (demandeOpt.isEmpty()) {
+            logger.info("Aucun dossier d'agrément trouvé pour l'exportateur: " + exportateurId);
+            return List.of(); // Retourner une liste vide
+        }
+
+        DemandeEnregistrement demande = demandeOpt.get();
+        logger.info("Dossier d'agrément trouvé: " + demande.getReference());
+
+        // Récupérer les documents de cette demande
+        List<Document> documents = documentRepository.findByDemandeId(demande.getId());
+        logger.info("Nombre de documents trouvés: " + documents.size());
+
+        return documents.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
 
     /**
      * Mapper Document -> DocumentDTO

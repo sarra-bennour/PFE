@@ -25,7 +25,7 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
     // Méthode pour trouver toutes les demandes d'un exportateur (si besoin)
     List<DemandeEnregistrement> findAllByExportateurIdOrderByIdDesc(Long exportateurId);
 
-    Optional<DemandeEnregistrement> findByExportateurId(Long exportateurId);
+    List<DemandeEnregistrement> findByExportateurId(Long exportateurId);
     Optional<DemandeEnregistrement> findByReference(String reference);
     List<DemandeEnregistrement> findByStatus(DemandeStatus status);
     List<DemandeEnregistrement> findByAssignedTo(Long agentId);

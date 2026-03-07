@@ -30,7 +30,6 @@ public class DemandeEnregistrementDTO {
     private String decisionComment;
     private String numeroAgrement;
     private LocalDateTime dateAgrement;
-    private UserDTO exportateur;
     private List<ProduitDTO> products;
     private List<DocumentDTO> documents;
     private List<DemandeHistoryDTO> history;

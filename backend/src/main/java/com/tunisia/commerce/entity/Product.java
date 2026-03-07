@@ -57,6 +57,6 @@ public class Product {
     private String commercialBrandName;
 
     @ManyToOne
-    @JoinColumn(name = "exportateur_id")
-    private ExportateurEtranger exportateur;
+    @JoinColumn(name = "demande_id")
+    private DemandeEnregistrement demande;
 }

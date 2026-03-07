@@ -431,7 +431,7 @@ public class ExportateurController {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
 
             // Récupérer tous les documents via le service
-            List<DocumentDTO> documents = dossierService.getAllDocumentsByExportateur(exportateur.getId());
+            List<DocumentDTO> documents = dossierService.getDossierAgrementByExportateur(exportateur.getId());
 
             return ResponseEntity.ok(Map.of(
                     "success", true,

@@ -49,6 +49,6 @@ application*.properties
 /src/main/resources/application.properties
 
 # Dossier de upload
-/upload/
+/uploads/
 
 *~

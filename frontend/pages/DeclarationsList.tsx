@@ -1,119 +1,182 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import axios from 'axios';
+
+// Types basés sur vos DTOs backend
+interface ProduitDTO {
+  id: number;
+  productType: string;
+  category: string;
+  hsCode: string;
+  productName: string;
+  isLinkedToBrand: boolean;
+  brandName?: string;
+  isBrandOwner?: boolean;
+  hasBrandLicense?: boolean;
+  productState: string;
+  originCountry: string;
+  annualQuantityValue: string;
+  annualQuantityUnit: string;
+  commercialBrandName?: string;
+  processingType?: string;
+  annualExportCapacity?: string;
+}
+
+interface DocumentDTO {
+  id: number;
+  fileName: string;
+  filePath: string;
+  fileType: string;
+  fileSize: number;
+  documentType: string;
+  status: string;
+  validationComment?: string;
+  uploadedAt: string;
+  validatedAt?: string;
+  validatedBy?: string;
+  downloadUrl: string;
+}
+
+interface DemandeHistoryDTO {
+  id: number;
+  action: string;
+  comment: string;
+  oldStatus: string;
+  newStatus: string;
+  performedBy: string;
+  performedAt: string;
+}
+
+interface DemandeEnregistrementDTO {
+  id: number;
+  reference: string;
+  status: string;
+  submittedAt: string | null;
+  paymentReference: string | null;
+  paymentAmount: number | null;
+  paymentStatus: string;
+  assignedTo: number | null;
+  decisionDate: string | null;
+  decisionComment: string | null;
+  numeroAgrement: string | null;
+  dateAgrement: string | null;
+  exportateur: any;
+  products: ProduitDTO[];
+  documents: DocumentDTO[];
+  history: DemandeHistoryDTO[];
+}
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const DeclarationsList: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
-  const [selectedDeclaration, setSelectedDeclaration] = useState<any | null>(null);
+  const [selectedDeclaration, setSelectedDeclaration] = useState<DemandeEnregistrementDTO | null>(null);
+  const [declarations, setDeclarations] = useState<DemandeEnregistrementDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+  // Configuration axios avec token
+  const axiosInstance = axios.create({
+    baseURL: API_URL,
+  });
 
-  const productDeclarations = [
-    { 
-      id: 'DEC-2026-0215', 
-      product: 'Camembert Président 250g', 
-      status: 'En cours de validation par les autorités', 
-      date: '24/02/2026',
-      ngp: '0406',
-      category: 'Produits laitiers',
-      weight: '1000 KG',
-      value: '5000 EUR',
-      origin: 'France',
-      type: 'alimentaire',
-      productState: 'Frais',
-      isLinkedToBrand: true,
-      brandName: 'Président',
-      isBrandOwner: false,
-      hasBrandLicense: true,
-      annualQuantity: '12000 KG',
-      history: [
-        { date: '24/02/2026', status: 'Soumission', comment: 'Dossier déposé sur le portail.' },
-        { date: '24/02/2026', status: 'Analyse Douane', comment: 'Vérification de la conformité NGP.' }
-      ]
+  axiosInstance.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
     },
-    { 
-      id: 'DEC-2026-0216', 
-      product: 'Huile d\'Olive Vierge Extra 1L', 
-      status: 'Validé', 
-      date: '20/02/2026',
-      ngp: '1509',
-      category: 'Huiles végétales',
-      weight: '5000 L',
-      value: '25000 EUR',
-      origin: 'Tunisie',
-      type: 'alimentaire',
-      productState: 'Transformé',
-      isLinkedToBrand: true,
-      brandName: 'Terra Delyssa',
-      isBrandOwner: true,
-      hasBrandLicense: false,
-      annualQuantity: '50000 L',
-      history: [
-        { date: '20/02/2026', status: 'Validé', comment: 'Certificat de conformité émis.' }
-      ]
-    },
-    { 
-      id: 'DEC-2026-0217', 
-      product: 'Dattes Deglet Nour 500g', 
-      status: 'Rejeté', 
-      date: '18/02/2026',
-      ngp: '0804',
-      category: 'Fruits secs',
-      weight: '2000 KG',
-      value: '8000 EUR',
-      origin: 'Tunisie',
-      type: 'alimentaire',
-      productState: 'Brut',
-      isLinkedToBrand: false,
-      brandName: '',
-      isBrandOwner: false,
-      hasBrandLicense: false,
-      annualQuantity: '15000 KG',
-      history: [
-        { date: '18/02/2026', status: 'Rejeté', comment: 'Document manquant : Certificat phytosanitaire.' }
-      ]
-    },
-    // Add more mock data for pagination testing
-    ...Array.from({ length: 12 }, (_, i) => ({
-      id: `DEC-2026-02${18 + i}`,
-      product: `Produit Export ${i + 1}`,
-      status: i % 3 === 0 ? 'Validé' : (i % 3 === 1 ? 'En cours' : 'Rejeté'),
-      date: '15/02/2026',
-      ngp: '0000',
-      category: 'Divers',
-      weight: '100 KG',
-      value: '1000 EUR',
-      origin: 'Tunisie',
-      type: i % 2 === 0 ? 'alimentaire' : 'industriel',
-      productState: 'Frais',
-      isLinkedToBrand: false,
-      brandName: '',
-      isBrandOwner: false,
-      hasBrandLicense: false,
-      annualQuantity: '1000 KG',
-      commercialBrandName: i % 2 !== 0 ? 'Brand X' : '',
-      history: []
-    }))
-  ];
+    (error) => Promise.reject(error)
+  );
 
-  const filteredDeclarations = productDeclarations.filter(dec => 
-    dec.product.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    dec.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    dec.ngp.includes(searchTerm)
+  useEffect(() => {
+    fetchDemandes();
+  }, []);
+
+  const fetchDemandes = async () => {
+    try {
+      setLoading(true);
+      const response = await axiosInstance.get('/produits/mes-demandes');
+      setDeclarations(response.data);
+      setError(null);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Erreur lors du chargement des demandes');
+      console.error('Erreur:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusStyle = (status: string) => {
+    const statusMap: { [key: string]: string } = {
+      'VALIDEE': 'bg-emerald-50 text-emerald-600 border-emerald-100',
+      'REJETEE': 'bg-red-50 text-red-600 border-red-100',
+      'SOUMISE': 'bg-blue-50 text-blue-600 border-blue-100',
+      'EN_ATTENTE': 'bg-amber-50 text-amber-600 border-amber-100',
+      'BROUILLON': 'bg-slate-50 text-slate-600 border-slate-100'
+    };
+    return statusMap[status] || 'bg-slate-50 text-slate-600 border-slate-100';
+  };
+
+  const getStatusText = (status: string) => {
+    const statusMap: { [key: string]: string } = {
+      'BROUILLON': 'Brouillon',
+      'SOUMISE': 'Soumise',
+      'EN_ATTENTE': 'En attente',
+      'VALIDEE': 'Validée',
+      'REJETEE': 'Rejetée'
+    };
+    return statusMap[status] || status;
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('fr-FR');
+  };
+
+  const formatProductList = (products: ProduitDTO[]) => {
+    if (products.length === 0) return 'Aucun produit';
+    if (products.length === 1) return products[0].productName;
+    return `${products[0].productName} et ${products.length - 1} autre(s)`;
+  };
+
+  const getProductWeight = (product: ProduitDTO) => {
+    if (product.annualQuantityValue && product.annualQuantityUnit) {
+      return `${product.annualQuantityValue} ${product.annualQuantityUnit}`;
+    }
+    return 'N/A';
+  };
+
+  const getProductValue = (product: ProduitDTO) => {
+    // Valeur par défaut ou calculée si disponible
+    return 'N/A';
+  };
+
+  const filteredDeclarations = declarations.filter(dec => 
+    dec.products.some(p => 
+      p.productName.toLowerCase().includes(searchTerm.toLowerCase())
+    ) || 
+    dec.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    dec.products.some(p => p.hsCode.includes(searchTerm))
   );
 
   const totalPages = Math.ceil(filteredDeclarations.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentDeclarations = filteredDeclarations.slice(startIndex, startIndex + itemsPerPage);
 
-  const getStatusStyle = (status: string) => {
-    if (status.includes('Validé')) return 'bg-emerald-50 text-emerald-600 border-emerald-100';
-    if (status.includes('Rejeté')) return 'bg-red-50 text-red-600 border-red-100';
-    return 'bg-amber-50 text-amber-600 border-amber-100';
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-tunisia-red"></div>
+      </div>
+    );
+  }
 
   return (
     <motion.div 
@@ -138,7 +201,7 @@ const DeclarationsList: React.FC = () => {
             <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
             <input 
               type="text" 
-              placeholder="Rechercher par produit, ID ou NGP..." 
+              placeholder="Rechercher par produit, référence ou NGP..." 
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-bold outline-none focus:border-tunisia-red transition-all shadow-inner"
@@ -154,13 +217,19 @@ const DeclarationsList: React.FC = () => {
         </div>
       </div>
 
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-600 px-6 py-4 rounded-2xl text-sm font-bold">
+          {error}
+        </div>
+      )}
+
       <div className="bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Référence</th>
-                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Produit</th>
+                <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Produit(s)</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Détails</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Statut</th>
                 <th className="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Actions</th>
@@ -177,27 +246,40 @@ const DeclarationsList: React.FC = () => {
                     className="hover:bg-slate-50/30 transition-colors group"
                   >
                     <td className="px-8 py-6">
-                      <span className="text-[10px] font-mono font-bold bg-slate-900 text-white px-3 py-1 rounded-full">{dec.id}</span>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">{dec.date}</p>
+                      <span className="text-[10px] font-mono font-bold bg-slate-900 text-white px-3 py-1 rounded-full">{dec.reference}</span>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-2">
+                        {formatDate(dec.submittedAt)}
+                      </p>
                     </td>
                     <td className="px-8 py-6">
-                      <h4 className="font-black text-slate-900 text-sm tracking-tight uppercase italic">{dec.product}</h4>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">NGP: {dec.ngp} • {dec.category}</p>
+                      <h4 className="font-black text-slate-900 text-sm tracking-tight uppercase italic">
+                        {formatProductList(dec.products)}
+                      </h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                        {dec.products.length} produit(s) • {dec.documents.length} document(s)
+                      </p>
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex flex-col gap-1">
+                        {dec.numeroAgrement && (
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-tight flex items-center gap-2">
+                            <i className="fas fa-certificate text-emerald-300 w-3"></i> {dec.numeroAgrement}
+                          </span>
+                        )}
                         <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tight flex items-center gap-2">
-                          <i className="fas fa-weight-hanging text-slate-300 w-3"></i> {dec.weight}
-                        </span>
-                        <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tight flex items-center gap-2">
-                          <i className="fas fa-coins text-slate-300 w-3"></i> {dec.value}
+                          <i className="fas fa-credit-card text-slate-300 w-3"></i> {dec.paymentStatus}
                         </span>
                       </div>
                     </td>
                     <td className="px-8 py-6">
                       <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-2 w-fit ${getStatusStyle(dec.status)}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${dec.status.includes('Validé') ? 'bg-emerald-500' : (dec.status.includes('Rejeté') ? 'bg-red-500' : 'bg-amber-500 animate-pulse')}`}></span>
-                        {dec.status}
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          dec.status === 'VALIDEE' ? 'bg-emerald-500' : 
+                          dec.status === 'REJETEE' ? 'bg-red-500' : 
+                          dec.status === 'SOUMISE' ? 'bg-blue-500 animate-pulse' :
+                          'bg-amber-500 animate-pulse'
+                        }`}></span>
+                        {getStatusText(dec.status)}
                       </span>
                     </td>
                     <td className="px-8 py-6 text-right">
@@ -263,13 +345,13 @@ const DeclarationsList: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-3xl bg-[#FDFDFD] rounded-[2.5rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.25)] overflow-hidden max-h-[90vh] flex flex-col border border-white border-t-4 border-t-tunisia-red"
+              className="relative w-full max-w-4xl bg-[#FDFDFD] rounded-[2.5rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.25)] overflow-hidden max-h-[90vh] flex flex-col border border-white border-t-4 border-t-tunisia-red"
             >
               {/* Header Premium */}
               <div className="px-10 py-8 border-b border-slate-100 flex justify-between items-center shrink-0 bg-white/50 backdrop-blur-sm">
                 <div className="flex items-center gap-5">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl shadow-inner ${selectedDeclaration.type === 'alimentaire' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                    <i className={`fas ${selectedDeclaration.type === 'alimentaire' ? 'fa-apple-whole' : 'fa-gears'}`}></i>
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-xl shadow-inner bg-slate-100 text-slate-600">
+                    <i className="fas fa-file-alt"></i>
                   </div>
                   <div>
                     <div className="flex items-center gap-3">
@@ -278,10 +360,10 @@ const DeclarationsList: React.FC = () => {
                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Dossier de Déclaration</span>
                       </div>
                       <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${getStatusStyle(selectedDeclaration.status)}`}>
-                        {selectedDeclaration.status}
+                        {getStatusText(selectedDeclaration.status)}
                       </span>
                     </div>
-                    <h3 className="text-2xl font-black italic tracking-tighter uppercase text-slate-900 mt-0.5">{selectedDeclaration.id}</h3>
+                    <h3 className="text-2xl font-black italic tracking-tighter uppercase text-slate-900 mt-0.5">{selectedDeclaration.reference}</h3>
                   </div>
                 </div>
                 <button 
@@ -292,130 +374,154 @@ const DeclarationsList: React.FC = () => {
                 </button>
               </div>
 
-              {/* Content Bento Grid Style */}
+              {/* Content avec liste des produits */}
               <div className="p-10 overflow-y-auto custom-scrollbar space-y-10">
-                {/* Section 1: Informations Principales */}
+                {/* Informations de la demande */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-2 space-y-6">
-                    <div className="p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-2">
-                        <i className="fas fa-info-circle"></i> Identification du Produit
-                      </h4>
-                      <div className="space-y-1">
-                        <p className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter leading-tight">{selectedDeclaration.product}</p>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-tight">{selectedDeclaration.category} • Code NGP {selectedDeclaration.ngp}</p>
+                  <div className="md:col-span-2 p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-2 mb-4">
+                      <i className="fas fa-info-circle"></i> Informations Générales
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Date de soumission</p>
+                        <p className="text-sm font-bold text-slate-900">{formatDate(selectedDeclaration.submittedAt)}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        <span className="px-3 py-1.5 bg-emerald-50 rounded-xl text-[9px] font-black uppercase tracking-widest text-emerald-700 border border-emerald-100 flex items-center gap-2">
-                          <i className="fas fa-earth-africa"></i> {selectedDeclaration.origin}
-                        </span>
-                        <span className="px-3 py-1.5 bg-slate-50 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 border border-slate-100 flex items-center gap-2">
-                          <i className="fas fa-box text-slate-300"></i> {selectedDeclaration.productState || 'Standard'}
-                        </span>
+                      <div>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Statut de paiement</p>
+                        <p className="text-sm font-bold text-slate-900">{selectedDeclaration.paymentStatus}</p>
                       </div>
+                      {selectedDeclaration.numeroAgrement && (
+                        <>
+                          <div>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">N° Agrément</p>
+                            <p className="text-sm font-bold text-emerald-600">{selectedDeclaration.numeroAgrement}</p>
+                          </div>
+                          <div>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Date d'agrément</p>
+                            <p className="text-sm font-bold text-slate-900">{formatDate(selectedDeclaration.dateAgrement)}</p>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                   
-                  <div className="space-y-6">
-                    <div className="p-6 bg-slate-900 rounded-[2rem] text-white shadow-xl shadow-slate-200 h-full flex flex-col justify-between border-t-4 border-t-tunisia-red">
-                      <h4 className="text-[9px] font-black uppercase tracking-widest text-tunisia-red">Volume Annuel</h4>
-                      <div className="mt-4">
-                        <p className="text-3xl font-black italic tracking-tighter text-white">{selectedDeclaration.annualQuantity || 'N/A'}</p>
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Capacité d'exportation</p>
-                      </div>
-                      <div className="mt-6 pt-6 border-t border-white/10">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Date Dépôt</span>
-                          <span className="text-[9px] font-bold text-tunisia-red">{selectedDeclaration.date}</span>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="p-8 bg-slate-900 rounded-[2rem] text-white shadow-xl border-t-4 border-t-tunisia-red">
+                    <h4 className="text-[9px] font-black uppercase tracking-widest text-tunisia-red mb-4">Documents</h4>
+                    <p className="text-3xl font-black italic tracking-tighter text-white">{selectedDeclaration.documents.length}</p>
+                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Documents fournis</p>
                   </div>
                 </div>
 
-                {/* Section 2: Marque & Logistique */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* Marque */}
-                  <div className="p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm space-y-6">
-                    <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                      <i className="fas fa-trademark"></i> Propriété de Marque
-                    </h5>
-                    {(selectedDeclaration.isLinkedToBrand || selectedDeclaration.commercialBrandName) ? (
-                      <div className="space-y-4">
-                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Nom Commercial</p>
-                          <p className="text-sm font-black text-slate-900 uppercase italic">{selectedDeclaration.brandName || selectedDeclaration.commercialBrandName}</p>
+                {/* Liste des produits */}
+                <div className="space-y-6">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                    <i className="fas fa-boxes"></i> Produits déclarés ({selectedDeclaration.products.length})
+                  </h4>
+                  
+                  {selectedDeclaration.products.map((product, index) => (
+                    <div key={product.id} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                      <div className="p-6 border-b border-slate-100 bg-slate-50/30">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm ${
+                            product.productType === 'alimentaire' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'
+                          }`}>
+                            <i className={`fas ${product.productType === 'alimentaire' ? 'fa-apple-whole' : 'fa-gears'}`}></i>
+                          </div>
+                          <div>
+                            <h5 className="text-base font-black text-slate-900 uppercase italic">{product.productName}</h5>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                              NGP: {product.hsCode} • {product.category} • {product.originCountry}
+                            </p>
+                          </div>
                         </div>
-                        {selectedDeclaration.type === 'alimentaire' && (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className={`p-3 rounded-xl border flex flex-col gap-1 ${selectedDeclaration.isBrandOwner ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                              <span className="text-[7px] font-black uppercase tracking-widest text-slate-400">Propriétaire</span>
-                              <span className={`text-[9px] font-black uppercase ${selectedDeclaration.isBrandOwner ? 'text-emerald-600' : 'text-slate-400'}`}>{selectedDeclaration.isBrandOwner ? 'OUI' : 'NON'}</span>
-                            </div>
-                            <div className={`p-3 rounded-xl border flex flex-col gap-1 ${selectedDeclaration.hasBrandLicense ? 'bg-emerald-50/50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                              <span className="text-[7px] font-black uppercase tracking-widest text-slate-400">Licence</span>
-                              <span className={`text-[9px] font-black uppercase ${selectedDeclaration.hasBrandLicense ? 'text-emerald-600' : 'text-slate-400'}`}>{selectedDeclaration.hasBrandLicense ? 'VALIDE' : 'AUCUNE'}</span>
+                      </div>
+                      
+                      <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Type</p>
+                          <p className="text-xs font-bold text-slate-900 mt-1 capitalize">{product.productType}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">État</p>
+                          <p className="text-xs font-bold text-slate-900 mt-1">{product.productState || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Quantité annuelle</p>
+                          <p className="text-xs font-bold text-slate-900 mt-1">{getProductWeight(product)}</p>
+                        </div>
+                        
+                        {product.isLinkedToBrand && (
+                          <div className="md:col-span-3 pt-4 border-t border-slate-100">
+                            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Marque</p>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="px-3 py-1.5 bg-slate-50 rounded-xl text-[9px] font-bold text-slate-700">
+                                {product.brandName || product.commercialBrandName}
+                              </span>
+                              {product.isBrandOwner && (
+                                <span className="px-3 py-1.5 bg-emerald-50 rounded-xl text-[9px] font-bold text-emerald-700">
+                                  Propriétaire
+                                </span>
+                              )}
+                              {product.hasBrandLicense && (
+                                <span className="px-3 py-1.5 bg-blue-50 rounded-xl text-[9px] font-bold text-blue-700">
+                                  Licence
+                                </span>
+                              )}
                             </div>
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <div className="py-6 text-center">
-                        <p className="text-[10px] font-bold text-slate-300 italic uppercase">Aucune marque associée</p>
-                      </div>
-                    )}
-                  </div>
+                      
+                      {/* Documents du produit */}
+                      {selectedDeclaration.documents.filter(d => d.documentType.includes(product.productType)).length > 0 && (
+                        <div className="px-6 pb-6">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-2">Documents associés</p>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedDeclaration.documents
+                              .filter(d => d.documentType.includes(product.productType))
+                              .map(doc => (
+                                <a
+                                  key={doc.id}
+                                  href={doc.downloadUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl text-[9px] font-bold text-slate-700 hover:bg-tunisia-red hover:text-white transition-all"
+                                >
+                                  <i className="fas fa-file-pdf"></i>
+                                  {doc.fileName.length > 20 ? doc.fileName.substring(0, 20) + '...' : doc.fileName}
+                                </a>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
-                  {/* Logistique */}
-                  <div className="p-8 bg-white rounded-[2rem] border border-slate-100 shadow-sm space-y-6 border-r-4 border-r-tunisia-red">
-                    <h5 className="text-[10px] font-black uppercase tracking-widest text-tunisia-red flex items-center gap-2">
-                      <i className="fas fa-truck-fast"></i> Logistique & Valeur
+                {/* Historique */}
+                {selectedDeclaration.history.length > 0 && (
+                  <div className="space-y-6">
+                    <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                      <i className="fas fa-history"></i> Historique d'instruction
                     </h5>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 bg-emerald-50/30 rounded-2xl border border-emerald-100">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-emerald-500 shadow-sm">
-                            <i className="fas fa-weight-hanging text-xs"></i>
+                    <div className="relative pl-8 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[1px] before:bg-slate-100">
+                      {selectedDeclaration.history.map((h, i) => (
+                        <div key={i} className="relative">
+                          <div className="absolute -left-[25px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-tunisia-red z-10 shadow-sm"></div>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-1">
+                            <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{h.action}</span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                              {formatDate(h.performedAt)}
+                            </span>
                           </div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600/60">Poids Net</span>
+                          <p className="text-[11px] font-medium text-slate-500 leading-relaxed">{h.comment}</p>
+                          <p className="text-[8px] font-bold text-slate-400 mt-1">Par: {h.performedBy}</p>
                         </div>
-                        <span className="text-sm font-black text-emerald-700 uppercase italic tracking-tighter">{selectedDeclaration.weight}</span>
-                      </div>
-                      <div className="flex items-center justify-between p-4 bg-tunisia-red/5 rounded-2xl border border-tunisia-red/10">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-tunisia-red shadow-sm">
-                            <i className="fas fa-coins text-xs"></i>
-                          </div>
-                          <span className="text-[9px] font-black uppercase tracking-widest text-tunisia-red/60">Valeur Douane</span>
-                        </div>
-                        <span className="text-sm font-black text-tunisia-red uppercase italic tracking-tighter">{selectedDeclaration.value}</span>
-                      </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-
-                {/* Section 3: Historique Timeline */}
-                <div className="space-y-6">
-                  <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                    <i className="fas fa-history"></i> Historique d'Instruction
-                  </h5>
-                  <div className="relative pl-8 space-y-8 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-[1px] before:bg-slate-100">
-                    {selectedDeclaration.history.length > 0 ? selectedDeclaration.history.map((h: any, i: number) => (
-                      <div key={i} className="relative">
-                        <div className="absolute -left-[25px] top-1 w-2.5 h-2.5 rounded-full bg-white border-2 border-tunisia-red z-10 shadow-sm"></div>
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-1">
-                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{h.status}</span>
-                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{h.date}</span>
-                        </div>
-                        <p className="text-[11px] font-medium text-slate-500 leading-relaxed">{h.comment}</p>
-                      </div>
-                    )) : (
-                      <div className="py-4 text-center">
-                        <p className="text-[10px] font-bold text-slate-300 italic uppercase">Aucun historique disponible</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Footer Premium */}
