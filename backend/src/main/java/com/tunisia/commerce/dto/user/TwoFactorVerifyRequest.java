@@ -6,4 +6,5 @@ import lombok.Data;
 public class TwoFactorVerifyRequest {
     private String email;
     private String code;
+    private String secret;
 }

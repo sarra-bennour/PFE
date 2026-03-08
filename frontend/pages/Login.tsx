@@ -357,16 +357,76 @@ const Login: React.FC = () => {
     }
   };
 
-  const handle2FAVerify = (code: string) => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      showAlert('success', '✅ Code 2FA validé avec succès', 'top');
+  // Dans Login.tsx, remplacer la fonction handle2FAVerify
+const handle2FAVerify = async (code: string) => {
+  setLoading(true);
+  closeAlert();
+
+  console.log('=== DÉBUT VÉRIFICATION 2FA ===');
+  console.log('Email:', email);
+  console.log('Code:', code);
+
+  try {
+    const requestBody = { 
+      email: email, 
+      code: code 
+    };
+    
+    console.log('Requête envoyée:', requestBody);
+
+    const response = await fetch('http://localhost:8080/api/auth/2fa/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log('Status réponse:', response.status);
+    
+    const data = await response.json();
+    console.log('Réponse JSON:', data);
+
+    // Vérifier si la réponse est OK et si success est true
+    if (response.ok && data.success) {
+      console.log('✅ Succès! Token reçu');
+      
+      // CONSTRUIRE l'objet user à partir des champs de la réponse
+      const userData = {
+        email: data.email,
+        role: data.role,
+        // Ajouter d'autres champs si nécessaire
+      };
+      
+      console.log('Utilisateur connecté (construit):', userData);
+      
+      // Stocker le vrai token JWT
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(userData));
+
+      // Mettre à jour le contexte d'authentification
+      login(userData, data.token);
+      
+      showAlert('success', '✅ Code 2FA validé avec succès ! Redirection...', 'top');
+      
       setTimeout(() => {
-        executeLogin(email);
+        const role = data.role.toLowerCase(); // Utiliser data.role directement
+        console.log('Redirection vers:', `/${role}`);
+        navigate(`/${role}`);
       }, 1500);
-    }, 1000);
-  };
+    } else {
+      // En cas d'erreur, data.error contient le message
+      console.error('❌ Échec:', data.error || 'Erreur inconnue');
+      showAlert('error', `❌ ${data.error || 'Code 2FA invalide'}`, 'top');
+    }
+  } catch (error) {
+    console.error('❌ Erreur fetch:', error);
+    showAlert('error', '❌ Erreur de connexion au serveur', 'top');
+  } finally {
+    setLoading(false);
+    console.log('=== FIN VÉRIFICATION 2FA ===');
+  }
+};
 
   const finalizeMobileLogin = () => {
     setLoading(true);
@@ -683,6 +743,8 @@ const Login: React.FC = () => {
               loading={loading}
               onVerify={handle2FAVerify}
               onBack={() => setView('login')}
+              email={email} // Passer l'email
+              tempToken={localStorage.getItem('token') || undefined}
             />
           </div>
 

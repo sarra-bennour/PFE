@@ -184,6 +184,7 @@ const DeclarationsList: React.FC = () => {
       animate={{ opacity: 1, y: 0 }}
       className="max-w-6xl mx-auto space-y-8"
     >
+      <br />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
         <div>
           <button 

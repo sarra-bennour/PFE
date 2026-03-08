@@ -9,6 +9,10 @@ import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.EmailService;
 import com.tunisia.commerce.service.UserService;
 import com.tunisia.commerce.config.JwtUtil;
+import dev.samstevens.totp.code.CodeGenerator;
+import dev.samstevens.totp.code.DefaultCodeGenerator;
+import dev.samstevens.totp.time.SystemTimeProvider;
+import dev.samstevens.totp.time.TimeProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
@@ -35,6 +39,8 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
+    private final TwoFactorAuthService twoFactorAuthService;
+
 
     @Value("${app.verification.expiry-hours}")
     private int verificationExpiryHours;
@@ -291,6 +297,21 @@ public class UserServiceImpl implements UserService {
             // 10. Générer le token
             String token = jwtUtil.generateToken(refreshedUser.getEmail(), refreshedUser.getRole().name());
 
+            boolean requiresTwoFactor = isTwoFactorEnabled(refreshedUser);
+
+            // Si le 2FA est activé, on ne renvoie pas encore le token d'accès complet
+            // Mais on renvoie un token temporaire pour la phase 2FA
+            if (requiresTwoFactor) {
+                // Générer un token temporaire pour la vérification 2FA
+                String tempToken = jwtUtil.generateTempToken(refreshedUser.getEmail(), refreshedUser.getRole().name());
+
+                return LoginResponse.builder()
+                        .token(tempToken)
+                        .requiresTwoFactor(true)
+                        .user(mapToUserDTO(refreshedUser))
+                        .build();
+            }
+
             return LoginResponse.builder()
                     .token(token)
                     .requiresTwoFactor(isTwoFactorEnabled(refreshedUser))
@@ -339,37 +360,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Cacheable(value = "users", key = "#email")
     public UserDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
         return mapToUserDTO(user);
     }
 
-    @Override
-    public void enableTwoFactorAuth(String email) {
-        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
 
-        // Générer un secret pour 2FA (dans un cas réel, utiliser TOTP)
-        String secret = UUID.randomUUID().toString();
-        exportateur.setTwoFactorSecret(secret);
-        exportateur.setTwoFactorEnabled(true);
 
-        exportateurRepository.save(exportateur);
-    }
-
-    @Override
-    public boolean verifyTwoFactorCode(String email, String code) {
-        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
-
-        // Vérifier le code (dans un cas réel, valider avec TOTP)
-        // Pour l'exemple, on accepte tout code qui n'est pas vide
-        return exportateur.isTwoFactorEnabled() &&
-                exportateur.getTwoFactorSecret() != null &&
-                !code.trim().isEmpty();
-    }
 
     private UserDTO mapToUserDTO(User user) {
         UserDTO dto = new UserDTO();
@@ -848,6 +846,217 @@ public class UserServiceImpl implements UserService {
                 exportateur.getId(),
                 List.of(DeactivationStatus.PENDING, DeactivationStatus.IN_REVIEW)
         );
+    }
+
+    @Override
+    @Transactional
+    public TwoFactorSetupResponse setupTwoFactorAuth(String email) {
+        logger.info("=== CONFIGURATION 2FA ===");
+        logger.info("Email: " + email);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        // Si le 2FA est déjà activé, retourner simplement l'état
+        if (exportateur.isTwoFactorEnabled()) {
+            return TwoFactorSetupResponse.builder()
+                    .alreadyEnabled(true)
+                    .build();
+        }
+
+        // Générer un vrai secret TOTP (Base32)
+        String secret = twoFactorAuthService.generateSecret();
+
+        // Sauvegarder le secret
+        exportateur.setTwoFactorSecret(secret);
+        exportateurRepository.save(exportateur);
+
+        // Générer l'URL du QR code
+        String issuer = "Tunisia Commerce";
+        String qrCodeBase64 = twoFactorAuthService.generateQrCodeWithZxing(secret, email, issuer);
+
+        logger.info("Configuration 2FA générée pour: " + email);
+        logger.info("Secret (Base32): " + secret);
+
+        return TwoFactorSetupResponse.builder()
+                .secret(secret)
+                .qrCodeUrl(twoFactorAuthService.getUriForSecret(secret, email, issuer))
+                .qrCodeBase64(qrCodeBase64)
+                .alreadyEnabled(false)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public boolean enableTwoFactorAuth(String email, String code) {
+        logger.info("=== ACTIVATION 2FA ===");
+        logger.info("Email: " + email);
+        logger.info("Code reçu: '" + code + "'");
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        if (exportateur.isTwoFactorEnabled()) {
+            logger.warning("Le 2FA est déjà activé pour: " + email);
+            return true;
+        }
+
+        String secret = exportateur.getTwoFactorSecret();
+        if (secret == null || secret.isEmpty()) {
+            throw new RuntimeException("Aucune configuration 2FA trouvée. Veuillez d'abord initialiser la configuration.");
+        }
+
+        logger.info("Secret: " + secret);
+
+        // Nettoyer le code
+        code = code.trim();
+
+        // Vérifier le code avec une marge (pour la première activation)
+        boolean isValid = twoFactorAuthService.verifyCodeWithMargin(secret, code);
+
+        if (isValid) {
+            exportateur.setTwoFactorEnabled(true);
+            exportateurRepository.save(exportateur);
+            logger.info("✅ 2FA activé avec succès pour: " + email);
+        } else {
+            logger.severe("❌ Code 2FA invalide pour: " + email);
+
+            // Pour déboguer
+            try {
+                TimeProvider timeProvider = new SystemTimeProvider();
+                long currentTime = timeProvider.getTime();
+                CodeGenerator codeGenerator = new DefaultCodeGenerator();
+
+                logger.info("Codes attendus pour le secret " + secret + ":");
+                logger.info("  Période actuelle (-0s): " + codeGenerator.generate(secret, currentTime));
+                logger.info("  Période précédente (-30s): " + codeGenerator.generate(secret, currentTime - 30));
+                logger.info("  Période suivante (+30s): " + codeGenerator.generate(secret, currentTime + 30));
+            } catch (Exception e) {
+                logger.severe("Erreur génération codes test: " + e.getMessage());
+            }
+        }
+
+        return isValid;
+    }
+
+    @Override
+    @Transactional
+    public boolean disableTwoFactorAuth(String email, String code) {
+        logger.info("=== DÉSACTIVATION 2FA ===");
+        logger.info("Email: " + email);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        if (!exportateur.isTwoFactorEnabled()) {
+            logger.warning("Le 2FA n'est pas activé pour: " + email);
+            return true;
+        }
+
+        // Vérifier le code avant de désactiver
+        boolean isValid = twoFactorAuthService.verifyCode(exportateur.getTwoFactorSecret(), code);
+
+        if (isValid) {
+            exportateur.setTwoFactorEnabled(false);
+            // Optionnel: conserver le secret ou le réinitialiser
+            // exportateur.setTwoFactorSecret(null);
+            exportateurRepository.save(exportateur);
+            logger.info("2FA désactivé avec succès pour: " + email);
+        } else {
+            logger.warning("Code 2FA invalide pour désactivation: " + email);
+        }
+
+        return isValid;
+    }
+
+    @Override
+    public boolean verifyTwoFactorCode(String email, String code) {
+        logger.info("=== VÉRIFICATION 2FA ===");
+        logger.info("Email: " + email);
+        logger.info("Code reçu: '" + code + "'");
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        if (!exportateur.isTwoFactorEnabled()) {
+            logger.warning("Tentative de vérification 2FA pour un compte sans 2FA: " + email);
+            return false;
+        }
+
+        String secret = exportateur.getTwoFactorSecret();
+        logger.info("Secret: " + secret);
+
+        if (secret == null || secret.isEmpty()) {
+            logger.warning("Secret 2FA manquant pour: " + email);
+            return false;
+        }
+
+        // Nettoyer le code (enlever les espaces)
+        code = code.trim();
+
+        // Vérifier avec la méthode standard
+        boolean isValid = twoFactorAuthService.verifyCode(secret, code);
+
+        // Si pas valide, essayer avec marge
+        if (!isValid) {
+            logger.info("Code non valide avec vérification standard, essai avec marge...");
+            isValid = twoFactorAuthService.verifyCodeWithMargin(secret, code);
+        }
+
+        if (isValid) {
+            logger.info("✅ Code 2FA valide pour: " + email);
+        } else {
+            logger.severe("❌ Code 2FA invalide pour: " + email);
+
+            // Pour déboguer, afficher les codes attendus
+            try {
+                TimeProvider timeProvider = new SystemTimeProvider();
+                long currentTime = timeProvider.getTime();
+                CodeGenerator codeGenerator = new DefaultCodeGenerator();
+
+                logger.info("Codes attendus pour le secret " + secret + ":");
+                logger.info("  Période actuelle (-0s): " + codeGenerator.generate(secret, currentTime));
+                logger.info("  Période précédente (-30s): " + codeGenerator.generate(secret, currentTime - 30));
+                logger.info("  Période suivante (+30s): " + codeGenerator.generate(secret, currentTime + 30));
+            } catch (Exception e) {
+                logger.severe("Erreur génération codes test: " + e.getMessage());
+            }
+        }
+
+        return isValid;
+    }
+
+    @Override
+    public void resendTwoFactorCode(String email) {
+        logger.info("=== RENVOI CODE 2FA ===");
+        logger.info("Email: " + email);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        if (!exportateur.isTwoFactorEnabled()) {
+            throw new RuntimeException("Le 2FA n'est pas activé pour ce compte");
+        }
+
+        // Logique pour renvoyer le code 2FA
+        // Par exemple, générer un nouveau code TOTP et l'envoyer par email
+        try {
+            emailService.sendTwoFactorCode(
+                    email,
+                    exportateur.getRaisonSociale(),
+                    generateTwoFactorCode(exportateur.getTwoFactorSecret())
+            );
+            logger.info("Code 2FA renvoyé à: " + email);
+        } catch (Exception e) {
+            logger.severe("Erreur lors de l'envoi du code 2FA: " + e.getMessage());
+            throw new RuntimeException("Erreur lors de l'envoi du code 2FA");
+        }
+    }
+
+    private String generateTwoFactorCode(String secret) {
+        // Générer un code TOTP à partir du secret
+        // À implémenter avec votre bibliothèque TOTP
+        return twoFactorAuthService.generateCurrentCode(secret);
     }
 
 }

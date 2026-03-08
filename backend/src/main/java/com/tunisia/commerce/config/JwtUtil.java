@@ -127,4 +127,31 @@ public class JwtUtil {
             return null;
         }
     }
+
+    // Dans JwtUtil.java
+    public String generateTempToken(String email, String role) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", role);
+        claims.put("temp", true); // Marquer comme token temporaire
+        claims.put("purpose", "2fa_verification");
+
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(email)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 5)) // 5 minutes
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean isTempToken(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            Boolean isTemp = claims.get("temp", Boolean.class);
+            String purpose = claims.get("purpose", String.class);
+            return isTemp != null && isTemp && "2fa_verification".equals(purpose);
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }

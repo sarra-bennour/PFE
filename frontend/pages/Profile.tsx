@@ -46,6 +46,16 @@ const Profile: React.FC = () => {
   const [loadingDossier, setLoadingDossier] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ name: string, url: string, type: 'pdf' | 'image' } | null>(null);
 
+  // États pour le 2FA
+  const [show2FASetup, setShow2FASetup] = useState(false);
+  const [show2FADisable, setShow2FADisable] = useState(false);
+  const [twoFactorSecret, setTwoFactorSecret] = useState('');
+  const [twoFactorQrCode, setTwoFactorQrCode] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
+
+  // État pour le chargement du profil
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
   const [formData, setFormData] = useState({
     companyName: user?.companyName || user?.raisonSociale || '',
     phone: user?.telephone || user?.phone || '',
@@ -72,6 +82,85 @@ const Profile: React.FC = () => {
       fetchDossierStatus();
     }
   }, [user]);
+
+  // ========== CHARGEMENT DES DONNÉES DU PROFIL ==========
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      if (!user?.email) return;
+      
+      setLoadingProfile(true);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:8080/api/auth/profile`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          const userData = data.user;
+          
+          // Mettre à jour formData avec les données chargées
+          setFormData({
+            companyName: userData.companyName || userData.raisonSociale || '',
+            phone: userData.telephone || userData.phone || '',
+            address: userData.address || userData.adresseLegale || '',
+            country: userData.country || userData.paysOrigine || '',
+            city: userData.city || userData.ville || '',
+            tinNumber: userData.tinNumber || userData.numeroRegistreCommerce || '',
+            website: userData.website || userData.siteWeb || '',
+            legalRep: userData.legalRep || userData.representantLegal || ''
+          });
+          
+          // Mettre à jour l'utilisateur dans le contexte avec les données complètes
+          updateUser({
+            ...user,
+            ...userData
+          });
+        }
+      } catch (err) {
+        console.error('Erreur chargement profil:', err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+    
+    fetchProfileData();
+  }, [user?.email]);
+
+  // Vérification du statut 2FA
+  useEffect(() => {
+    const check2FAStatus = async () => {
+      if (user?.email) {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch(`http://localhost:8080/api/auth/2fa/status/${user.email}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (response.status === 400) {
+          // L'utilisateur n'existe pas ou autre erreur
+          console.warn('Statut 2FA non disponible pour:', user.email);
+          return;
+        }
+          
+          const data = await response.json();
+          if (data.success && data.enabled !== user.twoFactorEnabled) {
+            updateUser({ twoFactorEnabled: data.enabled });
+          }
+        } catch (err) {
+          console.error('Erreur vérification statut 2FA:', err);
+        }
+      }
+    };
+    
+    check2FAStatus();
+  }, [user?.email]);
 
   const fetchAllDocuments = async () => {
     try {
@@ -384,7 +473,7 @@ const getDisplayDocuments = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/auth/profile', {
+      const response = await fetch('http://localhost:8080/api/auth/update-profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -441,6 +530,139 @@ const getDisplayDocuments = () => {
     }
   };
 
+  // ========== FONCTIONS 2FA ==========
+  const toggle2FA = async () => {
+    if (isLoading) return;
+    
+    setIsLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      if (!user.twoFactorEnabled) {
+        // Activation du 2FA
+        const setupResponse = await fetch('http://localhost:8080/api/auth/2fa/setup', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const setupData = await setupResponse.json();
+
+        if (!setupResponse.ok) {
+          throw new Error(setupData.error || 'Erreur lors de la configuration 2FA');
+        }
+
+        if (setupData.data.alreadyEnabled) {
+          updateUser({ twoFactorEnabled: true });
+          setSuccessMessage('2FA déjà activé');
+          return;
+        }
+
+        setTwoFactorSecret(setupData.data.secret);
+        setTwoFactorQrCode(setupData.data.qrCodeBase64);
+        setShow2FASetup(true);
+
+      } else {
+        // Désactivation du 2FA
+        setShow2FADisable(true);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de la modification du 2FA');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyAndEnable2FA = async (code: string) => {
+  setIsLoading(true);
+  setError('');
+
+  try {
+    const token = localStorage.getItem('token');
+    
+    // Nettoyer le code (enlever les espaces)
+    const cleanCode = code.replace(/\s/g, '');
+    
+    const response = await fetch('http://localhost:8080/api/auth/2fa/enable', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        email: user.email,
+        code: cleanCode
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Code de vérification invalide');
+    }
+
+    updateUser({ twoFactorEnabled: true });
+    localStorage.setItem(`2fa_${user.email}`, 'true');
+    
+    setSuccessMessage('2FA activé avec succès !');
+    setShow2FASetup(false);
+    setTwoFactorCode(['', '', '', '', '', '']);
+    
+  } catch (err: any) {
+    setError(err.message);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  const verifyAndDisable2FA = async (code: string) => {
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch('http://localhost:8080/api/auth/2fa/disable', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: user.email,
+          code: code
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Code de vérification invalide');
+      }
+
+      updateUser({ twoFactorEnabled: false });
+      localStorage.removeItem(`2fa_${user.email}`);
+      
+      setSuccessMessage('2FA désactivé avec succès !');
+      setShow2FADisable(false);
+      setTwoFactorCode(['', '', '', '', '', '']);
+      
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const reset2FACode = () => {
+    setTwoFactorCode(['', '', '', '', '', '']);
+  };
+
   // ========== DEMANDE DE DÉSACTIVATION ==========
   const handleDeactivationRequest = async () => {
     if (!deactivationReason.trim()) {
@@ -493,19 +715,6 @@ const getDisplayDocuments = () => {
     setDeactivationReason('');
     setIsUrgent(false);
     setError('');
-  };
-
-  const toggle2FA = () => {
-    const newState = !user.twoFactorEnabled;
-    updateUser({ isTwoFactorEnabled: newState });
-    localStorage.setItem(`2fa_${user.email}`, newState.toString());
-    
-    fetch(`http://localhost:8080/api/auth/2fa/enable/${user.email}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    }).catch(err => console.error('Erreur 2FA:', err));
   };
 
   const getRemainingDays = () => {
@@ -825,18 +1034,27 @@ const getDisplayDocuments = () => {
                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
                     <div className="flex items-center gap-3">
                        <i className="fas fa-shield-alt text-slate-400"></i>
-                       <span className="text-sm font-bold text-slate-700">Connexion 2FA</span>
+                       <div>
+                         <span className="text-sm font-bold text-slate-700">Connexion 2FA</span>
+                         {user.twoFactorEnabled && (
+                           <p className="text-[8px] text-emerald-600 font-black uppercase tracking-widest">
+                             Sécurité renforcée
+                           </p>
+                         )}
+                       </div>
                     </div>
                     <button 
                       onClick={toggle2FA}
                       disabled={isLoading}
-                      className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-all ${
-                        user.twoFactorEnabled 
-                        ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' 
-                        : 'bg-slate-200 text-slate-500'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none ${
+                        user.twoFactorEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                      } ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
-                      {user.twoFactorEnabled ? 'Activé' : 'Désactivé'}
+                      <span
+                        className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform shadow-lg ${
+                          user.twoFactorEnabled ? 'translate-x-7' : 'translate-x-1'
+                        }`}
+                      />
                     </button>
                  </div>
 
@@ -1057,78 +1275,85 @@ const getDisplayDocuments = () => {
                 </button>
               </form>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
-                <div>
-                  <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                    {t('company_name')}
-                  </span>
-                  <span className="text-lg font-black text-slate-800">
-                    {user.companyName || user.raisonSociale || 'Non défini'}
-                  </span>
+              loadingProfile ? (
+                <div className="flex justify-center items-center py-8">
+                  <i className="fas fa-spinner fa-spin text-tunisia-red text-2xl"></i>
+                  <span className="ml-3 text-sm font-bold text-slate-400">Chargement du profil...</span>
                 </div>
-                <div>
-                  <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                    {t('phone_number')}
-                  </span>
-                  <span className="text-lg font-black text-slate-800">
-                    {user.telephone || user.phone || '+216 -- --- ---'}
-                  </span>
-                </div>
-                
-                {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
-                  <>
-                    <div>
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        {t('tin_number')}
-                      </span>
-                      <span className="text-lg font-black text-slate-800 tracking-tighter">
-                        {user.tinNumber || user.numeroRegistreCommerce || 'Non défini'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        {t('country')}
-                      </span>
-                      <span className="text-lg font-black text-slate-800">
-                        {user.country || user.paysOrigine || 'Non défini'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        Ville
-                      </span>
-                      <span className="text-lg font-black text-slate-800">
-                        {user.city || user.ville || 'Non défini'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        Site Web
-                      </span>
-                      <span className="text-lg font-black text-slate-800">
-                        {user.website || user.siteWeb || 'Non défini'}
-                      </span>
-                    </div>
-                    <div className="md:col-span-2">
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        Représentant Légal
-                      </span>
-                      <span className="text-lg font-black text-slate-800">
-                        {user.legalRep || user.representantLegal || 'Non défini'}
-                      </span>
-                    </div>
-                  </>
-                )}
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
+                  <div>
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                      {t('company_name')}
+                    </span>
+                    <span className="text-lg font-black text-slate-800">
+                      {user.companyName || user.raisonSociale || 'Non défini'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                      {t('phone_number')}
+                    </span>
+                    <span className="text-lg font-black text-slate-800">
+                      {user.telephone || user.phone || '+216 -- --- ---'}
+                    </span>
+                  </div>
+                  
+                  {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+                    <>
+                      <div>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          {t('tin_number')}
+                        </span>
+                        <span className="text-lg font-black text-slate-800 tracking-tighter">
+                          {user.tinNumber || user.numeroRegistreCommerce || 'Non défini'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          {t('country')}
+                        </span>
+                        <span className="text-lg font-black text-slate-800">
+                          {user.country || user.paysOrigine || 'Non défini'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          Ville
+                        </span>
+                        <span className="text-lg font-black text-slate-800">
+                          {user.city || user.ville || 'Non défini'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          Site Web
+                        </span>
+                        <span className="text-lg font-black text-slate-800">
+                          {user.website || user.siteWeb || 'Non défini'}
+                        </span>
+                      </div>
+                      <div className="md:col-span-2">
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          Représentant Légal
+                        </span>
+                        <span className="text-lg font-black text-slate-800">
+                          {user.legalRep || user.representantLegal || 'Non défini'}
+                        </span>
+                      </div>
+                    </>
+                  )}
 
-                <div className="md:col-span-2 pt-6 border-t border-slate-50">
-                   <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                     Adresse du siège
-                   </span>
-                   <span className="text-sm font-bold text-slate-600 italic">
-                     {formData.address || user.address || user.adresseLegale || 'Non défini'}
-                   </span>
+                  <div className="md:col-span-2 pt-6 border-t border-slate-50">
+                     <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                       Adresse du siège
+                     </span>
+                     <span className="text-sm font-bold text-slate-600 italic">
+                       {user.address || user.adresseLegale || 'Non défini'}
+                     </span>
+                  </div>
                 </div>
-              </div>
+              )
             )}
           </div>
 
@@ -1390,6 +1615,243 @@ const getDisplayDocuments = () => {
                 }}
                 onCancel={() => setIsChangingPassword(false)}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONFIGURATION 2FA - ACTIVATION */}
+      {show2FASetup && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" onClick={() => {
+            setShow2FASetup(false);
+            reset2FACode();
+          }}></div>
+          <div className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-scale">
+            <div className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
+                  Activer la 2FA
+                </h3>
+                <button 
+                  onClick={() => {
+                    setShow2FASetup(false);
+                    reset2FACode();
+                  }} 
+                  className="text-slate-400 hover:text-tunisia-red transition-colors"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Instructions */}
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                  <p className="text-xs font-bold text-blue-800">
+                    1. Scannez ce QR code avec Google Authenticator ou une application compatible
+                  </p>
+                </div>
+
+                {/* QR Code */}
+                {twoFactorQrCode && (
+                  <div className="flex justify-center p-6 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+                    <img 
+                      src={`data:image/png;base64,${twoFactorQrCode}`} 
+                      alt="QR Code 2FA"
+                      className="w-48 h-48"
+                    />
+                  </div>
+                )}
+
+                {/* Secret (au cas où) */}
+                {twoFactorSecret && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Ou saisissez manuellement cette clé
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 p-3 bg-slate-50 rounded-xl text-xs font-mono font-bold border border-slate-200">
+                        {twoFactorSecret}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(twoFactorSecret);
+                          setSuccessMessage('Clé copiée !');
+                          setTimeout(() => setSuccessMessage(''), 2000);
+                        }}
+                        className="p-3 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 transition-colors"
+                        title="Copier la clé"
+                      >
+                        <i className="fas fa-copy"></i>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Saisie du code */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Entrez le code à 6 chiffres
+                  </label>
+                  <div className="flex justify-center gap-2">
+                    {twoFactorCode.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => {
+                          const newCode = [...twoFactorCode];
+                          newCode[idx] = e.target.value.replace(/\D/g, '');
+                          setTwoFactorCode(newCode);
+                          
+                          // Auto-focus suivant
+                          if (e.target.value && idx < 5) {
+                            const nextInput = document.getElementById(`2fa-input-${idx + 1}`);
+                            nextInput?.focus();
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Backspace' && !twoFactorCode[idx] && idx > 0) {
+                            const prevInput = document.getElementById(`2fa-input-${idx - 1}`);
+                            prevInput?.focus();
+                          }
+                        }}
+                        id={`2fa-input-${idx}`}
+                        className="w-12 h-14 text-center text-2xl font-black bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-tunisia-red focus:bg-white outline-none transition-all"
+                        disabled={isLoading}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Boutons */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => verifyAndEnable2FA(twoFactorCode.join(''))}
+                    disabled={isLoading || twoFactorCode.join('').length !== 6}
+                    className="flex-1 py-4 bg-tunisia-red text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? (
+                      <i className="fas fa-spinner fa-spin"></i>
+                    ) : (
+                      'Activer'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShow2FASetup(false);
+                      reset2FACode();
+                    }}
+                    disabled={isLoading}
+                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all disabled:opacity-50"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DÉSACTIVATION 2FA */}
+      {show2FADisable && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl" onClick={() => {
+            setShow2FADisable(false);
+            reset2FACode();
+          }}></div>
+          <div className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-scale">
+            <div className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
+                  Désactiver la 2FA
+                </h3>
+                <button 
+                  onClick={() => {
+                    setShow2FADisable(false);
+                    reset2FACode();
+                  }} 
+                  className="text-slate-400 hover:text-tunisia-red transition-colors"
+                >
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                  <p className="text-xs font-bold text-amber-800 flex items-center gap-2">
+                    <i className="fas fa-exclamation-triangle"></i>
+                    Pour désactiver la 2FA, veuillez entrer votre code de vérification actuel
+                  </p>
+                </div>
+
+                {/* Saisie du code */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Code à 6 chiffres
+                  </label>
+                  <div className="flex justify-center gap-2">
+                    {twoFactorCode.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => {
+                          const newCode = [...twoFactorCode];
+                          newCode[idx] = e.target.value.replace(/\D/g, '');
+                          setTwoFactorCode(newCode);
+                          
+                          if (e.target.value && idx < 5) {
+                            const nextInput = document.getElementById(`2fa-disable-input-${idx + 1}`);
+                            nextInput?.focus();
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Backspace' && !twoFactorCode[idx] && idx > 0) {
+                            const prevInput = document.getElementById(`2fa-disable-input-${idx - 1}`);
+                            prevInput?.focus();
+                          }
+                        }}
+                        id={`2fa-disable-input-${idx}`}
+                        className="w-12 h-14 text-center text-2xl font-black bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-tunisia-red focus:bg-white outline-none transition-all"
+                        disabled={isLoading}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Boutons */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => verifyAndDisable2FA(twoFactorCode.join(''))}
+                    disabled={isLoading || twoFactorCode.join('').length !== 6}
+                    className="flex-1 py-4 bg-red-600 text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? (
+                      <i className="fas fa-spinner fa-spin"></i>
+                    ) : (
+                      'Désactiver'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShow2FADisable(false);
+                      reset2FACode();
+                    }}
+                    disabled={isLoading}
+                    className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all disabled:opacity-50"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

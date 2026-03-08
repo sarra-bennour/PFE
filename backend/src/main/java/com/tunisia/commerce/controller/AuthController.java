@@ -122,25 +122,6 @@ public class AuthController {
         return ResponseEntity.ok(userService.mobileLogin(request));
     }
 
-    @PostMapping("/2fa/enable/{email}")
-    public ResponseEntity<Void> enable2FA(@PathVariable String email) {
-        userService.enableTwoFactorAuth(email);
-        return ResponseEntity.ok().build();
-    }
-
-    @PostMapping("/2fa/verify")
-    public ResponseEntity<Boolean> verify2FA(@RequestBody TwoFactorVerifyRequest request) {
-        boolean isValid = userService.verifyTwoFactorCode(request.getEmail(), request.getCode());
-        return ResponseEntity.ok(isValid);
-    }
-
-    /*@GetMapping("/me")
-    public ResponseEntity<UserDTO> getCurrentUser(@RequestHeader("Authorization") String token) {
-        // Extraire l'email du token via JwtUtil si nécessaire
-        // Pour simplifier, on pourrait avoir un endpoint qui prend l'email en paramètre
-        return ResponseEntity.ok().build();
-    }*/
-
     @PostMapping("/logout")
     public ResponseEntity<?> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
         try {
@@ -278,7 +259,50 @@ public class AuthController {
     }
 
 
-    @PutMapping("/profile")
+    @GetMapping("/profile")
+    public ResponseEntity<?> getProfile(@RequestHeader("Authorization") String authHeader) {
+        try {
+            // Vérifier l'authentification
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("success", false, "error", "Token d'authentification manquant ou mal formaté"));
+            }
+
+            String token = authHeader.substring(7);
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("success", false, "error", "Token invalide ou expiré"));
+            }
+
+            // Extraire l'email du token
+            String email = jwtUtil.extractUsername(token);
+
+            // Récupérer l'utilisateur
+            UserDTO user = userService.getUserByEmail(email);
+
+            if (user == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("success", false, "error", "Utilisateur non trouvé"));
+            }
+
+            // Construire la réponse
+            Map<String, Object> responseBody = new HashMap<>();
+            responseBody.put("success", true);
+            responseBody.put("user", user);
+
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/json")
+                    .body(responseBody);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "success", false,
+                            "error", "Erreur interne: " + e.getMessage()
+                    ));
+        }
+    }
+    @PutMapping("/update-profile")
     public ResponseEntity<?> updateProfile(
             @RequestHeader("Authorization") String authHeader,
             @RequestBody UpdateProfileRequest request) {

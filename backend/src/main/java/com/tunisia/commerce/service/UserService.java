@@ -10,8 +10,6 @@ public interface UserService {
     LoginResponse login(LoginRequest request);
     LoginResponse mobileLogin(MobileLoginRequest request);
     UserDTO getUserByEmail(String email);
-    void enableTwoFactorAuth(String email);
-    boolean verifyTwoFactorCode(String email, String code);
     void logout(String token);
     boolean verifyEmail(String token);
     void resendVerificationEmail(String email);
@@ -24,4 +22,10 @@ public interface UserService {
     void cancelDeactivationRequest(String email, Long requestId);
     List<DeactivationRequest> getUserDeactivationRequests(String email);
     boolean canCreateDeactivationRequest(String email);
+
+    TwoFactorSetupResponse setupTwoFactorAuth(String email);
+    boolean enableTwoFactorAuth(String email, String code);
+    boolean disableTwoFactorAuth(String email, String code);
+    boolean verifyTwoFactorCode(String email, String code);
+    void resendTwoFactorCode(String email);
 }

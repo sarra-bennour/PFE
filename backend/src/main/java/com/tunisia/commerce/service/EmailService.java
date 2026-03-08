@@ -255,4 +255,68 @@ public class EmailService {
                 return "email/notification-generique";
         }
     }
+
+
+    /**
+     * Envoie un code 2FA par email
+     * @param toEmail Email du destinataire
+     * @param companyName Nom de l'entreprise
+     * @param code Code 2FA à 6 chiffres
+     */
+    public void sendTwoFactorCode(String toEmail, String companyName, String code) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject("Code de vérification 2FA - Portail National Tunisien");
+
+            Context context = new Context();
+            context.setVariable("companyName", companyName);
+            context.setVariable("code", code);
+            context.setVariable("supportEmail", "support@tunisia-commerce.gov.tn");
+            context.setVariable("currentDate", LocalDate.now().toString());
+            context.setVariable("codeValidityMinutes", 5); // Validité de 5 minutes
+
+            String htmlContent = templateEngine.process("email/two-factor-code", context);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(message);
+            logger.info("Code 2FA envoyé à: " + toEmail);
+
+        } catch (MessagingException e) {
+            throw new RuntimeException("Erreur lors de l'envoi du code 2FA", e);
+        }
+    }
+
+    /**
+     * Envoie un code 2FA avec expiration
+     */
+    public void sendTwoFactorCodeWithExpiry(String toEmail, String companyName, String code, int expiryMinutes) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject("Code de vérification 2FA - Portail National Tunisien");
+
+            Context context = new Context();
+            context.setVariable("companyName", companyName);
+            context.setVariable("code", code);
+            context.setVariable("supportEmail", "support@tunisia-commerce.gov.tn");
+            context.setVariable("currentDate", LocalDate.now().toString());
+            context.setVariable("codeValidityMinutes", expiryMinutes);
+
+            String htmlContent = templateEngine.process("email/two-factor-code", context);
+            helper.setText(htmlContent, true);
+
+            mailSender.send(message);
+            logger.info("Code 2FA envoyé à: " + toEmail + " (valide " + expiryMinutes + " minutes)");
+
+        } catch (MessagingException e) {
+            throw new RuntimeException("Erreur lors de l'envoi du code 2FA", e);
+        }
+    }
 }
