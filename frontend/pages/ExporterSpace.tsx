@@ -5,6 +5,7 @@ import { useAuth } from '../App';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import FormAlert from '../components/FormAlert';
+import PaymentForm from '../components/PaymentForm';
 
 // Définition de l'interface pour les données KYC
 interface KycData {
@@ -164,30 +165,8 @@ const ExporterSpace: React.FC = () => {
   const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // États pour le paiement
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardHolder, setCardHolder] = useState('');
-  const [paymentEmail, setPaymentEmail] = useState('');
-  const [emailError, setEmailError] = useState('');
-  const [expiryMonth, setExpiryMonth] = useState('');
-  const [expiryYear, setExpiryYear] = useState('');
-  const [cvv, setCvv] = useState('');
-
   // Ref pour éviter les appels multiples
   const hasFetchedRef = useRef(false);
-
-  const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
-  const currentYear = new Date().getFullYear() % 100;
-  const years = Array.from({ length: 11 }, (_, i) => (currentYear + i).toString());
-
-  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 16) value = value.slice(0, 16);
-    const formatted = value.replace(/(\d{4})(?=\d)/g, '$1 ');
-    setCardNumber(formatted);
-    if (formError) setFormError('');
-    if (paymentError) setPaymentError(null);
-  };
 
   const [kycData, setKycData] = useState<KycData>({
     rcCert: null,
@@ -204,16 +183,16 @@ const ExporterSpace: React.FC = () => {
   });
 
   // Au début du composant
-useEffect(() => {
-  const token = localStorage.getItem('token');
-  
-  if (token) {
-    // Décoder le token pour voir son contenu
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(window.atob(base64));
-  }
-}, []);
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    
+    if (token) {
+      // Décoder le token pour voir son contenu
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(window.atob(base64));
+    }
+  }, []);
 
   const productDeclarations = [
     { 
@@ -307,103 +286,101 @@ useEffect(() => {
   };
 
   const handleKycSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
-  
-  try {
-    const token = localStorage.getItem('token');
-    const requestData = {
-      produits: []
-    };
+    e.preventDefault();
+    setLoading(true);
     
-    
-    // 1. Créer le dossier
-    const createResponse = await axios.post('http://localhost:8080/api/exportateur/dossier/creer', requestData, {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    const demandeId = createResponse.data.demandeId;
-
-    // Stocker le demandeId dans dossierInfo localement
-    setDossierInfo(prev => ({
-      ...prev,
-      demandeId: demandeId,
-      hasDossier: true,
-      status: 'BROUILLON'
-    } as DossierResponse));
-
-    // Mettre à jour le cache
-    updateDossierStatus('BROUILLON', 'EN_ATTENTE', { demandeId });
-
-    // 2. MAPPING CORRECT des types de documents
-    const documentTypeMapping: Record<string, string> = {
-      rcCert: 'RC_CERT',
-      rcTranslation: 'RC_TRANSLATION',
-      rcLegalization: 'RC_LEGALIZATION',
-      statutes: 'STATUTES',
-      statutesTranslation: 'STATUTES_TRANSLATION',
-      tinCert: 'TIN_CERT',
-      passport: 'PASSPORT',
-      designationPV: 'DESIGNATION_PV',
-      solvencyCert: 'SOLVENCY_CERT',
-      annualAccounts: 'ANNUAL_ACCOUNTS',
-      externalAudit: 'EXTERNAL_AUDIT'
-    };
-
-    // 3. Upload séquentiel des documents
-    for (const [field, file] of Object.entries(kycData)) {
-      if (file) {
-        const documentType = documentTypeMapping[field];
-        
-        if (!documentType) {
-          console.warn(`⚠️ Type de document non mappé pour ${field}`);
-          continue;
+    try {
+      const token = localStorage.getItem('token');
+      const requestData = {
+        produits: []
+      };
+      
+      // 1. Créer le dossier
+      const createResponse = await axios.post('http://localhost:8080/api/exportateur/dossier/creer', requestData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
-        
-        const formData = new FormData();
-        formData.append('file', file as File);
-        formData.append('documentType', documentType);
-        
-        
-        await axios.post(
-          `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`, 
-          formData,
-          {
-            headers: { 
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'multipart/form-data'
-            }
+      });
+
+      const demandeId = createResponse.data.demandeId;
+
+      // Stocker le demandeId dans dossierInfo localement
+      setDossierInfo(prev => ({
+        ...prev,
+        demandeId: demandeId,
+        hasDossier: true,
+        status: 'BROUILLON'
+      } as DossierResponse));
+
+      // Mettre à jour le cache
+      updateDossierStatus('BROUILLON', 'EN_ATTENTE', { demandeId });
+
+      // 2. MAPPING CORRECT des types de documents
+      const documentTypeMapping: Record<string, string> = {
+        rcCert: 'RC_CERT',
+        rcTranslation: 'RC_TRANSLATION',
+        rcLegalization: 'RC_LEGALIZATION',
+        statutes: 'STATUTES',
+        statutesTranslation: 'STATUTES_TRANSLATION',
+        tinCert: 'TIN_CERT',
+        passport: 'PASSPORT',
+        designationPV: 'DESIGNATION_PV',
+        solvencyCert: 'SOLVENCY_CERT',
+        annualAccounts: 'ANNUAL_ACCOUNTS',
+        externalAudit: 'EXTERNAL_AUDIT'
+      };
+
+      // 3. Upload séquentiel des documents
+      for (const [field, file] of Object.entries(kycData)) {
+        if (file) {
+          const documentType = documentTypeMapping[field];
+          
+          if (!documentType) {
+            console.warn(`⚠️ Type de document non mappé pour ${field}`);
+            continue;
           }
-        );
+          
+          const formData = new FormData();
+          formData.append('file', file as File);
+          formData.append('documentType', documentType);
+          
+          await axios.post(
+            `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`, 
+            formData,
+            {
+              headers: { 
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'multipart/form-data'
+              }
+            }
+          );
+        }
       }
+
+      // 4. Soumettre le dossier
+      await axios.post(`http://localhost:8080/api/exportateur/dossier/${demandeId}/soumettre`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      // Mettre à jour le statut
+      setDossierInfo(prev => ({
+        ...prev,
+        status: 'SOUMISE'
+      } as DossierResponse));
+
+      // Mettre à jour le cache
+      updateDossierStatus('SOUMISE', 'EN_ATTENTE', { demandeId });
+
+      setShowInvoice(true);
+      
+    } catch (error: any) {
+      console.error('❌ Erreur globale:', error);
+      setPaymentError(error.message || 'Une erreur est survenue lors de la soumission du dossier');
+    } finally {
+      setLoading(false);
     }
-
-    // 4. Soumettre le dossier
-    await axios.post(`http://localhost:8080/api/exportateur/dossier/${demandeId}/soumettre`, {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    // Mettre à jour le statut
-    setDossierInfo(prev => ({
-      ...prev,
-      status: 'SOUMISE'
-    } as DossierResponse));
-
-    // Mettre à jour le cache
-    updateDossierStatus('SOUMISE', 'EN_ATTENTE', { demandeId });
-
-    setShowInvoice(true);
-    
-  } catch (error: any) {
-    console.error('❌ Erreur globale:', error);
-    setPaymentError(error.message || 'Une erreur est survenue lors de la soumission du dossier');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const handleGoToTerminal = () => {
     setShowInvoice(false);
@@ -437,46 +414,28 @@ useEffect(() => {
       }
     );
     
-    
     setPaymentIntentId(response.data.paymentIntentId);
     
     // Retourner l'ID du PaymentIntent pour l'étape suivante
     return response.data.paymentIntentId;
   };
 
-  // Fonction pour traiter le paiement via le backend - CORRIGÉE
-  const handleProcessPayment = async (paymentIntentId: string) => {
+  // Fonction pour traiter le paiement via le backend
+  const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any) => {
     const token = localStorage.getItem('token');
-    
-    // Utiliser les états au lieu de document.querySelector
-    const cardNumberValue = cardNumber;
-    const expiryMonthValue = expiryMonth;
-    const expiryYearValue = expiryYear;
-    const cvvValue = cvv;
-    const cardHolderValue = cardHolder;
-    const emailValue = paymentEmail;
-    
-    // Vérifier que les champs ne sont pas vides
-    if (!cardNumberValue || !expiryMonthValue || !expiryYearValue || !cvvValue || !cardHolderValue || !emailValue) {
-      throw new Error('Veuillez remplir tous les champs de carte');
-    }
-    
-    // Nettoyer le numéro de carte
-    const cleanCardNumber = cardNumberValue.replace(/\s/g, '');
     
     // Préparer la requête de paiement
     const paymentRequest = {
       paymentIntentId: paymentIntentId,
       demandeId: dossierInfo?.demandeId,
-      cardNumber: cleanCardNumber,
-      cardHolderName: cardHolderValue,
-      receiptEmail: emailValue,
-      expMonth: parseInt(expiryMonthValue),
-      expYear: parseInt(expiryYearValue),
-      cvv: cvvValue,
+      cardNumber: paymentDetails.cardNumber,
+      cardHolderName: paymentDetails.cardHolder,
+      receiptEmail: paymentDetails.paymentEmail,
+      expMonth: parseInt(paymentDetails.expiryMonth),
+      expYear: parseInt(paymentDetails.expiryYear),
+      cvv: paymentDetails.cvv,
       amount: 500.0
     };
-    
     
     // Appeler le backend pour confirmer le paiement
     const response = await axios.post(
@@ -493,87 +452,11 @@ useEffect(() => {
     return response.data;
   };
 
-  // Fonction pour rafraîchir les données du dossier
-  const refreshDossierDataOld = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      
-      const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setDossierInfo(response.data);
-      
-      // Mettre à jour le cache
-      if (response.data.hasDossier) {
-        updateDossierStatus(
-          response.data.status || '',
-          response.data.paymentStatus || 'EN_ATTENTE',
-          {
-            demandeId: response.data.demandeId,
-            reference: response.data.reference
-          }
-        );
-      }
-      
-      // Mettre à jour le statut utilisateur
-      if (response.data.hasDossier) {
-        if (response.data.status === 'SOUMISE' || response.data.status === 'EN_ATTENTE_PAIEMENT') {
-          updateUserStatus('PENDING_VERIFICATION');
-        } else if (response.data.status === 'VALIDEE') {
-          updateUserStatus('VERIFIED');
-        } else if (response.data.status === 'BROUILLON') {
-          updateUserStatus('PROFILE_INCOMPLETE');
-        } else if (response.data.status === 'PAYEE') {
-          updateUserStatus('PAYMENT_PENDING');
-        }
-      }
-    } catch (error) {
-      console.error('Erreur lors du rafraîchissement:', error);
-    }
-  };
-
-  // Fonction principale de paiement - CORRIGÉE AVEC ALERTES
-  const handlePaymentComplete = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Fonction principale de paiement - maintenant utilisée par PaymentForm
+  const handlePaymentSubmit = async (paymentDetails: any) => {
     setLoading(true);
-    setFormError('');
-    setEmailError('');
     setPaymentError(null);
     setPaymentSuccess(null);
-
-    // Validation
-    if (!cardHolder.trim()) {
-      setEmailError("Veuillez saisir le nom du détenteur de la carte.");
-      setLoading(false);
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(paymentEmail)) {
-      setEmailError("Veuillez saisir une adresse e-mail valide pour le reçu.");
-      setLoading(false);
-      return;
-    }
-
-    const cleanCard = cardNumber.replace(/\s/g, '');
-    if (cleanCard.length !== 16) {
-      setFormError("Le numéro de carte doit comporter 16 chiffres.");
-      setLoading(false);
-      return;
-    }
-
-    if (!expiryMonth || !expiryYear) {
-      setFormError("Veuillez sélectionner la date d'expiration.");
-      setLoading(false);
-      return;
-    }
-
-    if (cvv.length !== 3) {
-      setFormError("Le code CVV doit comporter 3 chiffres.");
-      setLoading(false);
-      return;
-    }
     
     try {
       // Vérifier que demandeId existe
@@ -583,7 +466,6 @@ useEffect(() => {
         return;
       }
       
-      
       // Étape 1: Créer le PaymentIntent
       const paymentIntentId = await handleCreatePaymentIntent();
       
@@ -592,7 +474,7 @@ useEffect(() => {
       }
       
       // Étape 2: Traiter le paiement
-      const result = await handleProcessPayment(paymentIntentId);
+      const result = await handleProcessPayment(paymentIntentId, paymentDetails);
       
       if (result.success) {
         // Afficher l'alerte de succès
@@ -605,15 +487,6 @@ useEffect(() => {
         });
 
         updateUserStatus('PAYMENT_PENDING');
-        
-        // Reset payment fields
-        setCardNumber('');
-        setCardHolder('');
-        setPaymentEmail('');
-        setExpiryMonth('');
-        setExpiryYear('');
-        setCvv('');
-        setEmailError('');
         
         // Mettre à jour le statut localement
         setDossierInfo(prev => ({
@@ -665,6 +538,13 @@ useEffect(() => {
     setShowTerminal(false);
     
     // Pas besoin de rafraîchir, le cache est déjà à jour
+  };
+
+  const handleBackToInvoice = () => {
+    setShowTerminal(false);
+    setShowInvoice(true);
+    setPaymentError(null);
+    setPaymentSuccess(null);
   };
 
   const getRemainingDays = () => {
@@ -769,179 +649,20 @@ useEffect(() => {
     );
   }
 
-  // --- RENDU : TERMINAL DE PAIEMENT (AVEC LISTES DÉROULANTES ET ALERTES) ---
+  // --- RENDU : TERMINAL DE PAIEMENT (Utilisation du composant PaymentForm) ---
   if (showTerminal) {
     return (
-      <div className="max-w-md mx-auto py-12 px-4 animate-fade-in-scale">
-        <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 p-10">
-          <div className="flex items-center justify-between mb-10">
-            <h2 className="text-xl font-black uppercase italic tracking-tighter text-slate-900">Paiement Sécurisé</h2>
-            <div className="flex gap-2">
-              <i className="fab fa-cc-visa text-slate-300 text-2xl"></i>
-              <i className="fab fa-cc-mastercard text-slate-300 text-2xl"></i>
-            </div>
-          </div>
-
-          {/* ALERTE DE SUCCÈS */}
-          {paymentSuccess && (
-            <div className="mb-6 animate-fade-in-scale">
-              <FormAlert 
-                type="success"
-                message={
-                  <div>
-                    <p className="font-bold mb-1">{paymentSuccess.message}</p>
-                    {paymentSuccess.amount && (
-                      <p className="text-xs opacity-90">Montant: {paymentSuccess.amount} DT</p>
-                    )}
-                    <p className="text-xs opacity-75 mt-2">Redirection dans quelques instants...</p>
-                  </div>
-                }
-                onClose={() => setPaymentSuccess(null)}
-              />
-            </div>
-          )}
-
-          {/* ALERTE D'ERREUR */}
-          {paymentError && (
-            <div className="mb-6 animate-fade-in-scale">
-              <FormAlert 
-                type="error"
-                message={paymentError}
-                onClose={() => setPaymentError(null)}
-              />
-            </div>
-          )}
-
-          {/* ALERTE D'ERREUR DE FORMULAIRE */}
-          {formError && (
-            <div className="mb-4">
-              <FormAlert 
-                message={formError} 
-                type="error" 
-                onClose={() => setFormError('')} 
-              />
-            </div>
-          )}
-
-          <form onSubmit={handlePaymentComplete} className="space-y-5">
-             <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom du détenteur</label>
-                <input 
-                  type="text" 
-                  value={cardHolder}
-                  onChange={(e) => { setCardHolder(e.target.value.toUpperCase()); if (formError) setFormError(''); if (paymentError) setPaymentError(null); }}
-                  className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${emailError && !cardHolder ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm uppercase`} 
-                  placeholder="NOM PRÉNOM"  
-                />
-             </div>
-
-             <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Adresse e-mail (Reçu)</label>
-                <input 
-                  type="text" 
-                  value={paymentEmail}
-                  onChange={(e) => { 
-                    setPaymentEmail(e.target.value); 
-                    if (emailError) setEmailError(''); 
-                    if (paymentError) setPaymentError(null);
-                  }}
-                  className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${emailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
-                  placeholder="votre@email.com" 
-                />
-                {emailError && (
-                  <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
-                    <i className="fas fa-circle-exclamation mr-1"></i> {emailError}
-                  </p>
-                )}
-             </div>
-             
-             <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de carte</label>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    value={cardNumber}
-                    onChange={handleCardNumberChange}
-                    className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && cardNumber.replace(/\s/g, '').length !== 16 ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
-                    placeholder="4242 4242 4242 4242" 
-                  />
-                  <i className="fas fa-credit-card absolute right-5 top-1/2 -translate-y-1/2 text-slate-200 text-xs"></i>
-                </div>
-             </div>
-
-             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mois</label>
-                  <select 
-                    value={expiryMonth}
-                    onChange={(e) => { setExpiryMonth(e.target.value); if (formError) setFormError(''); if (paymentError) setPaymentError(null); }}
-                    className={`w-full px-4 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !expiryMonth ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer`}
-                  >
-                    <option value="">MM</option>
-                    {months.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Année</label>
-                  <select 
-                    value={expiryYear}
-                    onChange={(e) => { setExpiryYear(e.target.value); if (formError) setFormError(''); if (paymentError) setPaymentError(null); }}
-                    className={`w-full px-4 py-4 rounded-2xl bg-slate-50 border-2 ${formError && !expiryYear ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer`}
-                  >
-                    <option value="">YY</option>
-                    {years.map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CVV</label>
-                  <input 
-                    type="text" 
-                    value={cvv}
-                    onChange={(e) => { 
-                      const value = e.target.value.replace(/\D/g, '').slice(0, 3);
-                      setCvv(value);
-                      if (formError) setFormError(''); 
-                      if (paymentError) setPaymentError(null);
-                    }}
-                    className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${formError && cvv.length !== 3 ? 'border-tunisia-red' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm text-center`} 
-                    placeholder="123" 
-                    maxLength={3}
-                  />
-                </div>
-             </div>
-
-             <div className="pt-6">
-                <button type="submit" disabled={loading || paymentSuccess !== null} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-[0.98] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed">
-                  {loading ? (
-                    <i className="fas fa-circle-notch animate-spin"></i>
-                  ) : (
-                    <>
-                      <i className="fas fa-shield-halved text-emerald-500"></i>
-                      Payer 500,000 DT
-                    </>
-                  )}
-                </button>
-                <button type="button" onClick={() => { setShowTerminal(false); setShowInvoice(true); setPaymentError(null); setPaymentSuccess(null); }} className="w-full py-4 text-slate-400 font-black uppercase tracking-widest text-[9px] hover:text-slate-600 transition-colors mt-2">
-                   Retour à la facture
-                </button>
-             </div>
-          </form>
-
-          <div className="mt-10 pt-6 border-t border-slate-50 text-center flex flex-col items-center gap-4">
-            <div className="flex items-center gap-6 opacity-40">
-               <i className="fas fa-fingerprint text-xl"></i>
-               <i className="fas fa-key text-xl"></i>
-               <i className="fas fa-user-shield text-xl"></i>
-            </div>
-            <p className="text-[8px] font-black uppercase tracking-widest text-slate-300">
-              Paiement sécurisé par Stripe
-            </p>
-            <p className="text-[6px] font-black uppercase tracking-widest text-slate-400">
-              Test : 4242 4242 4242 4242 | 12/34 | 123
-            </p>
-          </div>
-        </div>
-      </div>
+      <PaymentForm
+        amount={500}
+        onSubmit={handlePaymentSubmit}
+        onBack={handleBackToInvoice}
+        isLoading={loading}
+        error={paymentError}
+        success={paymentSuccess ? {
+          message: paymentSuccess.message,
+          amount: paymentSuccess.amount
+        } : null}
+      />
     );
   }
 
@@ -1333,4 +1054,4 @@ useEffect(() => {
   );
 };
 
-export default ExporterSpace;
+export default ExporterSpace; 

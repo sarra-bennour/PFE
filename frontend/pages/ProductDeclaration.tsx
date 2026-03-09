@@ -2,6 +2,7 @@ import React, { useState, useEffect, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
+import PaymentForm from '../components/PaymentForm';
 
 // ==================== TYPES ====================
 type ProductType = 'alimentaire' | 'industriel';
@@ -158,6 +159,19 @@ const ProductDeclaration: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demandeId, setDemandeId] = useState<number | null>(null);
+  const [isPaid, setIsPaid] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
+  
+  // États pour les alertes de paiement
+  const [paymentSuccess, setPaymentSuccess] = useState<{
+    success: boolean;
+    message: string;
+    paymentReference?: string;
+    amount?: number;
+    status?: string;
+  } | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   
   const [formData, setFormData] = useState<DeclarationFormData>({
     products: [],
@@ -464,6 +478,94 @@ const ProductDeclaration: React.FC = () => {
     return missing;
   };
 
+  // Fonction pour créer le PaymentIntent
+  const handleCreatePaymentIntent = async () => {
+    const token = localStorage.getItem('token');
+    
+    const response = await api.post('/stripe-payment/create-intent', {
+      demandeId: demandeId,
+      successUrl: window.location.origin + '/payment-success',
+      cancelUrl: window.location.origin + '/payment-cancel'
+    });
+    
+    return response.data.paymentIntentId;
+  };
+
+  // Fonction pour traiter le paiement
+  const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any) => {
+    const paymentRequest = {
+      paymentIntentId: paymentIntentId,
+      demandeId: demandeId,
+      cardNumber: paymentDetails.cardNumber,
+      cardHolderName: paymentDetails.cardHolder,
+      receiptEmail: paymentDetails.paymentEmail,
+      expMonth: parseInt(paymentDetails.expiryMonth),
+      expYear: parseInt(paymentDetails.expiryYear),
+      cvv: paymentDetails.cvv,
+      amount: fees.total
+    };
+    
+    const response = await api.post('/stripe-payment/confirm-payment', paymentRequest);
+    return response.data;
+  };
+
+  // Fonction principale de paiement
+  const handlePaymentSubmit = async (paymentDetails: any) => {
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+    
+    try {
+      // Étape 1: Créer le PaymentIntent
+      const paymentIntentId = await handleCreatePaymentIntent();
+      
+      if (!paymentIntentId) {
+        throw new Error('Impossible de créer le PaymentIntent');
+      }
+      
+      // Étape 2: Traiter le paiement
+      const result = await handleProcessPayment(paymentIntentId, paymentDetails);
+      
+      if (result.success) {
+        setPaymentSuccess({
+          success: true,
+          message: 'Paiement effectué avec succès!',
+          paymentReference: result.paymentReference,
+          amount: result.amount,
+          status: result.status
+        });
+
+        setIsPaid(true);
+        setShowTerminal(false);
+        
+      } else {
+        setPaymentError(result.message || 'Erreur de paiement');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Erreur:', error);
+      
+      if (error.response?.status === 401) {
+        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }, 2000);
+      } else {
+        setPaymentError(error.response?.data?.message || error.message || 'Erreur lors du paiement');
+      }
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const handleBackToInvoice = () => {
+    setShowTerminal(false);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -517,10 +619,24 @@ const ProductDeclaration: React.FC = () => {
         }
         
         setStep(step + 1);
-      } else if (step < 4) {
+      } else if (step < 5) { // CORRECTION: Maintenant on va jusqu'à l'étape 4 pour passer à 5
+        console.log(`Step ${step}: Moving to step ${step + 1}`);
+        
+        // Si on est à l'étape 4, vérifier que le paiement est fait
+        if (step === 4 && !isPaid) {
+          throw new Error('Veuillez effectuer le paiement avant de continuer');
+        }
+        
         setStep(step + 1);
       } else {
+        // Étape 5: Soumettre la demande
         console.log('Final step: Submitting demande');
+        
+        // Vérifier que le paiement est fait
+        if (!isPaid) {
+          throw new Error('Le paiement n\'a pas été effectué');
+        }
+        
         await submitDemande();
         localStorage.removeItem('productDeclarationDraft');
         setIsSubmitted(true);
@@ -541,6 +657,20 @@ const ProductDeclaration: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const calculateFees = () => {
+    const baseFee = 50;
+    const perProductFee = 20;
+    const stampDuty = 1;
+    const subtotal = baseFee + (formData.products.length * perProductFee);
+    return {
+      subtotal,
+      stampDuty,
+      total: subtotal + stampDuty
+    };
+  };
+
+  const fees = calculateFees();
 
   const SearchableSelect = ({ 
     label, 
@@ -619,6 +749,26 @@ const ProductDeclaration: React.FC = () => {
     );
   };
 
+  const showAlert = (message: string, type: 'success' | 'error') => {
+    if (type === 'success') {
+      setPaymentSuccess({
+        success: true,
+        message,
+        amount: fees.total
+      });
+    } else {
+      setPaymentError(message);
+    }
+    
+    setTimeout(() => {
+      if (type === 'success') {
+        setPaymentSuccess(null);
+      } else {
+        setPaymentError(null);
+      }
+    }, 3000);
+  };
+
   if (isSubmitted) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center animate-fade-in-scale">
@@ -652,7 +802,7 @@ const ProductDeclaration: React.FC = () => {
       )}
 
       <div className="flex items-center justify-between mb-12 px-8">
-        {['Produits', 'Logistique', 'Documents', 'Validation'].map((label, i) => (
+        {['Produits', 'Logistique', 'Documents','Paiement', 'Validation'].map((label, i) => (
           <div key={label} className="flex items-center flex-1 last:flex-none">
             <div className="flex flex-col items-center gap-2">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all ${
@@ -662,7 +812,7 @@ const ProductDeclaration: React.FC = () => {
               </div>
               <span className={`text-[8px] font-black uppercase tracking-widest ${step >= i + 1 ? 'text-slate-900' : 'text-slate-300'}`}>{label}</span>
             </div>
-            {i < 3 && (
+            {i < 4 && (
               <div className={`h-1 flex-grow mx-4 -mt-4 rounded-full ${step > i + 1 ? 'bg-tunisia-red' : 'bg-slate-100'}`}></div>
             )}
           </div>
@@ -1028,29 +1178,131 @@ const ProductDeclaration: React.FC = () => {
           )}
 
           {step === 4 && (
-            <div className="space-y-8">
+            <div className="space-y-12 animate-fade-in">
               <div className="border-b border-slate-50 pb-6">
-                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 4 : Validation Finale</h2>
+                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 4 : Paiement des frais</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Règlement des frais de dossier multi-produits</p>
+              </div>
+
+              {showTerminal ? (
+                <PaymentForm
+                  amount={fees.total}
+                  onSubmit={handlePaymentSubmit}
+                  onBack={handleBackToInvoice}
+                  isLoading={paymentLoading}
+                  error={paymentError}
+                  success={paymentSuccess ? {
+                    message: paymentSuccess.message,
+                    amount: paymentSuccess.amount
+                  } : null}
+                />
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                  {/* Facture Pro-forma */}
+                  <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-8">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Détails de la Facture</h3>
+                      <i className="fas fa-file-invoice text-slate-300"></i>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-slate-500">Frais de dossier de base</span>
+                        <span className="text-slate-900">50,000 TND</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-slate-500">Frais par produit ({formData.products.length} x 20 TND)</span>
+                        <span className="text-slate-900">{(formData.products.length * 20).toFixed(3)} TND</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-slate-500">Droit de timbre</span>
+                        <span className="text-slate-900">1,000 TND</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-200">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total à payer</span>
+                        <span className="text-3xl font-black italic tracking-tighter text-tunisia-red">{fees.total.toFixed(3)} TND</span>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+                        <i className="fas fa-shield-check"></i>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-900">Paiement Sécurisé</p>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Certifié par la Banque Centrale de Tunisie</p>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={() => setShowTerminal(true)}
+                      className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-3"
+                    >
+                      <i className="fas fa-credit-card"></i> Payer par carte
+                    </button>
+                  </div>
+
+                  {/* Message de confirmation de paiement */}
+                  {isPaid && (
+                    <div className="p-8 bg-emerald-50 rounded-[2.5rem] border-2 border-emerald-500 shadow-xl flex flex-col items-center text-center space-y-4 animate-fade-in">
+                      <div className="w-16 h-16 bg-white text-emerald-500 rounded-full flex items-center justify-center shadow-sm">
+                        <i className="fas fa-check text-2xl"></i>
+                      </div>
+                      <div>
+                        <p className="text-lg font-black text-emerald-900 uppercase italic tracking-tighter">Paiement Confirmé</p>
+                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Transaction #TXN-{(Math.random()*1000000).toFixed(0)}</p>
+                      </div>
+                      <button className="text-[9px] font-black uppercase tracking-widest text-emerald-700 underline decoration-2 underline-offset-4">Télécharger le reçu</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-8 animate-fade-in">
+              <div className="border-b border-slate-50 pb-6">
+                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 5 : Validation Finale</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Vérification et signature électronique</p>
               </div>
               
-              <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6 shadow-sm">
-                <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Récapitulatif du lot</h4>
-                  <span className="text-xs font-black italic text-tunisia-red">{formData.products.length} Produit(s)</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6 shadow-sm">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Récapitulatif du lot</h4>
+                    <span className="text-xs font-black italic text-tunisia-red">{formData.products.length} Produit(s)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Alimentaires</p>
+                      <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
+                        {formData.products.filter(p => p.type === 'alimentaire').length}
+                      </p>
+                    </div>
+                    <div className="space-y-4">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Industriels</p>
+                      <p className="text-2xl font-black italic tracking-tighter text-blue-600">
+                        {formData.products.filter(p => p.type === 'industriel').length}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Détails Alimentaires</p>
-                    <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
-                      {formData.products.filter(p => p.type === 'alimentaire').length} <span className="text-sm uppercase not-italic text-slate-400">Articles</span>
-                    </p>
+
+                <div className="bg-emerald-50 p-8 rounded-[2.5rem] border border-emerald-100 space-y-6 shadow-sm">
+                  <div className="flex justify-between items-center border-b border-emerald-200 pb-4">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600">Statut du Paiement</h4>
+                    <i className="fas fa-check-circle text-emerald-500"></i>
                   </div>
                   <div className="space-y-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Détails Industriels</p>
-                    <p className="text-2xl font-black italic tracking-tighter text-blue-600">
-                      {formData.products.filter(p => p.type === 'industriel').length} <span className="text-sm uppercase not-italic text-slate-400">Articles</span>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600/60">Montant réglé</p>
+                    <p className="text-2xl font-black italic tracking-tighter text-emerald-700">
+                      {fees.total.toFixed(3)} TND
                     </p>
+                    <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Transaction validée par le système</p>
                   </div>
                 </div>
               </div>
@@ -1083,7 +1335,7 @@ const ProductDeclaration: React.FC = () => {
             </button>
           )}
           <div className="flex-grow"></div>
-          {step < 4 ? (
+          {step < 5 ? (
             <button 
               onClick={handleSubmit}
               disabled={isLoading || (step === 1 && formData.products.length === 0)}
@@ -1102,9 +1354,9 @@ const ProductDeclaration: React.FC = () => {
           ) : (
             <button 
               onClick={handleSubmit}
-              disabled={!isAgreed || isLoading}
+              disabled={!isAgreed || isLoading || !isPaid}
               className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
-                isAgreed && !isLoading ? 'bg-tunisia-red text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                isAgreed && !isLoading && isPaid ? 'bg-tunisia-red text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               }`}
             >
               {isLoading ? (
