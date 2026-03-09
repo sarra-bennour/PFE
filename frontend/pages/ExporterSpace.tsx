@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GoogleGenAI } from '@google/genai';
 import { useAuth } from '../App';
@@ -29,6 +29,7 @@ interface DossierResponse {
   hasDossier: boolean;
   demandeId?: number;
   status?: string;
+  paymentStatus?: string;
   reference?: string;
   submittedAt?: string;
   requiresCompletion?: boolean;
@@ -144,7 +145,7 @@ const FileUploadBox = ({
 
 const ExporterSpace: React.FC = () => {
   const { t } = useTranslation();
-  const { user, updateUserStatus, updateUser } = useAuth();
+  const { user, updateUserStatus, dossierStatus, updateDossierStatus } = useAuth();
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
@@ -171,6 +172,9 @@ const ExporterSpace: React.FC = () => {
   const [expiryMonth, setExpiryMonth] = useState('');
   const [expiryYear, setExpiryYear] = useState('');
   const [cvv, setCvv] = useState('');
+
+  // Ref pour éviter les appels multiples
+  const hasFetchedRef = useRef(false);
 
   const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
   const currentYear = new Date().getFullYear() % 100;
@@ -202,14 +206,12 @@ const ExporterSpace: React.FC = () => {
   // Au début du composant
 useEffect(() => {
   const token = localStorage.getItem('token');
-  console.log('🔑 Token complet:', token);
   
   if (token) {
     // Décoder le token pour voir son contenu
     const base64Url = token.split('.')[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const payload = JSON.parse(window.atob(base64));
-    console.log('📦 Payload du token:', payload);
   }
 }, []);
 
@@ -227,46 +229,78 @@ useEffect(() => {
     }
   ];
 
-  // Vérifier le statut du dossier au chargement
-  useEffect(() => {
-    const fetchDossierStatus = async () => {
-      try {
-        const token = localStorage.getItem('token');
+  // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
+  const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
 
-        if (!token) {
-          console.error('❌ Token manquant - redirection vers login');
-          window.location.href = '/login';
-          return;
-        }
-
-        console.log('🔑 Token récupéré:', token.substring(0, 20) + '...');
-
-        const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setDossierInfo(response.data);
-        
-        // Mettre à jour le statut utilisateur en fonction du dossier
-        if (response.data.hasDossier) {
-          if (response.data.status === 'SOUMISE' || response.data.status === 'EN_ATTENTE_PAIEMENT') {
-            updateUserStatus('PENDING_VERIFICATION');
-          } else if (response.data.status === 'VALIDEE') {
-            updateUserStatus('VERIFIED');
-          } else if (response.data.status === 'BROUILLON') {
-            updateUserStatus('PROFILE_INCOMPLETE');
-          } else if (response.data.status === 'PAYEE') {
-            updateUserStatus('PAYMENT_PENDING');
-          }
-        }
-      } catch (error) {
-        console.error('Erreur lors de la récupération du dossier:', error);
+    try {
+      // Utiliser d'abord le cache si disponible et pas de rafraîchissement forcé
+      if (!forceRefresh && dossierStatus) {
+        console.log('📋 Utilisation des statuts en cache:', dossierStatus);
+        setDossierInfo({
+          hasDossier: true,
+          status: dossierStatus.demandeStatus,
+          paymentStatus: dossierStatus.paymentStatus,
+          demandeId: dossierStatus.demandeId,
+          reference: dossierStatus.reference,
+          success: true,
+          message: '',
+          timestamp: dossierStatus.lastUpdated
+        } as DossierResponse);
+        return;
       }
-    };
 
-    if (user?.email) {
+      // Sinon, appel API
+      console.log('🌐 Appel API pour rafraîchir les statuts');
+      const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setDossierInfo(response.data);
+      
+      // Mettre à jour le cache dans useAuth
+      if (response.data.hasDossier) {
+        updateDossierStatus(
+          response.data.status || '',
+          response.data.paymentStatus || 'EN_ATTENTE',
+          {
+            demandeId: response.data.demandeId,
+            reference: response.data.reference
+          }
+        );
+      }
+      
+      // Mettre à jour le statut utilisateur en fonction du dossier
+      if (response.data.hasDossier) {
+        if (response.data.status === 'SOUMISE' || response.data.status === 'EN_ATTENTE_PAIEMENT') {
+          updateUserStatus('PENDING_VERIFICATION');
+        } else if (response.data.status === 'VALIDEE') {
+          updateUserStatus('VERIFIED');
+        } else if (response.data.status === 'BROUILLON') {
+          updateUserStatus('PROFILE_INCOMPLETE');
+        } else if (response.data.status === 'PAYEE') {
+          updateUserStatus('PAYMENT_PENDING');
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération du dossier:', error);
+    }
+  }, [dossierStatus, updateDossierStatus, updateUserStatus]);
+
+  // Chargement initial - ne s'exécute qu'une fois
+  useEffect(() => {
+    if (user?.email && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchDossierStatus();
     }
-  }, [user]);
+  }, [user?.email, fetchDossierStatus]);
+
+  // Fonction pour rafraîchir les données (appelée manuellement)
+  const refreshDossierData = useCallback(async () => {
+    hasFetchedRef.current = false; // Réinitialiser pour forcer le rafraîchissement
+    await fetchDossierStatus(true); // true = force refresh
+  }, [fetchDossierStatus]);
 
   const handleFileChange = (field: keyof KycData, file: File | null) => {
     setKycData(prev => ({ ...prev, [field]: file }));
@@ -282,7 +316,6 @@ useEffect(() => {
       produits: []
     };
     
-    console.log('📤 Création du dossier avec:', requestData);
     
     // 1. Créer le dossier
     const createResponse = await axios.post('http://localhost:8080/api/exportateur/dossier/creer', requestData, {
@@ -292,7 +325,6 @@ useEffect(() => {
       }
     });
 
-    console.log('✅ Dossier créé:', createResponse.data);
     const demandeId = createResponse.data.demandeId;
 
     // Stocker le demandeId dans dossierInfo localement
@@ -302,6 +334,9 @@ useEffect(() => {
       hasDossier: true,
       status: 'BROUILLON'
     } as DossierResponse));
+
+    // Mettre à jour le cache
+    updateDossierStatus('BROUILLON', 'EN_ATTENTE', { demandeId });
 
     // 2. MAPPING CORRECT des types de documents
     const documentTypeMapping: Record<string, string> = {
@@ -332,7 +367,6 @@ useEffect(() => {
         formData.append('file', file as File);
         formData.append('documentType', documentType);
         
-        console.log(`📤 Uploading ${field} as ${documentType}...`);
         
         await axios.post(
           `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`, 
@@ -344,7 +378,6 @@ useEffect(() => {
             }
           }
         );
-        console.log(`✅ ${field} upload réussi`);
       }
     }
 
@@ -358,6 +391,9 @@ useEffect(() => {
       ...prev,
       status: 'SOUMISE'
     } as DossierResponse));
+
+    // Mettre à jour le cache
+    updateDossierStatus('SOUMISE', 'EN_ATTENTE', { demandeId });
 
     setShowInvoice(true);
     
@@ -401,7 +437,6 @@ useEffect(() => {
       }
     );
     
-    console.log('✅ PaymentIntent créé:', response.data);
     
     setPaymentIntentId(response.data.paymentIntentId);
     
@@ -442,7 +477,6 @@ useEffect(() => {
       amount: 500.0
     };
     
-    console.log('💳 Traitement du paiement...', paymentRequest);
     
     // Appeler le backend pour confirmer le paiement
     const response = await axios.post(
@@ -456,12 +490,11 @@ useEffect(() => {
       }
     );
     
-    console.log('✅ Réponse paiement:', response.data);
     return response.data;
   };
 
   // Fonction pour rafraîchir les données du dossier
-  const refreshDossierData = async () => {
+  const refreshDossierDataOld = async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
@@ -470,6 +503,18 @@ useEffect(() => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setDossierInfo(response.data);
+      
+      // Mettre à jour le cache
+      if (response.data.hasDossier) {
+        updateDossierStatus(
+          response.data.status || '',
+          response.data.paymentStatus || 'EN_ATTENTE',
+          {
+            demandeId: response.data.demandeId,
+            reference: response.data.reference
+          }
+        );
+      }
       
       // Mettre à jour le statut utilisateur
       if (response.data.hasDossier) {
@@ -538,7 +583,6 @@ useEffect(() => {
         return;
       }
       
-      console.log('💰 Début du paiement pour la demande:', dossierInfo.demandeId);
       
       // Étape 1: Créer le PaymentIntent
       const paymentIntentId = await handleCreatePaymentIntent();
@@ -574,8 +618,13 @@ useEffect(() => {
         // Mettre à jour le statut localement
         setDossierInfo(prev => ({
           ...prev,
-          status: 'PAYEE'
+          status: 'EN_COURS_VALIDATION'
         } as DossierResponse));
+
+        // Mettre à jour le cache avec le nouveau statut
+        updateDossierStatus('EN_COURS_VALIDATION', 'REUSSI', { 
+          demandeId: dossierInfo?.demandeId 
+        });
         
         // Rafraîchir les données depuis le backend
         await refreshDossierData();
@@ -609,10 +658,13 @@ useEffect(() => {
     }
   };
 
+  // MODIFICATION: Simplification de handlePayLater
   const handlePayLater = () => {
-    updateUserStatus('PAYMENT_PENDING');
+    // Fermer la facture
     setShowInvoice(false);
     setShowTerminal(false);
+    
+    // Pas besoin de rafraîchir, le cache est déjà à jour
   };
 
   const getRemainingDays = () => {
@@ -1028,38 +1080,15 @@ useEffect(() => {
     );
   }
 
-  // --- RENDU : DOSSIER EN ATTENTE DE VALIDATION ---
-  if (dossierInfo?.status === 'SOUMISE' || dossierInfo?.status === 'EN_ATTENTE_PAIEMENT' || user?.status === 'PENDING_VERIFICATION') {
-    return (
-      <div className="max-w-2xl mx-auto py-24 text-center animate-fade-in-scale">
-        <div className="bg-white rounded-[3rem] p-12 shadow-2xl border border-emerald-100 mb-8">
-          <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-pulse">
-            <i className="fas fa-hourglass-half text-4xl"></i>
-          </div>
-          <h2 className="text-3xl font-black text-slate-900 mb-4 uppercase italic tracking-tighter">Analyse en cours</h2>
-          <p className="text-slate-500 font-medium leading-relaxed mb-8">
-            {dossierInfo?.message || "Vos frais ont été acquittés. Le Comité de Pilotage (COPIL) examine actuellement votre dossier. Réponse estimée sous 48h."}
-          </p>
-          <div className="mt-8 p-4 bg-slate-50 rounded-2xl text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-            RÉFÉRENCE : {dossierInfo?.reference || Math.random().toString(36).substring(7).toUpperCase()}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  // --- RENDU : DASHBOARD PRINCIPAL (DOCUMENTS VALIDÉS) ---
+  // --- RENDU : DASHBOARD PRINCIPAL (DOCUMENTS VALIDÉS OU DOSSIER SOUMIS EN ATTENTE DE PAIEMENT) ---
   const daysRemaining = getRemainingDays();
   
-  // Vérifier correctement si le paiement est en attente
-  const isPaymentPending = 
-    (user?.status === 'PAYMENT_PENDING' && dossierInfo?.status !== 'PAYEE') || 
-    (dossierInfo?.status === 'EN_ATTENTE_PAIEMENT' && dossierInfo?.status !== 'PAYEE');
-
-  // Ne pas afficher la bannière si le statut est PAYEE
-  const shouldShowPaymentBanner = isPaymentPending && 
-    dossierInfo?.status !== 'PAYEE' && 
-    dossierInfo?.status !== 'VALIDEE';
+  // MODIFICATION: Nouvelle logique simplifiée pour la bannière
+  // La bannière s'affiche si le dossier est soumis (SOUMISE) et que le paiement n'est pas encore fait
+  const shouldShowPaymentBanner = 
+    dossierInfo?.hasDossier && 
+    dossierInfo?.status === 'SOUMISE';
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-scale">
@@ -1109,65 +1138,83 @@ useEffect(() => {
           <i className="fas fa-robot mr-2"></i> Support Expert IA
         </button>
       </div>
-{/* HERO SECTION : DÉCLARATIONS DE PRODUITS */}
-      <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 relative overflow-hidden">
-        <div className="absolute -right-20 -top-20 opacity-[0.03] pointer-events-none">
-          <i className="fas fa-box-open text-[25rem] transform rotate-12"></i>
-        </div>
-        
-        <div className="relative z-10">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-            <div>
-              <h2 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Mes Déclarations</h2>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Gestion des lots de marchandises en cours</p>
+      
+      {/* HERO SECTION : DÉCLARATIONS DE PRODUITS - Ne s'affiche que si le dossier est validé */}
+      {dossierInfo?.status === 'VALIDEE' ? (
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 relative overflow-hidden">
+          <div className="absolute -right-20 -top-20 opacity-[0.03] pointer-events-none">
+            <i className="fas fa-box-open text-[25rem] transform rotate-12"></i>
+          </div>
+          
+          <div className="relative z-10">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+              <div>
+                <h2 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Mes Déclarations</h2>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Gestion des lots de marchandises en cours</p>
+              </div>
+              <div className="flex items-center gap-4 w-full md:w-auto">
+                <button 
+                  onClick={() => navigate('/declare-product')}
+                  className="bg-tunisia-red text-white px-8 py-4 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group whitespace-nowrap"
+                >
+                  <i className="fas fa-plus-circle"></i>
+                  <span className="text-[10px] font-black uppercase tracking-widest">Nouvelle</span>
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-4 w-full md:w-auto">
-              <button 
-                onClick={() => navigate('/declare-product')}
-                className="bg-tunisia-red text-white px-8 py-4 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group whitespace-nowrap"
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-2">Total Déclarations</span>
+                <div className="text-3xl font-black text-slate-900 italic tracking-tighter">01</div>
+              </div>
+              <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100">
+                <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest block mb-2">En cours</span>
+                <div className="text-3xl font-black text-amber-600 italic tracking-tighter">01</div>
+              </div>
+              <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
+                <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest block mb-2">Validées</span>
+                <div className="text-3xl font-black text-emerald-600 italic tracking-tighter">00</div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div 
+                onClick={() => navigate('/declarations')}
+                className="p-6 bg-slate-900 rounded-[2rem] flex items-center justify-between group cursor-pointer overflow-hidden relative"
               >
-                <i className="fas fa-plus-circle"></i>
-                <span className="text-[10px] font-black uppercase tracking-widest">Nouvelle</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
-              <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-2">Total Déclarations</span>
-              <div className="text-3xl font-black text-slate-900 italic tracking-tighter">01</div>
-            </div>
-            <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100">
-              <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest block mb-2">En cours</span>
-              <div className="text-3xl font-black text-amber-600 italic tracking-tighter">01</div>
-            </div>
-            <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
-              <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest block mb-2">Validées</span>
-              <div className="text-3xl font-black text-emerald-600 italic tracking-tighter">00</div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div 
-              onClick={() => navigate('/declarations')}
-              className="p-6 bg-slate-900 rounded-[2rem] flex items-center justify-between group cursor-pointer overflow-hidden relative"
-            >
-               <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
-               <div className="flex items-center gap-4 relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
-                    <i className="fas fa-list-check text-white"></i>
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au Registre Complet</p>
-                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Consultez, filtrez et suivez l'état de toutes vos déclarations</p>
-                  </div>
-               </div>
-               <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
+                 <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
+                 <div className="flex items-center gap-4 relative z-10">
+                    <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
+                      <i className="fas fa-list-check text-white"></i>
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au Registre Complet</p>
+                      <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Consultez, filtrez et suivez l'état de toutes vos déclarations</p>
+                    </div>
+                 </div>
+                 <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
+      ) : (
+        /* Message si le dossier n'est pas encore validé */
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100">
+          <div className="text-center py-12">
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <i className="fas fa-box-open text-3xl text-slate-400"></i>
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 mb-3 uppercase italic tracking-tighter">Déclarations de produits</h3>
+            <p className="text-slate-500 max-w-md mx-auto mb-2">
+              La gestion des lots de marchandises sera disponible après la validation de votre dossier par le comité.
+            </p>
+            <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">
+              Statut actuel : {dossierInfo?.status === 'EN_COURS_VALIDATION' ? 'En cours de validation' : 'En attente de paiement'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* PIPELINE DE STATUT TYPE JENKINS */}
       <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">

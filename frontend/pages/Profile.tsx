@@ -24,7 +24,7 @@ interface DemandeInfo {
 
 const Profile: React.FC = () => {
   const { t } = useTranslation();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, dossierStatus } = useAuth();
   const navigate = useNavigate();
   
   const [isEditing, setIsEditing] = useState(false);
@@ -40,7 +40,7 @@ const Profile: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState('');
   
   // États pour les données du dossier
-  const [dossierStatus, setDossierStatus] = useState<any>(null);
+  const [dossierStatusLocal, setDossierStatusLocal] = useState<any>(null);
   const [demandeInfo, setDemandeInfo] = useState<DemandeInfo | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDossier, setLoadingDossier] = useState(false);
@@ -203,7 +203,7 @@ const Profile: React.FC = () => {
       const data = await response.json();
       
       if (data.success) {
-        setDossierStatus(data);
+        setDossierStatusLocal(data);
         
         if (data.hasDossier && data.demandeId) {
           setDemandeInfo({
@@ -366,14 +366,14 @@ const getDisplayDocuments = () => {
   }
   
   // Sinon, données mock basées sur le statut de la demande
-  if (dossierStatus?.status === 'VALIDEE') {
+  if (dossierStatusLocal?.status === 'VALIDEE') {
     return [
       { id: 1, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
       { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
       { id: 3, name: "Attestation fiscale", status: "Validé", date: "12/01/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
       { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
     ];
-  } else if (dossierStatus?.status === 'EN_COURS_VALIDATION' || dossierStatus?.status === 'SOUMISE') {
+  } else if (dossierStatusLocal?.status === 'EN_COURS_VALIDATION' || dossierStatusLocal?.status === 'SOUMISE') {
     return [
       { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
       { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
@@ -756,7 +756,13 @@ const getDisplayDocuments = () => {
     );
   };
 
-  const isPaymentPending = false;
+  // Déterminer si la bannière de paiement doit s'afficher
+  // Utilise les statuts du cache (dossierStatus) ou les statuts locaux
+  const shouldShowPaymentBanner = 
+    (dossierStatus?.demandeStatus === 'SOUMISE' || dossierStatusLocal?.status === 'SOUMISE') && 
+    (dossierStatus?.paymentStatus === 'EN_ATTENTE' || dossierStatusLocal?.paymentStatus === 'EN_ATTENTE');
+
+
   const isVerifiedExporter = (user.role === 'EXPORTATEUR' || user.role === 'exporter') && 
                             (user.statut === 'ACTIF' || user.emailVerified === true);
   const remainingDays = getRemainingDays();
@@ -937,8 +943,8 @@ const getDisplayDocuments = () => {
         </div>
       )}
 
-      {/* ALERTE PAIEMENT PERSISTANTE */}
-      {isPaymentPending && (
+      {/* ALERTE PAIEMENT PERSISTANTE - basée sur les statuts du cache */}
+      {shouldShowPaymentBanner && (
         <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl mb-10 flex items-center justify-between border-4 border-tunisia-red/20 animate-fade-in-scale">
            <div className="flex items-center gap-6">
               <div className="w-16 h-16 bg-tunisia-red rounded-2xl flex items-center justify-center text-3xl font-black italic shadow-lg shadow-red-500/20">

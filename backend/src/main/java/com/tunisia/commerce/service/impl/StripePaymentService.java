@@ -84,7 +84,7 @@ public class StripePaymentService {
 
             // 4. Vérifier que la demande peut être payée
             if (demande.getStatus() != DemandeStatus.SOUMISE &&
-                    demande.getStatus() != DemandeStatus.EN_ATTENTE_PAIEMENT) {
+                    demande.getPaymentStatus() != PaymentStatus.EN_ATTENTE) {
                 throw new RuntimeException("Cette demande ne peut pas être payée (statut: " + demande.getStatus() + ")");
             }
 
@@ -175,7 +175,7 @@ public class StripePaymentService {
             if (success) {
                 // Paiement réussi
                 demande.setPaymentStatus(PaymentStatus.REUSSI);
-                demande.setStatus(DemandeStatus.PAYEE);
+                demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
                 demande.setSubmittedAt(LocalDateTime.now());
                 demandeRepository.save(demande);
 
@@ -311,7 +311,7 @@ public class StripePaymentService {
             // Vérifier le statut du paiement
             if ("succeeded".equals(paymentIntent.getStatus())) {
                 demande.setPaymentStatus(PaymentStatus.REUSSI);
-                demande.setStatus(DemandeStatus.PAYEE);
+                demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
                 demande.setSubmittedAt(LocalDateTime.now());
                 demandeRepository.save(demande);
 
@@ -387,7 +387,7 @@ public class StripePaymentService {
 
             if (demande != null) {
                 demande.setPaymentStatus(PaymentStatus.REUSSI);
-                demande.setStatus(DemandeStatus.PAYEE);
+                demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
                 demandeRepository.save(demande);
 
                 log.info("Paiement réussi pour la demande: {}", demandeId);

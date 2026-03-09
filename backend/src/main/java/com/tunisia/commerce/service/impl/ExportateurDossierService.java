@@ -201,9 +201,6 @@ public class ExportateurDossierService {
 
         demande = demandeRepository.save(demande);
 
-        // Notifier les agents de validation (à implémenter)
-        // emailService.notifierNouvelleDemande(demande);
-
         return demande;
     }
 

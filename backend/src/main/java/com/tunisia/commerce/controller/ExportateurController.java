@@ -501,10 +501,6 @@ public class ExportateurController {
                 return "Votre dossier est en cours de saisie";
             case SOUMISE:
                 return "Votre dossier a été soumis et est en attente de validation";
-            case EN_ATTENTE_PAIEMENT:
-                return "Veuillez procéder au paiement des frais de dossier";
-            case PAYEE:
-                return "Paiement reçu, dossier en cours de validation";
             case EN_COURS_VALIDATION:
                 return "Votre dossier est en cours d'examen par nos services";
             case EN_ATTENTE_INFO:
@@ -525,11 +521,6 @@ public class ExportateurController {
                         "Compléter toutes les sections du formulaire",
                         "Télécharger tous les documents requis",
                         "Soumettre le dossier"
-                );
-            case EN_ATTENTE_PAIEMENT:
-                return List.of(
-                        "Procéder au paiement en ligne",
-                        "Le dossier sera automatiquement soumis après paiement"
                 );
             case EN_ATTENTE_INFO:
                 return List.of(

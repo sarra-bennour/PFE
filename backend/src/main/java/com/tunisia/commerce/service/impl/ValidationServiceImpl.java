@@ -104,7 +104,7 @@ public class ValidationServiceImpl implements ValidationService {
 
             if (demandeConformiteOpt.isPresent()) {
                 DemandeEnregistrement demande = demandeConformiteOpt.get();
-                demande.setStatus(DemandeStatus.PAYEE); // En attente de paiement maintenant
+                demande.setStatus(DemandeStatus.VALIDEE); // En attente de paiement maintenant
                 demandeRepository.save(demande);
 
                 // Notifier l'exportateur que ses documents sont validés
@@ -119,7 +119,7 @@ public class ValidationServiceImpl implements ValidationService {
 
                 if (!declarations.isEmpty()) {
                     DemandeEnregistrement derniereDeclaration = declarations.get(0); // La plus récente
-                    derniereDeclaration.setStatus(DemandeStatus.PAYEE);
+                    derniereDeclaration.setStatus(DemandeStatus.EN_COURS_VALIDATION);
                     demandeRepository.save(derniereDeclaration);
 
                     emailService.sendDocumentsValidesNotification(

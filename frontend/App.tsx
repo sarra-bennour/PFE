@@ -1,6 +1,7 @@
 import React, { useEffect, useState, createContext, useContext } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuth as useAuthHook } from './hooks/useAuth';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Home from './pages/Home';
@@ -30,12 +31,23 @@ export interface User {
   submissionDate?: string;
 }
 
+// Interface pour les statuts du dossier
+interface DossierStatus {
+  demandeStatus: string;
+  paymentStatus: string;
+  lastUpdated: string;
+  demandeId?: number;
+  reference?: string;
+}
+
 interface AuthContextType {
   user: User | null;
-  login: (user: User) => void;
+  login: (user: User, token: string) => void;
   logout: () => void;
   updateUserStatus: (status: ExporterStatus) => void;
   updateUser: (data: Partial<User>) => void;
+  dossierStatus: DossierStatus | null;
+  updateDossierStatus: (demandeStatus: string, paymentStatus: string, additionalData?: any) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -58,7 +70,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const isLoginPage = location.pathname === '/login';
   const isForgotPasswordPage = location.pathname === '/forgot-password';
-  const isResetPasswordPage = location.pathname === '/reset-password'; // NOUVEAU
+  const isResetPasswordPage = location.pathname === '/reset-password';
   const isAdminBackOffice = location.pathname === '/admin' && user?.role === 'admin';
 
   return (
@@ -78,7 +90,7 @@ const ForgotPasswordWrapper: React.FC = () => {
   return <ForgotPassword onBack={() => navigate('/login')} />;
 };
 
-// NOUVEAU: Wrapper pour la réinitialisation de mot de passe
+// Wrapper pour la réinitialisation de mot de passe
 const ResetPasswordWrapper: React.FC = () => {
   const navigate = useNavigate();
   const { search } = useLocation();
@@ -106,28 +118,59 @@ const ResetPasswordWrapper: React.FC = () => {
   );
 };
 
-// Importez useNavigate
-import { useNavigate } from 'react-router-dom';
-
 const App: React.FC = () => {
   const { i18n } = useTranslation();
+  const authHook = useAuthHook(); // Utiliser le hook personnalisé
+  
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
-  const login = (userData: User) => setUser(userData);
-  const logout = () => setUser(null);
-  const updateUserStatus = (status: ExporterStatus) => {
-    if (user) setUser({ ...user, status });
+  // Synchroniser l'utilisateur depuis le hook au chargement
+  useEffect(() => {
+    if (authHook.user) {
+      setUser(authHook.user as User);
+    }
+  }, [authHook.user]);
+
+  const login = (userData: User, token: string) => {
+    authHook.login(userData, token); // Utiliser le login du hook
+    setUser(userData);
   };
+
+  const logout = () => {
+    authHook.logout(); // Utiliser le logout du hook
+    setUser(null);
+  };
+
+  const updateUserStatus = (status: ExporterStatus) => {
+    if (user) {
+      const updatedUser = { ...user, status };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+  };
+
   const updateUser = (data: Partial<User>) => {
-    if (user) setUser({ ...user, ...data });
+    if (user) {
+      const updatedUser = { ...user, ...data };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, updateUserStatus, updateUser }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      updateUserStatus, 
+      updateUser,
+      dossierStatus: authHook.dossierStatus,
+      updateDossierStatus: authHook.updateDossierStatus
+    }}>
       <Router>
         <AppLayout>
           <Routes>
@@ -136,7 +179,7 @@ const App: React.FC = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPasswordWrapper />} />
             
-            {/* NOUVELLE ROUTE: Réinitialisation de mot de passe */}
+            {/* Route de réinitialisation de mot de passe */}
             <Route path="/reset-password" element={<ResetPasswordWrapper />} />
             
             <Route path="/profile" element={

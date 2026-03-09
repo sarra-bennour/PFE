@@ -50,7 +50,7 @@ public class DemandeEnregistrementService {
 
         // Vérifier si l'exportateur a déjà une demande en cours
         long pendingDemandes = demandeRepository.countByExportateurIdAndStatus(
-                exportateur.getId(), DemandeStatus.EN_ATTENTE);
+                exportateur.getId(), DemandeStatus.SOUMISE);
 
         if (pendingDemandes > 0) {
             throw new RuntimeException("Vous avez déjà une demande en cours de traitement");
