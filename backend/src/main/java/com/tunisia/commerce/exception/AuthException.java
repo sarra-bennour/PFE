@@ -79,4 +79,86 @@ public class AuthException extends RuntimeException {
                 HttpStatus.FORBIDDEN
         );
     }
+
+    public static AuthException emailAlreadyUsed(String email) {
+        return new AuthException(
+                "Cette adresse email est déjà utilisée par un autre compte",
+                "EMAIL_ALREADY_USED",
+                HttpStatus.CONFLICT,
+                email
+        );
+    }
+
+    public static AuthException tinNumberAlreadyUsed(String tinNumber) {
+        return new AuthException(
+                "Ce numéro de registre de commerce est déjà utilisé",
+                "TIN_NUMBER_ALREADY_USED",
+                HttpStatus.CONFLICT,
+                tinNumber
+        );
+    }
+
+    public static AuthException invalidPhoneNumber(String phoneNumber) {
+        return new AuthException(
+                "Le numéro de téléphone fourni n'est pas valide",
+                "INVALID_PHONE_NUMBER",
+                HttpStatus.BAD_REQUEST,
+                phoneNumber
+        );
+    }
+
+    public static AuthException invalidEmailFormat(String email) {
+        return new AuthException(
+                "Le format de l'adresse email n'est pas valide",
+                "INVALID_EMAIL_FORMAT",
+                HttpStatus.BAD_REQUEST,
+                email
+        );
+    }
+
+    public static AuthException weakPassword(String reason) {
+        return new AuthException(
+                "Le mot de passe est trop faible : " + reason,
+                "WEAK_PASSWORD",
+                HttpStatus.BAD_REQUEST,
+                reason
+        );
+    }
+
+    public static AuthException missingRequiredField(String fieldName) {
+        return new AuthException(
+                "Le champ '" + fieldName + "' est obligatoire",
+                "MISSING_REQUIRED_FIELD",
+                HttpStatus.BAD_REQUEST,
+                fieldName
+        );
+    }
+
+    public static AuthException invalidCountryCode(String countryCode) {
+        return new AuthException(
+                "Le code pays '" + countryCode + "' n'est pas valide",
+                "INVALID_COUNTRY_CODE",
+                HttpStatus.BAD_REQUEST,
+                countryCode
+        );
+    }
+
+    public static AuthException emailSendingFailed(String email, String reason) {
+        return new AuthException(
+                "L'envoi de l'email de vérification a échoué: " + reason,
+                "EMAIL_SENDING_FAILED",
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                email, reason
+        );
+    }
+
+    public static AuthException registrationFailed(String reason) {
+        return new AuthException(
+                "L'inscription a échoué: " + reason,
+                "REGISTRATION_FAILED",
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                reason
+        );
+    }
+
 }

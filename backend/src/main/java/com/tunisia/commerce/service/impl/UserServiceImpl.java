@@ -59,20 +59,65 @@ public class UserServiceImpl implements UserService {
     public UserDTO registerExportateur(ExportateurSignupRequest request) {
         logger.info("=== INSCRIPTION EXPORTATEUR ===");
 
-        // Validation
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException("Email déjà utilisé");
+        // Validation des champs obligatoires
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+            throw AuthException.missingRequiredField("email");
         }
+        if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            throw AuthException.missingRequiredField("password");
+        }
+        if (request.getCompanyName() == null || request.getCompanyName().trim().isEmpty()) {
+            throw AuthException.missingRequiredField("companyName");
+        }
+        if (request.getTinNumber() == null || request.getTinNumber().trim().isEmpty()) {
+            throw AuthException.missingRequiredField("tinNumber");
+        }
+        if (request.getCountry() == null || request.getCountry().trim().isEmpty()) {
+            throw AuthException.missingRequiredField("country");
+        }
+
+        // Validation du format email
+        if (!isValidEmail(request.getEmail())) {
+            throw AuthException.invalidEmailFormat(request.getEmail());
+        }
+
+        // Validation du pays
+        if (!isValidCountryCode(request.getCountry())) {
+            throw AuthException.invalidCountryCode(request.getCountry());
+        }
+
+        // Validation du mot de passe (minimum 8 caractères)
+        if (request.getPassword().length() < 8) {
+            throw AuthException.weakPassword("Le mot de passe doit contenir au moins 8 caractères");
+        }
+
+        // Validation supplémentaire du mot de passe (si besoin)
+        if (!hasStrongPassword(request.getPassword())) {
+            throw AuthException.weakPassword("Le mot de passe doit contenir au moins une majuscule, un chiffre et un caractère spécial");
+        }
+
+        // Validation du numéro de téléphone (optionnel mais recommandé)
+        if (request.getPhone() != null && !request.getPhone().trim().isEmpty()) {
+            if (!isValidPhoneNumber(request.getPhone())) {
+                throw AuthException.invalidPhoneNumber(request.getPhone());
+            }
+        }
+
+        // Vérification email déjà utilisé
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw AuthException.emailAlreadyUsed(request.getEmail());
+        }
+
+        // Vérification numéro registre commerce déjà utilisé
         if (exportateurRepository.existsByNumeroRegistreCommerce(request.getTinNumber())) {
-            throw new IllegalArgumentException("Numéro de registre de commerce déjà utilisé");
+            throw AuthException.tinNumberAlreadyUsed(request.getTinNumber());
         }
 
         // Générer le token de vérification
         String verificationToken = generateVerificationToken();
         LocalDateTime tokenExpiry = LocalDateTime.now().plusHours(verificationExpiryHours);
 
-        // ✅ SOLUTION: Créer DIRECTEMENT l'exportateur avec TOUS les champs
-        // Les champs de User sont accessibles car ExportateurEtranger extends User
+        // Création de l'exportateur
         ExportateurEtranger exportateur = new ExportateurEtranger();
 
         // === CHAMPS DE LA CLASSE PARENT (User) ===
@@ -107,12 +152,14 @@ public class UserServiceImpl implements UserService {
         logger.info("Création de l'exportateur avec email: " + exportateur.getEmail());
         logger.info("Rôle défini: " + exportateur.getRole());
 
-        // ✅ Une seule sauvegarde - Hibernate s'occupe de tout !
-        // Grâce à l'héritage JOINED, Hibernate va:
-        // 1. Insérer d'abord dans la table 'users'
-        // 2. Récupérer l'ID généré
-        // 3. Insérer dans la table 'exportateurs' avec le même ID
-        ExportateurEtranger saved = exportateurRepository.save(exportateur);
+        // Sauvegarde
+        ExportateurEtranger saved;
+        try {
+            saved = exportateurRepository.save(exportateur);
+        } catch (Exception e) {
+            logger.severe("Erreur lors de la sauvegarde de l'exportateur: " + e.getMessage());
+            throw AuthException.registrationFailed(e.getMessage());
+        }
 
         logger.info("Exportateur sauvegardé avec ID: " + saved.getId());
         logger.info("Vérification dans users: " + userRepository.findById(saved.getId()).isPresent());
@@ -127,9 +174,42 @@ public class UserServiceImpl implements UserService {
             logger.info("Email de vérification envoyé à: " + request.getEmail());
         } catch (Exception e) {
             logger.severe("Erreur lors de l'envoi de l'email: " + e.getMessage());
+            // On ne bloque pas l'inscription mais on log l'erreur
+            // On pourrait aussi lancer une exception si on veut que l'inscription échoue en cas d'échec d'envoi d'email
+            // throw AuthException.emailSendingFailed(request.getEmail(), e.getMessage());
         }
 
         return mapToUserDTO(saved);
+    }
+
+    // Méthodes utilitaires privées
+    private boolean isValidEmail(String email) {
+        String emailRegex = "^[A-Za-z0-9+_.-]+@(.+)$";
+        return email != null && email.matches(emailRegex);
+    }
+
+    private boolean isValidCountryCode(String countryCode) {
+        // Liste des codes pays valides (à adapter selon vos besoins)
+        List<String> validCountryCodes = Arrays.asList("FR", "IT", "TR", "CN", "ES", "DE", "US", "AE", "DZ", "LY", "SA", "MA", "BE", "CH", "UK");
+        return countryCode != null && validCountryCodes.contains(countryCode);
+    }
+
+    private boolean isValidPhoneNumber(String phoneNumber) {
+        // Validation simple: commence par + suivi de chiffres
+        String phoneRegex = "^\\+?[0-9]{8,15}$";
+        return phoneNumber != null && phoneNumber.matches(phoneRegex);
+    }
+
+    private boolean hasStrongPassword(String password) {
+        if (password == null || password.length() < 8) {
+            return false;
+        }
+
+        boolean hasUpperCase = !password.equals(password.toLowerCase());
+        boolean hasDigit = password.matches(".*\\d.*");
+        boolean hasSpecialChar = password.matches(".*[!@#$%^&*(),.?\":{}|<>].*");
+
+        return hasUpperCase && hasDigit && hasSpecialChar;
     }
 
 

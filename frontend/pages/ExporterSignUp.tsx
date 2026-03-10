@@ -1,14 +1,21 @@
-
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link } from 'react-router-dom';
+import FormAlert from '../components/FormAlert';
 
 interface ExporterSignUpProps {
-  onBack?: () => void; // Prop optionnelle pour l'animation dans Login.tsx
-  embedded?: boolean;   // Pour ajuster le style si intégré dans le shutter
+  onBack?: () => void;
+  embedded?: boolean;
+  onError?: (message: string) => void;
+  onSuccess?: () => void;
 }
 
-const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = false }) => {
+const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ 
+  onBack, 
+  embedded = false,
+  onError,
+  onSuccess 
+}) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -19,6 +26,15 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // États pour l'alerte interne
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [alertType, setAlertType] = useState<'success' | 'error'>('error');
+
+  // États pour la validation de l'email
+  const [emailError, setEmailError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [showEmailError, setShowEmailError] = useState(false);
 
   const [formData, setFormData] = useState({
     companyName: '',
@@ -52,6 +68,42 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
     { code: 'UK', name: 'Royaume-Uni', dial: '+44' },
   ];
 
+  // Fonction pour afficher l'alerte
+  const showAlert = (message: string, type: 'success' | 'error' = 'error') => {
+    setAlertMessage(message);
+    setAlertType(type);
+    
+    // Auto-fermeture après 5 secondes
+    setTimeout(() => {
+      setAlertMessage(null);
+    }, 5000);
+  };
+
+  const closeAlert = () => {
+    setAlertMessage(null);
+  };
+
+  // Fonction de validation email
+  const isValidEmail = useCallback((email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }, []);
+
+  // Fonction pour valider l'email
+  const validateAndSetEmailError = useCallback((emailValue: string): boolean => {
+    if (!emailValue || emailValue.trim() === '') {
+      setEmailError("L'adresse e-mail est requise.");
+      return false;
+    }
+    else if (!isValidEmail(emailValue)) {
+      setEmailError("L'adresse e-mail saisie n'est pas valide. Veuillez vérifier le format (ex: nom@domaine.com).");
+      return false;
+    } else {
+      setEmailError('');
+      return true;
+    }
+  }, [isValidEmail]);
+
   const getPasswordStyles = (pwd: string) => {
     if (pwd.length === 0) return { score: 0, color: 'border-slate-100 focus:ring-slate-200 focus:border-slate-300', text: '', textColor: 'text-slate-400' };
     if (pwd.length < 8) return { score: 1, color: 'border-red-500 focus:ring-red-200 focus:border-red-500', text: 'Trop court (min 8)', textColor: 'text-red-500' };
@@ -80,6 +132,11 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Réinitialiser l'affichage de l'erreur email quand l'utilisateur tape
+    if (name === 'email') {
+      setShowEmailError(false);
+    }
   };
 
   const handleResendEmail = async () => {
@@ -98,68 +155,76 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
 
       if (response.ok) {
         setResentEmail(true);
-        // Réinitialiser après 5 secondes
+        showAlert('Email renvoyé avec succès !', 'success');
         setTimeout(() => {
           setResentEmail(false);
         }, 5000);
       } else {
         const error = await response.json();
-        alert(`Erreur: ${error.message || 'Échec du renvoi de l\'email'}`);
+        showAlert(`Erreur: ${error.message || 'Échec du renvoi de l\'email'}`, 'error');
+        if (onError) onError(`Erreur: ${error.message || 'Échec du renvoi de l\'email'}`);
       }
     } catch (error) {
       console.error('Erreur lors du renvoi de l\'email:', error);
-      alert('Erreur de connexion au serveur');
+      showAlert('Erreur de connexion au serveur', 'error');
+      if (onError) onError('Erreur de connexion au serveur');
     } finally {
       setResentLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (strength.score < 2 || !isMatch) return;
-  
-  setLoading(true);
-  const fullPhoneNumber = `${currentDialCode}${formData.phone}`;
-  
-  try {
-    const response = await fetch('http://localhost:8080/api/auth/signup/exporter', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        companyName: formData.companyName,
-        country: formData.country,
-        city: formData.city,
-        address: formData.address,
-        website: formData.website,
-        phone: fullPhoneNumber,
-        legalRep: formData.legalRep,
-        tinNumber: formData.tin,
-        email: formData.email,
-        password: formData.password
-      }),
-    });
+    e.preventDefault();
+    
+    // Valider l'email avant soumission
+    setEmailTouched(true);
+    const isEmailValid = validateAndSetEmailError(formData.email);
+    setShowEmailError(true);
+    
+    if (strength.score < 2 || !isMatch || !isEmailValid) return;
+    
+    setLoading(true);
+    const fullPhoneNumber = `${currentDialCode}${formData.phone}`;
+    
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/signup/exporter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          companyName: formData.companyName,
+          country: formData.country,
+          city: formData.city,
+          address: formData.address,
+          website: formData.website,
+          phone: fullPhoneNumber,
+          legalRep: formData.legalRep,
+          tinNumber: formData.tin,
+          email: formData.email,
+          password: formData.password
+        }),
+      });
 
-    if (response.ok) {
-      const userData = await response.json();
-      console.log('Inscription réussie:', userData);
-      setSuccess(true);
-      // Rediriger vers le dashboard après inscription
-      // setTimeout(() => {
-      //   navigate('/login');
-      // }, 3000);
-    } else {
-      const error = await response.json();
-      alert(`Erreur: ${error.message || 'Échec de l\'inscription'}`);
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('Inscription réussie:', userData);
+        setSuccess(true);
+        showAlert('Inscription réussie !', 'success');
+        if (onSuccess) onSuccess();
+      } else {
+        const error = await response.json();
+        showAlert(`Erreur: ${error.message || 'Échec de l\'inscription'}`, 'error');
+        if (onError) onError(`Erreur: ${error.message || 'Échec de l\'inscription'}`);
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'inscription:', error);
+      showAlert('Erreur de connexion au serveur', 'error');
+      if (onError) onError('Erreur de connexion au serveur');
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('Erreur lors de l\'inscription:', error);
-    alert('Erreur de connexion au serveur');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const containerClasses = embedded 
     ? "h-full w-full flex flex-col md:flex-row overflow-hidden" 
@@ -178,6 +243,19 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
               )}
               <h2 className="text-2xl font-black italic tracking-tighter uppercase text-slate-900">Enregistrement International</h2>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Formulaire Officiel de Conformité</p>
+              
+              {/* ALERTE SMOOTH DANS SIGNUP SOUS LE TITRE */}
+              {alertMessage && !success && (
+                <div className="mt-4 w-full animate-slide-down">
+                  <div className="w-full max-w-sm mx-0 ml-72">
+                    <FormAlert 
+                      type={alertType}
+                      message={alertMessage}
+                      onClose={closeAlert}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -275,9 +353,27 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('website')}</label>
                   <input name="website" value={formData.website} onChange={handleChange} type="url" className="w-full px-4 py-2.5 rounded-xl border border-slate-100 bg-slate-50 focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs" placeholder="https://www.company.com" />
                 </div>
+                
                 <div className="md:col-span-2 space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('email_pro')}</label>
-                  <input required name="email" value={formData.email} onChange={handleChange} type="email" className="w-full px-4 py-2.5 rounded-xl border border-slate-100 bg-slate-50 focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs" placeholder="contact@company.com" />
+                  <input 
+                    type="text"
+                    name="email"
+                    value={formData.email} 
+                    onChange={handleChange} 
+                    onBlur={() => {
+                      setEmailTouched(true);
+                      validateAndSetEmailError(formData.email);
+                      setShowEmailError(true);
+                    }}
+                    className={`w-full px-4 py-2.5 rounded-xl border-2 ${emailError && showEmailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-100 bg-slate-50'} focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs`} 
+                    placeholder="contact@company.com" 
+                  />
+                  {emailError && showEmailError && (
+                    <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
+                      <i className="fas fa-circle-exclamation mr-1"></i> {emailError}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -328,7 +424,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ onBack, embedded = fals
                 </div>
               </div>
               
-              <button type="submit" disabled={loading || strength.score < 2 || !isMatch} className={`w-full py-4 ${loading || strength.score < 2 || !isMatch ? 'bg-slate-300' : 'bg-tunisia-red hover:bg-red-700'} text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 mt-2`}>
+              <button type="submit" disabled={loading || strength.score < 2 || !isMatch || (emailError && showEmailError)} className={`w-full py-4 ${loading || strength.score < 2 || !isMatch || (emailError && showEmailError) ? 'bg-slate-300' : 'bg-tunisia-red hover:bg-red-700'} text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 mt-2`}>
                 {loading ? 'Traitement...' : t('register_btn')}
               </button>
             </form>

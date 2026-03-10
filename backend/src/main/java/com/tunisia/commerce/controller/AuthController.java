@@ -53,8 +53,22 @@ public class AuthController {
     }
 
     @PostMapping("/signup/exporter")
-    public ResponseEntity<UserDTO> signup(@RequestBody ExportateurSignupRequest request) {
-        return ResponseEntity.ok(userService.registerExportateur(request));
+    public ResponseEntity<?> signup(@RequestBody ExportateurSignupRequest request) {
+        try {
+            UserDTO userDTO = userService.registerExportateur(request);
+            return ResponseEntity.ok(userDTO);
+        } catch (AuthException e) {
+            // Structure avec 'error' et 'message' comme attendu par le frontend
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", "Une erreur inattendue s'est produite");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
     }
 
     @PostMapping("/login")

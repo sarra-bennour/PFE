@@ -30,23 +30,35 @@ const Login: React.FC = () => {
   const [showEmailError, setShowEmailError] = useState(false);
   const [showPasswordError, setShowPasswordError] = useState(false);
   
-  const [alert, setAlert] = useState<{
-    show: boolean;
-    type: 'success' | 'error';
-    message: string;
-    position?: 'top' | 'above-email'; // AJOUTÉ: position de l'alerte
-  }>({
-    show: false,
-    type: 'error',
-    message: '',
-    position: 'top'
-  });
+  // État simplifié pour l'alerte
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [alertType, setAlertType] = useState<'success' | 'error'>('error');
   
   const [showPin, setShowPin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string>('');
 
   const CARD_HEIGHT = 750;
+
+  const handleSignupError = (message: string) => {
+    setAlertMessage(message);
+    setAlertType('error');
+  };
+
+  const handleSignupSuccess = () => {
+    setAlertMessage('Inscription réussie');
+    setAlertType('success');
+  };
+
+  // Fonction simple pour afficher les alertes
+  const showAlert = (message: string, type: 'success' | 'error' = 'error') => {
+    setAlertMessage(message);
+    setAlertType(type);
+  };
+
+  const closeAlert = () => {
+    setAlertMessage(null);
+  };
 
   // Fonction de validation qui retourne un booléen sans setter l'état
   const isValidEmail = useCallback((email: string): boolean => {
@@ -103,7 +115,7 @@ const Login: React.FC = () => {
   const handleResetPasswordToken = (token: string) => {
     setResetToken(token);
     setView('reset_password');
-    showAlert('info', 'Validation du lien de réinitialisation...', 'above-email');
+    showAlert('Validation du lien de réinitialisation...', 'success');
     validateResetToken(token);
   };
 
@@ -119,19 +131,19 @@ const Login: React.FC = () => {
       const data = await response.json();
       
       if (response.ok && data.valid) {
-        showAlert('success', '✅ Lien de réinitialisation valide. Vous pouvez maintenant définir votre nouveau mot de passe.', 'above-email');
+        showAlert('✅ Lien de réinitialisation valide. Vous pouvez maintenant définir votre nouveau mot de passe.', 'success');
       } else {
-        showAlert('error', `❌ ${data.error || 'Le lien de réinitialisation est invalide ou a expiré'}`, 'above-email');
+        showAlert(`❌ ${data.error || 'Le lien de réinitialisation est invalide ou a expiré'}`, 'error');
       }
     } catch (error) {
       console.error('Erreur lors de la validation:', error);
-      showAlert('error', '❌ Erreur de validation du lien', 'above-email');
+      showAlert('❌ Erreur de validation du lien', 'error');
     }
   };
 
   const handleEmailVerification = async (token: string) => {
     setLoading(true);
-    showAlert('info', 'Vérification de votre email en cours...', 'above-email');
+    showAlert('Vérification de votre email en cours...', 'success');
 
     try {
       const response = await fetch(`http://localhost:8080/api/auth/verify-email?token=${token}`, {
@@ -144,37 +156,22 @@ const Login: React.FC = () => {
       const data = await response.json();
       
       if (response.ok) {
-        showAlert('success', '✅ Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.', 'above-email');
+        showAlert('✅ Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.', 'success');
         navigate('/login', { replace: true });
       } else {
-        showAlert('error', `❌ ${data.error || 'Échec de la vérification de l\'email'}`, 'above-email');
+        showAlert(`❌ ${data.error || 'Échec de la vérification de l\'email'}`, 'error');
       }
     } catch (error) {
       console.error('Erreur lors de la vérification:', error);
-      showAlert('error', '❌ Erreur de connexion au serveur', 'above-email');
+      showAlert('❌ Erreur de connexion au serveur', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // MODIFIÉ: showAlert accepte maintenant une position
-  const showAlert = (type: 'success' | 'error' | 'info', message: string, position: 'top' | 'above-email' = 'top') => {
-    const alertType = type === 'info' ? 'success' : type;
-    setAlert({
-      show: true,
-      type: alertType,
-      message: message,
-      position: position
-    });
-  };
-
-  const closeAlert = () => {
-    setAlert({ show: false, type: 'error', message: '', position: 'top' });
-  };
-
   const handleResendVerificationEmail = async () => {
     if (!unverifiedEmail) {
-      showAlert('error', 'Veuillez d\'abord entrer votre email', 'above-email');
+      showAlert('Veuillez d\'abord entrer votre email', 'error');
       return;
     }
 
@@ -191,13 +188,13 @@ const Login: React.FC = () => {
       const data = await response.json();
       
       if (response.ok) {
-        showAlert('success', '📧 Email de vérification renvoyé ! Vérifiez votre boîte de réception.', 'top');
+        showAlert('📧 Email de vérification renvoyé ! Vérifiez votre boîte de réception.', 'success');
       } else {
-        showAlert('error', data.error || 'Échec du renvoi de l\'email', 'top');
+        showAlert(data.error || 'Échec du renvoi de l\'email', 'error');
       }
     } catch (error) {
       console.error('Erreur:', error);
-      showAlert('error', '❌ Erreur de connexion au serveur', 'top');
+      showAlert('❌ Erreur de connexion au serveur', 'error');
     } finally {
       setLoading(false);
     }
@@ -276,44 +273,42 @@ const Login: React.FC = () => {
         if (data.requiresTwoFactor) {
           setView('two_factor');
         } else {
-          // MODIFIÉ: Afficher l'alerte de succès au-dessus de l'email
-          showAlert('success', '✅ Connexion réussie ! Redirection en cours...', 'above-email');
+          showAlert('✅ Connexion réussie ! Redirection en cours...', 'success');
           setTimeout(() => {
             executeLogin(email, data.user);
           }, 1500);
         }
       } else {
-        // MODIFIÉ: Les erreurs restent en haut
         switch (data.error) {
           case 'EMAIL_NOT_VERIFIED':
             setUnverifiedEmail(email);
-            showAlert('error', `❌ ${data.message || 'Email non vérifié. Veuillez vérifier votre email avant de vous connecter.'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Email non vérifié. Veuillez vérifier votre email avant de vous connecter.'}`, 'error');
             break;
           case 'INVALID_CREDENTIALS':
-            showAlert('error', `❌ ${data.message || 'Email ou mot de passe incorrect'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Email ou mot de passe incorrect'}`, 'error');
             break;
           case 'ACCOUNT_LOCKED':
-            showAlert('error', `❌ ${data.message || 'Compte temporairement verrouillé. Réessayez plus tard.'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Compte temporairement verrouillé. Réessayez plus tard.'}`, 'error');
             break;
           case 'MAX_ATTEMPTS_EXCEEDED':
-            showAlert('error', `❌ ${data.message || 'Trop de tentatives échouées. Compte verrouillé.'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Trop de tentatives échouées. Compte verrouillé.'}`, 'error');
             break;
           case 'ACCOUNT_DISABLED':
-            showAlert('error', `❌ ${data.message || 'Compte désactivé. Contactez l\'administrateur.'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Compte désactivé. Contactez l\'administrateur.'}`, 'error');
             break;
           case 'USER_NOT_FOUND':
-            showAlert('error', `❌ ${data.message || 'Aucun compte trouvé avec cet email'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Aucun compte trouvé avec cet email'}`, 'error');
             break;
           case 'PASSWORD_EXPIRED':
-            showAlert('error', `❌ ${data.message || 'Votre mot de passe a expiré. Veuillez le réinitialiser.'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Votre mot de passe a expiré. Veuillez le réinitialiser.'}`, 'error');
             break;
           default:
-            showAlert('error', `❌ ${data.message || 'Échec de la connexion'}`, 'above-email');
+            showAlert(`❌ ${data.message || 'Échec de la connexion'}`, 'error');
         }
       }
     } catch (error) {
       console.error('Erreur lors de la connexion:', error);
-      showAlert('error', '❌ Erreur de connexion au serveur', 'above-email');
+      showAlert('❌ Erreur de connexion au serveur', 'error');
     } finally {
       setLoading(false);
     }
@@ -344,89 +339,66 @@ const Login: React.FC = () => {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         
-        showAlert('success', '✅ Authentification mobile réussie', 'top');
+        showAlert('✅ Authentification mobile réussie', 'success');
         setMobileStep(2);
       } else {
-        showAlert('error', data.message || 'Échec de la connexion mobile', 'top');
+        showAlert(data.message || 'Échec de la connexion mobile', 'error');
       }
     } catch (error) {
       console.error('Erreur lors de la connexion mobile:', error);
-      showAlert('error', '❌ Erreur de connexion au serveur', 'top');
+      showAlert('❌ Erreur de connexion au serveur', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // Dans Login.tsx, remplacer la fonction handle2FAVerify
-const handle2FAVerify = async (code: string) => {
-  setLoading(true);
-  closeAlert();
+  const handle2FAVerify = async (code: string) => {
+    setLoading(true);
+    closeAlert();
 
-  console.log('=== DÉBUT VÉRIFICATION 2FA ===');
-  console.log('Email:', email);
-  console.log('Code:', code);
-
-  try {
-    const requestBody = { 
-      email: email, 
-      code: code 
-    };
-    
-    console.log('Requête envoyée:', requestBody);
-
-    const response = await fetch('http://localhost:8080/api/auth/2fa/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    });
-
-    console.log('Status réponse:', response.status);
-    
-    const data = await response.json();
-    console.log('Réponse JSON:', data);
-
-    // Vérifier si la réponse est OK et si success est true
-    if (response.ok && data.success) {
-      console.log('✅ Succès! Token reçu');
-      
-      // CONSTRUIRE l'objet user à partir des champs de la réponse
-      const userData = {
-        email: data.email,
-        role: data.role,
-        // Ajouter d'autres champs si nécessaire
+    try {
+      const requestBody = { 
+        email: email, 
+        code: code 
       };
-      
-      console.log('Utilisateur connecté (construit):', userData);
-      
-      // Stocker le vrai token JWT
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(userData));
 
-      // Mettre à jour le contexte d'authentification
-      login(userData, data.token);
-      
-      showAlert('success', '✅ Code 2FA validé avec succès ! Redirection...', 'top');
-      
-      setTimeout(() => {
-        const role = data.role.toLowerCase(); // Utiliser data.role directement
-        console.log('Redirection vers:', `/${role}`);
-        navigate(`/${role}`);
-      }, 1500);
-    } else {
-      // En cas d'erreur, data.error contient le message
-      console.error('❌ Échec:', data.error || 'Erreur inconnue');
-      showAlert('error', `❌ ${data.error || 'Code 2FA invalide'}`, 'top');
+      const response = await fetch('http://localhost:8080/api/auth/2fa/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        const userData = {
+          email: data.email,
+          role: data.role,
+        };
+        
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(userData));
+
+        login(userData, data.token);
+        
+        showAlert('✅ Code 2FA validé avec succès ! Redirection...', 'success');
+        
+        setTimeout(() => {
+          const role = data.role.toLowerCase();
+          navigate(`/${role}`);
+        }, 1500);
+      } else {
+        showAlert(`❌ ${data.error || 'Code 2FA invalide'}`, 'error');
+      }
+    } catch (error) {
+      console.error('❌ Erreur fetch:', error);
+      showAlert('❌ Erreur de connexion au serveur', 'error');
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('❌ Erreur fetch:', error);
-    showAlert('error', '❌ Erreur de connexion au serveur', 'top');
-  } finally {
-    setLoading(false);
-    console.log('=== FIN VÉRIFICATION 2FA ===');
-  }
-};
+  };
 
   const finalizeMobileLogin = () => {
     setLoading(true);
@@ -458,7 +430,7 @@ const handle2FAVerify = async (code: string) => {
         companyName
       });
       
-      showAlert('success', '✅ Connexion mobile réussie !', 'top');
+      showAlert('✅ Connexion mobile réussie !', 'success');
       
       if (role === 'admin') navigate('/admin');
       else navigate(`/${role}`);
@@ -472,7 +444,7 @@ const handle2FAVerify = async (code: string) => {
   };
 
   const handleResetPasswordSuccess = () => {
-    showAlert('success', '✅ Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.', 'top');
+    showAlert('✅ Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.', 'success');
     
     setTimeout(() => {
       setView('login');
@@ -498,30 +470,7 @@ const handle2FAVerify = async (code: string) => {
         style={{ height: `${CARD_HEIGHT}px` }}
       >
         
-        {/* MODIFIÉ: Alertes en haut (position top) */}
-        {alert.show && alert.position === 'top' && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg">
-            <FormAlert 
-              type={alert.type}
-              message={alert.message}
-              onClose={closeAlert}
-            />
-          </div>
-        )}
-
-        {alert.show && alert.message.includes('non vérifié') && unverifiedEmail && alert.position === 'top' && (
-          <div className="absolute top-48 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg">
-            <button
-              onClick={handleResendVerificationEmail}
-              disabled={loading}
-              className="w-full px-5 py-3 bg-tunisia-red text-white rounded-2xl text-xs font-bold hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-lg"
-            >
-              <i className="fas fa-paper-plane"></i>
-              {loading ? 'Envoi en cours...' : 'Renvoyer l\'email de vérification'}
-            </button>
-          </div>
-        )}
-
+        {/* Language Switcher */}
         <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[100] flex bg-white/90 backdrop-blur-md px-1.5 py-1.5 rounded-2xl shadow-xl border border-slate-100 ring-4 ring-black/5">
           <button 
             onClick={() => changeLanguage('fr')}
@@ -551,7 +500,10 @@ const handle2FAVerify = async (code: string) => {
           }}
         >
           
+          {/* LAYER 1: LOGIN */}
           <div className="w-full flex flex-col md:flex-row" style={{ height: `${CARD_HEIGHT}px` }}>
+            
+            {/* Espace National - côté gauche */}
             <div className="flex-1 bg-emerald-600 text-white p-12 flex flex-col justify-center items-center text-center md:text-left relative overflow-hidden">
               <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
               <div className="max-w-xs w-full z-10">
@@ -625,24 +577,43 @@ const handle2FAVerify = async (code: string) => {
               </div>
             </div>
 
+            {/* Espace International - côté droit */}
             <div className="flex-1 bg-white p-12 flex flex-col justify-center items-center relative">
-              {/* MODIFIÉ: Alerte au-dessus de l'email */}
-              {alert.show && alert.position === 'above-email' && (
-                <div className="absolute top-32 left-1/2 -translate-x-1/2 z-[90] w-11/12 max-w-lg">
-                  <FormAlert 
-                    type={alert.type}
-                    message={alert.message}
-                    onClose={closeAlert}
-                  />
-                </div>
-              )}
-
               <div className="max-w-xs w-full">
                 <div className="mb-10 text-center md:text-left">
                   <div className="w-16 h-16 bg-red-50 text-tunisia-red rounded-3xl flex items-center justify-center mb-6 shadow-xl border border-red-100 mx-auto md:mx-0">
                     <i className="fas fa-globe-africa text-3xl"></i>
                   </div>
                   <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900">Espace International</h2>
+                  
+                  {/* ALERTE SMOOTH AU-DESSOUS DU TITRE */}
+                  {alertMessage && (
+                    <div className="mt-4 w-full animate-slide-down">
+                      <div className="w-full max-w-sm mx-0 ml-32">
+                      <FormAlert 
+                        type={alertType}
+                        message={alertMessage}
+                        onClose={closeAlert}
+                      />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bouton de renvoi d'email si nécessaire */}
+                  {alertMessage && alertMessage.includes('non vérifié') && unverifiedEmail && (
+                    <div className="mt-2 w-full animate-slide-down">
+                      <div className="w-full max-w-sm mx-0 ml-32">
+                      <button
+                        onClick={handleResendVerificationEmail}
+                        disabled={loading}
+                        className="w-full px-5 py-3 bg-tunisia-red text-white rounded-2xl text-xs font-bold hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                      >
+                        <i className="fas fa-paper-plane"></i>
+                        {loading ? 'Envoi en cours...' : 'Renvoyer l\'email de vérification'}
+                      </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <form onSubmit={handlePasswordLogin} className="space-y-6">
@@ -725,29 +696,35 @@ const handle2FAVerify = async (code: string) => {
             </div>
           </div>
 
+          {/* LAYER 2: SIGNUP */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <ExporterSignUp 
               embedded={true} 
-              onBack={() => setView('login')} 
+              onBack={() => setView('login')}
+              onError={handleSignupError}
+              onSuccess={handleSignupSuccess}
             />
           </div>
 
+          {/* LAYER 3: FORGOT PASSWORD */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <ForgotPassword 
               onBack={() => setView('login')} 
             />
           </div>
 
+          {/* LAYER 4: 2FA */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <TwoFactorAuth 
               loading={loading}
               onVerify={handle2FAVerify}
               onBack={() => setView('login')}
-              email={email} // Passer l'email
+              email={email}
               tempToken={localStorage.getItem('token') || undefined}
             />
           </div>
 
+          {/* LAYER 5: RESET PASSWORD */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
             <div className="h-full w-full flex flex-col md:flex-row">
               <div className="flex-1 bg-slate-900 text-white p-12 flex flex-col justify-center items-center text-center relative overflow-hidden">
