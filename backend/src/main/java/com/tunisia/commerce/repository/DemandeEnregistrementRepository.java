@@ -37,5 +37,7 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
     @Query("SELECT COUNT(d) FROM DemandeEnregistrement d WHERE d.exportateur.id = :exportateurId AND d.status = :status")
     long countByExportateurIdAndStatus(@Param("exportateurId") Long exportateurId, @Param("status") DemandeStatus status);
     boolean existsByReference(String reference);
+
+    long countByExportateurIdAndStatusIn(Long exportateurId, List<DemandeStatus> statuses);
 }
 

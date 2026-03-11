@@ -5,6 +5,7 @@ import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.enums.*;
+import com.tunisia.commerce.exception.ProductDeclarationException;
 import com.tunisia.commerce.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,46 +41,57 @@ public class DemandeEnregistrementService {
     private static final String REFERENCE_PREFIX = "DEC";
     private static final String UPLOAD_DIR = "uploads/produits/";
 
+    private static final int MAX_SUBMITTED_DEMANDES = 3;
+
+
     @Transactional
     public DemandeEnregistrementDTO createDemande(DemandeEnregistrementRequestDTO request) {
         log.info("Création d'une nouvelle demande d'enregistrement pour l'exportateur ID: {}", request.getExportateurId());
 
-        // Récupérer l'exportateur
-        ExportateurEtranger exportateur = exportateurRepository.findById(request.getExportateurId())
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé avec ID: " + request.getExportateurId()));
+        try {
+            // Récupérer l'exportateur
+            ExportateurEtranger exportateur = exportateurRepository.findById(request.getExportateurId())
+                    .orElseThrow(() -> ProductDeclarationException.exportateurNotFound(request.getExportateurId()));
 
-        // Vérifier si l'exportateur a déjà une demande en cours
-        long pendingDemandes = demandeRepository.countByExportateurIdAndStatus(
-                exportateur.getId(), DemandeStatus.SOUMISE);
+            // Vérifier si l'exportateur a déjà une demande en cours
+            long pendingDemandes = demandeRepository.countByExportateurIdAndStatus(
+                    exportateur.getId(), DemandeStatus.SOUMISE);
 
-        if (pendingDemandes > 0) {
-            throw new RuntimeException("Vous avez déjà une demande en cours de traitement");
+            if (pendingDemandes > MAX_SUBMITTED_DEMANDES) {
+                throw ProductDeclarationException.maxPendingDemandesExceeded(MAX_SUBMITTED_DEMANDES);
+            }
+
+            // Créer la demande
+            DemandeEnregistrement demande = DemandeEnregistrement.builder()
+                    .exportateur(exportateur)
+                    .reference(generateReference())
+                    .status(DemandeStatus.BROUILLON)
+                    .submittedAt(null)
+                    .paymentStatus(PaymentStatus.EN_ATTENTE)
+                    .build();
+
+            demande = demandeRepository.save(demande);
+
+            // Sauvegarder les produits avec tous les champs
+            for (ProductRequestDTO productRequest : request.getProducts()) {
+                Product product = mapToEntity(productRequest, exportateur);
+                product.setDemande(demande);
+                productRepository.save(product);
+            }
+
+            // Ajouter l'historique
+            addHistory(demande, null, DemandeStatus.BROUILLON, "CRÉATION",
+                    "Demande créée avec succès", exportateur);
+
+            log.info("Demande créée avec succès, référence: {}", demande.getReference());
+            return mapToDTO(demande);
+
+        } catch (ProductDeclarationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Erreur inattendue lors de la création de la demande: {}", e.getMessage());
+            throw ProductDeclarationException.demandeCreationFailed(e.getMessage());
         }
-
-        // Créer la demande
-        DemandeEnregistrement demande = DemandeEnregistrement.builder()
-                .exportateur(exportateur)
-                .reference(generateReference())
-                .status(DemandeStatus.BROUILLON)
-                .submittedAt(null)
-                .paymentStatus(PaymentStatus.EN_ATTENTE)
-                .build();
-
-        demande = demandeRepository.save(demande);
-
-        // Sauvegarder les produits avec tous les champs
-        for (ProductRequestDTO productRequest : request.getProducts()) {
-            Product product = mapToEntity(productRequest, exportateur);
-            product.setDemande(demande);
-            productRepository.save(product);
-        }
-
-        // Ajouter l'historique
-        addHistory(demande, null, DemandeStatus.BROUILLON, "CRÉATION",
-                "Demande créée avec succès", exportateur);
-
-        log.info("Demande créée avec succès, référence: {}", demande.getReference());
-        return mapToDTO(demande);
     }
 
     /**
@@ -132,8 +144,8 @@ public class DemandeEnregistrementService {
             DocumentType documentType;
             try {
                 documentType = DocumentType.valueOf(documentTypeStr);
-            } catch (IllegalArgumentException e) {
-                throw new RuntimeException("Type de document invalide: " + documentTypeStr);
+            } catch (ProductDeclarationException e) {
+                throw ProductDeclarationException.invalidDocumentType(e.getMessage());
             }
 
             // 5. Récupérer le produit si spécifié
@@ -189,33 +201,62 @@ public class DemandeEnregistrementService {
     public DemandeEnregistrementDTO submitDemande(Long demandeId, Long userId) {
         log.info("Soumission de la demande ID: {}", demandeId);
 
-        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec ID: " + demandeId));
+        try {
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> ProductDeclarationException.demandeNotFound(demandeId));
 
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec ID: " + userId));
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> ProductDeclarationException.userNotFound(userId));
 
-        // Vérifier que la demande appartient à l'utilisateur
-        if (!demande.getExportateur().getId().equals(userId)) {
-            throw new RuntimeException("Accès non autorisé");
+            // Vérifier que la demande appartient à l'utilisateur
+            if (!demande.getExportateur().getId().equals(userId)) {
+                throw ProductDeclarationException.unauthorizedAccess();
+            }
+
+            // Vérifier que la demande est en BROUILLON
+            if (demande.getStatus() != DemandeStatus.BROUILLON) {
+                throw ProductDeclarationException.invalidDemandeStatusForSubmission(demande.getStatus());
+            }
+
+            // Vérifier que tous les documents obligatoires sont présents et uploadés
+            try {
+                validateRequiredDocuments(demande);
+            } catch (RuntimeException e) {
+                throw ProductDeclarationException.missingRequiredDocuments(e.getMessage());
+            }
+
+            // Vérifier la limite de demandes soumises (non validées)
+            long submittedDemandesCount = demandeRepository.countByExportateurIdAndStatusIn(
+                    userId,
+                    List.of(DemandeStatus.SOUMISE)
+            );
+
+            if (submittedDemandesCount >= MAX_SUBMITTED_DEMANDES) {
+                throw ProductDeclarationException.maxSubmittedDemandesExceeded(MAX_SUBMITTED_DEMANDES);
+            }
+
+            DemandeStatus oldStatus = demande.getStatus();
+
+            // Mettre à jour le statut
+            demande.setStatus(DemandeStatus.SOUMISE);
+            demande.setSubmittedAt(LocalDateTime.now());
+
+            demande = demandeRepository.save(demande);
+
+            addHistory(demande, oldStatus, DemandeStatus.SOUMISE, "SOUMISSION",
+                    "Demande soumise pour validation", user);
+
+            log.info("Demande soumise avec succès, ID: {}. Nombre de demandes en cours: {}/{}",
+                    demandeId, submittedDemandesCount + 1, MAX_SUBMITTED_DEMANDES);
+
+            return mapToDTO(demande);
+
+        } catch (ProductDeclarationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Erreur inattendue lors de la soumission de la demande: {}", e.getMessage());
+            throw ProductDeclarationException.demandeSubmissionFailed(e.getMessage());
         }
-
-        // Vérifier que tous les documents obligatoires sont présents et uploadés
-        validateRequiredDocuments(demande);
-
-        DemandeStatus oldStatus = demande.getStatus();
-
-        // Mettre à jour le statut
-        demande.setStatus(DemandeStatus.SOUMISE);
-        demande.setSubmittedAt(LocalDateTime.now());
-
-        demande = demandeRepository.save(demande);
-
-        addHistory(demande, oldStatus, DemandeStatus.SOUMISE, "SOUMISSION",
-                "Demande soumise pour validation", user);
-
-        log.info("Demande soumise avec succès, ID: {}", demandeId);
-        return mapToDTO(demande);
     }
 
     @Transactional
@@ -297,15 +338,6 @@ public class DemandeEnregistrementService {
                 .orElseThrow(() -> new RuntimeException("Demande non trouvée avec ID: " + demandeId));
 
         return mapToDTO(demande);
-    }
-
-    public List<DemandeEnregistrementDTO> getDemandesByExportateur(Long exportateurId) {
-        // Cette ligne doit retourner une List
-        List<DemandeEnregistrement> demandes = demandeRepository.findByExportateurId(exportateurId);
-
-        return demandes.stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
     }
 
     /**

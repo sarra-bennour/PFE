@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import PaymentForm from '../components/PaymentForm';
+import FormAlert from '../components/FormAlert';
 
 // ==================== TYPES ====================
 type ProductType = 'alimentaire' | 'industriel';
@@ -51,6 +52,16 @@ interface DemandeResponse {
   reference: string;
   status: string;
   products: ProductResponse[];
+}
+
+// Interface pour la réponse de paiement
+interface PaymentResult {
+  success: boolean;
+  message: string;
+  transactionId?: string;
+  paymentReference?: string;
+  amount?: number;
+  status?: string;
 }
 
 // ==================== CONSTANTS ====================
@@ -160,18 +171,17 @@ const ProductDeclaration: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [demandeId, setDemandeId] = useState<number | null>(null);
   const [isPaid, setIsPaid] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(false);
   
   // États pour les alertes de paiement
-  const [paymentSuccess, setPaymentSuccess] = useState<{
-    success: boolean;
-    message: string;
-    paymentReference?: string;
-    amount?: number;
-    status?: string;
-  } | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  
+  // État pour les alertes générales
+  const [generalAlert, setGeneralAlert] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
   
   const [formData, setFormData] = useState<DeclarationFormData>({
     products: [],
@@ -182,7 +192,27 @@ const ProductDeclaration: React.FC = () => {
   const [uploadedDocs, setUploadedDocs] = useState<Set<string>>(new Set());
   const [uploadErrors, setUploadErrors] = useState<Map<string, string>>(new Map());
 
-  // Vérifier le token au chargement (comme dans ExporterSpace)
+  // Fonction pour afficher les alertes générales
+  const showGeneralAlert = (message: string, type: 'success' | 'error' = 'error') => {
+    setGeneralAlert({ message, type });
+    setTimeout(() => {
+      setGeneralAlert(null);
+    }, 5000);
+  };
+
+  const closeGeneralAlert = () => {
+    setGeneralAlert(null);
+  };
+
+  // Restaurer l'ID depuis localStorage au chargement
+  useEffect(() => {
+    const savedId = localStorage.getItem('currentDemandeId');
+    if (savedId) {
+      setDemandeId(parseInt(savedId));
+    }
+  }, []);
+
+  // Vérifier le token au chargement
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -190,7 +220,6 @@ const ProductDeclaration: React.FC = () => {
       window.location.href = '/login';
       return;
     }
-    console.log('🔑 Token récupéré:', token.substring(0, 20) + '...');
   }, []);
 
   // Charger le brouillon du localStorage
@@ -219,6 +248,73 @@ const ProductDeclaration: React.FC = () => {
       window.location.href = '/login';
     }
   }, [user]);
+
+  // Effet pour créer automatiquement la demande à l'étape 3
+  useEffect(() => {
+    const createDemandeAtStep3 = async () => {
+      if (step === 3 && !demandeId && !isLoading && formData.products.length > 0) {
+        console.log('📝 Étape 3 détectée, création automatique de la demande...');
+        
+        try {
+          setIsLoading(true);
+          
+          const token = localStorage.getItem('token');
+          if (!token) {
+            showGeneralAlert('Session expirée. Veuillez vous reconnecter.', 'error');
+            return;
+          }
+
+          const data = await createDemande();
+          console.log('✅ Demande créée automatiquement avec ID:', data.id);
+          
+          localStorage.setItem('currentDemandeId', data.id.toString());
+          setDemandeId(data.id);
+          setDeclarationRef(data.reference);
+          
+          const newProductIdMap = new Map<string, number>();
+          
+          formData.products.forEach((frontendProduct, index) => {
+            if (data.products && data.products[index]) {
+              console.log(`Mapping product ${frontendProduct.id} to backend ID ${data.products[index].id}`);
+              newProductIdMap.set(frontendProduct.id, data.products[index].id);
+              updateProduct(frontendProduct.id, { backendId: data.products[index].id });
+            }
+          });
+          
+          setProductIdMap(newProductIdMap);
+          
+          const uploadPromises = [];
+          for (const [key, file] of Object.entries(formData.files)) {
+            if (file instanceof File) {
+              const [frontendProductId, docType] = key.split('_');
+              const backendProductId = newProductIdMap.get(frontendProductId);
+              
+              if (backendProductId) {
+                console.log(`Upload automatique pour ${docType} vers produit ${backendProductId}`);
+                uploadPromises.push(uploadDocument(frontendProductId, backendProductId, docType, file, data.id));
+              }
+            }
+          }
+          
+          if (uploadPromises.length > 0) {
+            console.log(`Upload de ${uploadPromises.length} documents...`);
+            await Promise.all(uploadPromises);
+            console.log('Tous les documents uploadés');
+          }
+          
+          showGeneralAlert('Demande créée automatiquement!', 'success');
+          
+        } catch (error: any) {
+          console.error('❌ Erreur lors de la création automatique:', error);
+          showGeneralAlert(error.message || 'Erreur lors de la création de la demande', 'error');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    createDemandeAtStep3();
+  }, [step, demandeId]);
 
   const addProduct = (type: ProductType) => {
     setFormData(prev => ({
@@ -268,13 +364,13 @@ const ProductDeclaration: React.FC = () => {
     }));
   };
 
-  const uploadDocument = async (frontendProductId: string, backendProductId: number, docType: string, file: File) => {
-    if (!demandeId || !user) {
-      console.error('❌ Missing demandeId or user for upload');
+  const uploadDocument = async (frontendProductId: string, backendProductId: number, docType: string, file: File, demandeIdParam: number) => {
+    if (!user) {
+      console.error('❌ Missing user for upload');
       return;
     }
 
-    console.log(`📤 Uploading document: ${docType} for product ${backendProductId}`);
+    console.log(`📤 Uploading document: ${docType} for product ${backendProductId} to demande ${demandeIdParam}`);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -282,8 +378,7 @@ const ProductDeclaration: React.FC = () => {
     formData.append('productId', backendProductId.toString());
 
     try {
-      // Utiliser l'instance api qui ajoute automatiquement le token
-      const response = await api.post(`/produits/${demandeId}/documents/upload`, formData, {
+      const response = await api.post(`/produits/${demandeIdParam}/documents/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -308,12 +403,13 @@ const ProductDeclaration: React.FC = () => {
     } catch (error: any) {
       console.error('❌ Error uploading document:', error);
       
-      // Gérer les erreurs 401 comme dans ExporterSpace
       if (error.response?.status === 401) {
-        alert('Votre session a expiré. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+        showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }, 2000);
       }
       
       const errorMessage = error.response?.data?.message || 'Erreur lors du téléchargement du document';
@@ -360,26 +456,12 @@ const ProductDeclaration: React.FC = () => {
       files: { ...prev.files, [fileKey]: file }
     }));
 
-    if (demandeId && file) {
-      const backendProductId = productIdMap.get(frontendProductId);
-      
-      if (backendProductId) {
-        setIsLoading(true);
-        try {
-          await uploadDocument(frontendProductId, backendProductId, docId, file);
-        } catch (err: any) {
-          setError(err.message);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    }
+    // Ne pas uploader immédiatement, attendre la création de la demande
   };
 
   const createDemande = async () => {
     if (!user) throw new Error('Utilisateur non authentifié');
 
-    // Vérifier le token (comme dans ExporterSpace)
     const token = localStorage.getItem('token');
     if (!token) {
       throw new Error('Token d\'authentification manquant');
@@ -408,7 +490,6 @@ const ProductDeclaration: React.FC = () => {
 
     console.log('📤 Creating demande with data:', requestDTO);
 
-    // Utiliser l'instance api qui ajoute automatiquement le token
     const response = await api.post('/produits', requestDTO);
     console.log('✅ Demande created:', response.data);
     return response.data as DemandeResponse;
@@ -417,34 +498,22 @@ const ProductDeclaration: React.FC = () => {
   const submitDemande = async () => {
     if (!demandeId) throw new Error('Aucune demande trouvée');
     
-    // Vérifier le token
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Token d\'authentification manquant pour la soumission');
-    }
-    
-    // Vérifier que tous les documents requis sont uploadés
-    const missingDocs = checkRequiredDocuments();
-    if (missingDocs.length > 0) {
-      throw new Error(`Documents obligatoires manquants: ${missingDocs.join(', ')}`);
-    }
-    
     console.log('📤 Submitting demande:', demandeId);
     
     try {
-      // Utiliser l'instance api qui ajoute automatiquement le token
       const response = await api.post(`/produits/${demandeId}/soumettre`);
       console.log('✅ Demande submitted successfully:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Submit error:', error);
       
-      // Gérer les erreurs 401 comme dans ExporterSpace
       if (error.response?.status === 401) {
-        alert('Votre session a expiré. Veuillez vous reconnecter.');
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
+        showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }, 2000);
       }
       
       throw error;
@@ -478,24 +547,33 @@ const ProductDeclaration: React.FC = () => {
     return missing;
   };
 
-  // Fonction pour créer le PaymentIntent
-  const handleCreatePaymentIntent = async () => {
+  const handleCreatePaymentIntent = async (demandeIdParam: number) => {
     const token = localStorage.getItem('token');
     
-    const response = await api.post('/stripe-payment/create-intent', {
-      demandeId: demandeId,
-      successUrl: window.location.origin + '/payment-success',
-      cancelUrl: window.location.origin + '/payment-cancel'
-    });
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/create-intent',
+      {
+        demandeId: demandeIdParam,
+        successUrl: window.location.origin + '/payment-success',
+        cancelUrl: window.location.origin + '/payment-cancel'
+      },
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
     
     return response.data.paymentIntentId;
   };
 
-  // Fonction pour traiter le paiement
-  const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any) => {
+  const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any, demandeIdParam: number) => {
+    const token = localStorage.getItem('token');
+    
     const paymentRequest = {
       paymentIntentId: paymentIntentId,
-      demandeId: demandeId,
+      demandeId: demandeIdParam,
       cardNumber: paymentDetails.cardNumber,
       cardHolderName: paymentDetails.cardHolder,
       receiptEmail: paymentDetails.paymentEmail,
@@ -505,26 +583,41 @@ const ProductDeclaration: React.FC = () => {
       amount: fees.total
     };
     
-    const response = await api.post('/stripe-payment/confirm-payment', paymentRequest);
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      paymentRequest,
+      {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
     return response.data;
   };
 
-  // Fonction principale de paiement
   const handlePaymentSubmit = async (paymentDetails: any) => {
     setPaymentLoading(true);
     setPaymentError(null);
     setPaymentSuccess(null);
     
     try {
-      // Étape 1: Créer le PaymentIntent
-      const paymentIntentId = await handleCreatePaymentIntent();
+      if (!demandeId) {
+        setPaymentError('ID de demande non trouvé. Veuillez créer une demande d\'abord.');
+        setPaymentLoading(false);
+        return;
+      }
+      
+      console.log('💰 Paiement pour la demande ID:', demandeId);
+      
+      const paymentIntentId = await handleCreatePaymentIntent(demandeId);
       
       if (!paymentIntentId) {
         throw new Error('Impossible de créer le PaymentIntent');
       }
       
-      // Étape 2: Traiter le paiement
-      const result = await handleProcessPayment(paymentIntentId, paymentDetails);
+      const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeId);
       
       if (result.success) {
         setPaymentSuccess({
@@ -536,7 +629,10 @@ const ProductDeclaration: React.FC = () => {
         });
 
         setIsPaid(true);
-        setShowTerminal(false);
+        
+        setTimeout(() => {
+          setPaymentSuccess(null);
+        }, 3000);
         
       } else {
         setPaymentError(result.message || 'Erreur de paiement');
@@ -560,32 +656,28 @@ const ProductDeclaration: React.FC = () => {
     }
   };
 
-  const handleBackToInvoice = () => {
-    setShowTerminal(false);
-    setPaymentError(null);
-    setPaymentSuccess(null);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
     try {
-      // Vérifier le token avant toute opération
       const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('Session expirée. Veuillez vous reconnecter.');
       }
 
       if (!demandeId) {
-        // Étape 1: Créer la demande
+        // Étape 1: Créer la demande (si on clique sur suivant sans passer par l'étape 3)
         console.log('Step 1: Creating demande');
         const data = await createDemande();
+        console.log('✅ Demande créée avec ID:', data.id);
+        
+        localStorage.setItem('currentDemandeId', data.id.toString());
         setDemandeId(data.id);
         setDeclarationRef(data.reference);
+        showGeneralAlert('Demande créée avec succès!', 'success');
         
-        // Créer le mapping entre UUID frontend et IDs backend
         const newProductIdMap = new Map<string, number>();
         
         formData.products.forEach((frontendProduct, index) => {
@@ -607,7 +699,7 @@ const ProductDeclaration: React.FC = () => {
             
             if (backendProductId) {
               console.log(`Queueing upload for ${docType} to product ${backendProductId}`);
-              uploadPromises.push(uploadDocument(frontendProductId, backendProductId, docType, file));
+              uploadPromises.push(uploadDocument(frontendProductId, backendProductId, docType, file, data.id));
             }
           }
         }
@@ -616,42 +708,45 @@ const ProductDeclaration: React.FC = () => {
           console.log(`Uploading ${uploadPromises.length} documents...`);
           await Promise.all(uploadPromises);
           console.log('All documents uploaded');
+          showGeneralAlert('Tous les documents ont été téléchargés avec succès!', 'success');
         }
         
         setStep(step + 1);
-      } else if (step < 5) { // CORRECTION: Maintenant on va jusqu'à l'étape 4 pour passer à 5
+      } else if (step < 5) {
         console.log(`Step ${step}: Moving to step ${step + 1}`);
         
-        // Si on est à l'étape 4, vérifier que le paiement est fait
         if (step === 4 && !isPaid) {
-          throw new Error('Veuillez effectuer le paiement avant de continuer');
+          showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
+          setIsLoading(false);
+          return;
         }
         
         setStep(step + 1);
       } else {
-        // Étape 5: Soumettre la demande
         console.log('Final step: Submitting demande');
         
-        // Vérifier que le paiement est fait
         if (!isPaid) {
-          throw new Error('Le paiement n\'a pas été effectué');
+          showGeneralAlert('Le paiement n\'a pas été effectué', 'error');
+          setIsLoading(false);
+          return;
         }
         
         await submitDemande();
         localStorage.removeItem('productDeclarationDraft');
+        localStorage.removeItem('currentDemandeId');
         setIsSubmitted(true);
+        showGeneralAlert('Déclaration soumise avec succès!', 'success');
       }
     } catch (err: any) {
       console.error('❌ Error in handleSubmit:', err);
       
-      // Gérer les erreurs 401
       if (err.response?.status === 401) {
-        setError('Session expirée. Veuillez vous reconnecter.');
+        showGeneralAlert('Session expirée. Veuillez vous reconnecter.', 'error');
         setTimeout(() => {
           window.location.href = '/login';
         }, 2000);
       } else {
-        setError(err.response?.data?.message || err.message || 'Une erreur est survenue');
+        showGeneralAlert(err.response?.data?.message || err.message || 'Une erreur est survenue', 'error');
       }
     } finally {
       setIsLoading(false);
@@ -749,26 +844,6 @@ const ProductDeclaration: React.FC = () => {
     );
   };
 
-  const showAlert = (message: string, type: 'success' | 'error') => {
-    if (type === 'success') {
-      setPaymentSuccess({
-        success: true,
-        message,
-        amount: fees.total
-      });
-    } else {
-      setPaymentError(message);
-    }
-    
-    setTimeout(() => {
-      if (type === 'success') {
-        setPaymentSuccess(null);
-      } else {
-        setPaymentError(null);
-      }
-    }, 3000);
-  };
-
   if (isSubmitted) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center animate-fade-in-scale">
@@ -794,13 +869,6 @@ const ProductDeclaration: React.FC = () => {
 
   return (
     <div className="max-w-5xl mx-auto py-8">
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm font-bold">
-          <i className="fas fa-exclamation-circle mr-2"></i>
-          {error}
-        </div>
-      )}
-
       <div className="flex items-center justify-between mb-12 px-8">
         {['Produits', 'Logistique', 'Documents','Paiement', 'Validation'].map((label, i) => (
           <div key={label} className="flex items-center flex-1 last:flex-none">
@@ -826,6 +894,18 @@ const ProductDeclaration: React.FC = () => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 1 : Liste des produits</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Définissez vos articles alimentaires ou industriels</p>
+                
+                {generalAlert && (
+                  <div className="mt-4 w-full animate-slide-down">
+                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
+                      <FormAlert 
+                        type={generalAlert.type}
+                        message={generalAlert.message}
+                        onClose={closeGeneralAlert}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="space-y-16">
@@ -1064,6 +1144,18 @@ const ProductDeclaration: React.FC = () => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 2 : Informations Logistiques</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Détails globaux de l'expédition</p>
+                
+                {generalAlert && (
+                  <div className="mt-4 w-full animate-slide-down">
+                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
+                      <FormAlert 
+                        type={generalAlert.type}
+                        message={generalAlert.message}
+                        onClose={closeGeneralAlert}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-1 gap-8">
@@ -1089,6 +1181,18 @@ const ProductDeclaration: React.FC = () => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 3 : Documents Justificatifs</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Téléversement des pièces par produit</p>
+                
+                {generalAlert && (
+                  <div className="mt-4 w-full animate-slide-down">
+                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
+                      <FormAlert 
+                        type={generalAlert.type}
+                        message={generalAlert.message}
+                        onClose={closeGeneralAlert}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="space-y-16">
@@ -1143,7 +1247,7 @@ const ProductDeclaration: React.FC = () => {
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 onChange={handleFileChange(product.id, doc.id)}
                                 className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                                disabled={isLoading || (demandeId && !productIdMap.has(product.id))}
+                                disabled={isLoading}
                               />
                               <div className={`w-8 h-8 rounded-xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-110 ${iconColor}`}>
                                 <i className={`fas ${hasFile ? 'fa-check' : 'fa-cloud-arrow-up'} text-xs`}></i>
@@ -1159,11 +1263,6 @@ const ProductDeclaration: React.FC = () => {
                               {hasError && errorMessage && (
                                 <p className="text-[7px] font-bold text-red-600 italic px-2">
                                   {errorMessage}
-                                </p>
-                              )}
-                              {hasFile && !isUploaded && !hasError && demandeId && (
-                                <p className="text-[7px] font-bold text-amber-600 italic">
-                                  En attente d'upload...
                                 </p>
                               )}
                             </div>
@@ -1182,84 +1281,91 @@ const ProductDeclaration: React.FC = () => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 4 : Paiement des frais</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Règlement des frais de dossier multi-produits</p>
+                
+                {generalAlert && (
+                  <div className="mt-4 w-full animate-slide-down">
+                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
+                      <FormAlert 
+                        type={generalAlert.type}
+                        message={generalAlert.message}
+                        onClose={closeGeneralAlert}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {showTerminal ? (
-                <PaymentForm
-                  amount={fees.total}
-                  onSubmit={handlePaymentSubmit}
-                  onBack={handleBackToInvoice}
-                  isLoading={paymentLoading}
-                  error={paymentError}
-                  success={paymentSuccess ? {
-                    message: paymentSuccess.message,
-                    amount: paymentSuccess.amount
-                  } : null}
-                />
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                  {/* Facture Pro-forma */}
-                  <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-8">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Détails de la Facture</h3>
-                      <i className="fas fa-file-invoice text-slate-300"></i>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <div className="bg-slate-50 rounded-[2.5rem] p-10 border border-slate-100 shadow-sm space-y-8">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Détails de la Facture</h3>
+                    <i className="fas fa-file-invoice text-slate-300"></i>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-slate-500">Frais de dossier de base</span>
+                      <span className="text-slate-900">50,000 TND</span>
                     </div>
-                    
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center text-xs font-bold">
-                        <span className="text-slate-500">Frais de dossier de base</span>
-                        <span className="text-slate-900">50,000 TND</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs font-bold">
-                        <span className="text-slate-500">Frais par produit ({formData.products.length} x 20 TND)</span>
-                        <span className="text-slate-900">{(formData.products.length * 20).toFixed(3)} TND</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs font-bold">
-                        <span className="text-slate-500">Droit de timbre</span>
-                        <span className="text-slate-900">1,000 TND</span>
-                      </div>
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-slate-500">Frais par produit ({formData.products.length} x 20 TND)</span>
+                      <span className="text-slate-900">{(formData.products.length * 20).toFixed(3)} TND</span>
                     </div>
-
-                    <div className="pt-6 border-t border-slate-200">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total à payer</span>
-                        <span className="text-3xl font-black italic tracking-tighter text-tunisia-red">{fees.total.toFixed(3)} TND</span>
-                      </div>
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-slate-500">Droit de timbre</span>
+                      <span className="text-slate-900">1,000 TND</span>
                     </div>
-
-                    <div className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-                        <i className="fas fa-shield-check"></i>
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-900">Paiement Sécurisé</p>
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Certifié par la Banque Centrale de Tunisie</p>
-                      </div>
-                    </div>
-                    
-                    <button
-                      onClick={() => setShowTerminal(true)}
-                      className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-3"
-                    >
-                      <i className="fas fa-credit-card"></i> Payer par carte
-                    </button>
                   </div>
 
-                  {/* Message de confirmation de paiement */}
-                  {isPaid && (
+                  <div className="pt-6 border-t border-slate-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total à payer</span>
+                      <span className="text-3xl font-black italic tracking-tighter text-tunisia-red">{fees.total.toFixed(3)} TND</span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-white rounded-2xl border border-slate-100 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+                      <i className="fas fa-shield-check"></i>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-900">Paiement Sécurisé</p>
+                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Certifié par la Banque Centrale de Tunisie</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  {!isPaid && (
+                    <div className="animate-fade-in">
+                      <PaymentForm
+                        amount={fees.total}
+                        onSubmit={handlePaymentSubmit}
+                        onBack={() => {}}
+                        isLoading={paymentLoading}
+                        error={paymentError}
+                        success={paymentSuccess ? {
+                          message: paymentSuccess.message,
+                          amount: paymentSuccess.amount
+                        } : null}
+                      />
+                    </div>
+                  )}
+
+                  {isPaid && paymentSuccess && (
                     <div className="p-8 bg-emerald-50 rounded-[2.5rem] border-2 border-emerald-500 shadow-xl flex flex-col items-center text-center space-y-4 animate-fade-in">
                       <div className="w-16 h-16 bg-white text-emerald-500 rounded-full flex items-center justify-center shadow-sm">
                         <i className="fas fa-check text-2xl"></i>
                       </div>
                       <div>
                         <p className="text-lg font-black text-emerald-900 uppercase italic tracking-tighter">Paiement Confirmé</p>
-                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Transaction #TXN-{(Math.random()*1000000).toFixed(0)}</p>
+                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Transaction #TXN-{Math.floor(Math.random() * 1000000)}</p>
                       </div>
                       <button className="text-[9px] font-black uppercase tracking-widest text-emerald-700 underline decoration-2 underline-offset-4">Télécharger le reçu</button>
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -1268,6 +1374,18 @@ const ProductDeclaration: React.FC = () => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 5 : Validation Finale</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Vérification et signature électronique</p>
+                
+                {generalAlert && (
+                  <div className="mt-4 w-full animate-slide-down">
+                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
+                      <FormAlert 
+                        type={generalAlert.type}
+                        message={generalAlert.message}
+                        onClose={closeGeneralAlert}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -1337,7 +1455,13 @@ const ProductDeclaration: React.FC = () => {
           <div className="flex-grow"></div>
           {step < 5 ? (
             <button 
-              onClick={handleSubmit}
+              onClick={() => {
+                if (step === 4 && !isPaid) {
+                  showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
+                  return;
+                }
+                setStep(step + 1);
+              }}
               disabled={isLoading || (step === 1 && formData.products.length === 0)}
               className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
                 isLoading || (step === 1 && formData.products.length === 0)

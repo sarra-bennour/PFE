@@ -6,6 +6,7 @@ import com.tunisia.commerce.dto.produits.DemandeEnregistrementRequestDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.enums.DemandeStatus;
+import com.tunisia.commerce.exception.ProductDeclarationException;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.service.impl.DemandeEnregistrementService;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -27,7 +28,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/produits")
@@ -46,15 +49,33 @@ public class ProduitController {
     @PostMapping
     @Operation(summary = "Créer une nouvelle demande")
     @PreAuthorize("hasRole('EXPORTATEUR')")
-    public ResponseEntity<DemandeEnregistrementDTO> createDemande(
+    public ResponseEntity<?> createDemande(
             @Valid @RequestBody DemandeEnregistrementRequestDTO request,
             @RequestHeader("Authorization") String authHeader) {
 
-        ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
 
+            // S'assurer que l'ID dans la requête correspond à l'exportateur authentifié
+            request.setExportateurId(exportateur.getId());
 
-        DemandeEnregistrementDTO created = demandeService.createDemande(request);
-        return new ResponseEntity<>(created, HttpStatus.CREATED);
+            DemandeEnregistrementDTO created = demandeService.createDemande(request);
+            return new ResponseEntity<>(created, HttpStatus.CREATED);
+
+        } catch (ProductDeclarationException e) {
+            // Capturer les exceptions métier et retourner le code HTTP approprié
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+
+        } catch (Exception e) {
+            // Capturer les erreurs inattendues
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", "Une erreur inattendue s'est produite: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
     }
 
     /**
@@ -115,13 +136,29 @@ public class ProduitController {
     @PostMapping("/{id}/soumettre")
     @Operation(summary = "Soumettre une demande")
     @PreAuthorize("hasRole('EXPORTATEUR')")
-    public ResponseEntity<DemandeEnregistrementDTO> submitDemande(
+    public ResponseEntity<?> submitDemande(
             @Parameter(description = "ID de la demande") @PathVariable Long id,
             @RequestHeader("Authorization") String authHeader) {
 
-        ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        DemandeEnregistrementDTO demande = demandeService.submitDemande(id, exportateur.getId());
-        return ResponseEntity.ok(demande);
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            DemandeEnregistrementDTO demande = demandeService.submitDemande(id, exportateur.getId());
+            return ResponseEntity.ok(demande);
+
+        } catch (ProductDeclarationException e) {
+            // Capturer les exceptions métier et retourner le code HTTP approprié
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+
+        } catch (Exception e) {
+            // Capturer les erreurs inattendues
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", "Une erreur inattendue s'est produite: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
     }
 
     /**
