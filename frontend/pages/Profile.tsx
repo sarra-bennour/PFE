@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
 import ResetPasswordForm from '../components/ResetPasswordForm';
 import { useNavigate } from 'react-router-dom';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 // Types pour les données du dossier
 interface Document {
@@ -786,8 +788,69 @@ const getDisplayDocuments = () => {
   };
 
   const handleDownloadCert = () => {
-    alert("Téléchargement du certificat PDF haute résolution en cours...");
+  if (!showCertificate) {
+    setError('Veuillez d\'abord ouvrir le certificat');
+    return;
+  }
+
+  let certificateElement = document.getElementById('certificat-nee') as HTMLElement;
+  
+  if (!certificateElement) {
+    certificateElement = document.querySelector('.certificate-content') as HTMLElement;
+  }
+  
+  if (!certificateElement) {
+    const modal = document.querySelector('.fixed.inset-0.z-\\[120\\]');
+    if (modal) {
+      certificateElement = modal.querySelector('.border-\\[12px\\]') as HTMLElement;
+    }
+  }
+
+  if (!certificateElement) {
+    setError('Certificat non trouvé');
+    return;
+  }
+
+  const options = {
+    scale: 2,
+    backgroundColor: '#ffffff',
+    logging: false,
+    allowTaint: false,
+    useCORS: true
   };
+
+  html2canvas(certificateElement, options)
+    .then((canvas: HTMLCanvasElement) => {
+      try {
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'px',
+          format: [canvas.width, canvas.height]
+        });
+        
+        const imgData = canvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        
+        const fileName = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.pdf`;
+        pdf.save(fileName);
+        
+      } catch (pdfError) {
+        // Fallback PNG
+        try {
+          const link = document.createElement('a');
+          link.download = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          setError('PDF non disponible, téléchargement en PNG effectué');
+        } catch (pngError) {
+          setError('Erreur lors de la création du fichier');
+        }
+      }
+    })
+    .catch((err: Error) => {
+      setError('Erreur lors de la capture du certificat: ' + err.message);
+    });
+};
 
   const getRoleColor = () => {
     const role = user.role?.toUpperCase() || 'EXPORTATEUR';
