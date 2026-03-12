@@ -132,7 +132,7 @@ const INDUSTRIAL_DOCS = [
   { id: 'CONFORMITY_CERT_ANALYSIS_REPORT', label: "Certificat de conformité ou rapport d’analyse", required: true }
 ];
 
-// ==================== API SETUP - SIMILAIRE À ExporterSpace ====================
+// ==================== API SETUP ====================
 const API_BASE_URL = 'http://localhost:8080/api';
 
 // Créer une instance axios avec la configuration de base
@@ -140,7 +140,7 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Intercepteur pour ajouter le token à chaque requête (comme dans ExporterSpace)
+// Intercepteur pour ajouter le token à chaque requête
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -157,7 +157,7 @@ const ProductDeclaration: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   
-  // Récupérer l'utilisateur du localStorage (comme dans ExporterSpace)
+  // Récupérer l'utilisateur du localStorage
   const [user, setUser] = useState<User | null>(() => {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
@@ -249,72 +249,59 @@ const ProductDeclaration: React.FC = () => {
     }
   }, [user]);
 
-  // Effet pour créer automatiquement la demande à l'étape 3
-  useEffect(() => {
-    const createDemandeAtStep3 = async () => {
-      if (step === 3 && !demandeId && !isLoading && formData.products.length > 0) {
-        console.log('📝 Étape 3 détectée, création automatique de la demande...');
-        
-        try {
-          setIsLoading(true);
-          
-          const token = localStorage.getItem('token');
-          if (!token) {
-            showGeneralAlert('Session expirée. Veuillez vous reconnecter.', 'error');
-            return;
-          }
+  // SUPPRIMER l'effet de création automatique à l'étape 3
+  // La création sera gérée dans handleNextStep
 
-          const data = await createDemande();
-          console.log('✅ Demande créée automatiquement avec ID:', data.id);
-          
-          localStorage.setItem('currentDemandeId', data.id.toString());
-          setDemandeId(data.id);
-          setDeclarationRef(data.reference);
-          
-          const newProductIdMap = new Map<string, number>();
-          
-          formData.products.forEach((frontendProduct, index) => {
-            if (data.products && data.products[index]) {
-              console.log(`Mapping product ${frontendProduct.id} to backend ID ${data.products[index].id}`);
-              newProductIdMap.set(frontendProduct.id, data.products[index].id);
-              updateProduct(frontendProduct.id, { backendId: data.products[index].id });
-            }
-          });
-          
-          setProductIdMap(newProductIdMap);
-          
-          const uploadPromises = [];
-          for (const [key, file] of Object.entries(formData.files)) {
-            if (file instanceof File) {
-              const [frontendProductId, docType] = key.split('_');
-              const backendProductId = newProductIdMap.get(frontendProductId);
-              
-              if (backendProductId) {
-                console.log(`Upload automatique pour ${docType} vers produit ${backendProductId}`);
-                uploadPromises.push(uploadDocument(frontendProductId, backendProductId, docType, file, data.id));
-              }
-            }
-          }
-          
-          if (uploadPromises.length > 0) {
-            console.log(`Upload de ${uploadPromises.length} documents...`);
-            await Promise.all(uploadPromises);
-            console.log('Tous les documents uploadés');
-          }
-          
-          showGeneralAlert('Demande créée automatiquement!', 'success');
-          
-        } catch (error: any) {
-          console.error('❌ Erreur lors de la création automatique:', error);
-          showGeneralAlert(error.message || 'Erreur lors de la création de la demande', 'error');
-        } finally {
-          setIsLoading(false);
+  // Fonction pour uploader tous les documents
+  const uploadAllDocuments = async (demandeIdParam: number, productMap: Map<string, number>) => {
+    console.log('📦 uploadAllDocuments appelé avec demandeId:', demandeIdParam);
+    console.log('📦 productMap:', Array.from(productMap.entries()));
+    console.log('📦 formData.files:', Object.keys(formData.files));
+    
+    const uploadPromises = [];
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (const [key, file] of Object.entries(formData.files)) {
+      if (file instanceof File) {
+        const underscoreIndex = key.indexOf('_');
+        const frontendProductId = key.substring(0, underscoreIndex);
+        const docType = key.substring(underscoreIndex + 1);
+        const backendProductId = productMap.get(frontendProductId);
+        
+        if (backendProductId) {
+          console.log(`✅ Préparation upload pour ${docType} (${key}) vers produit ${backendProductId}`);
+          uploadPromises.push(
+            uploadDocument(frontendProductId, backendProductId, docType, file, demandeIdParam)
+              .then(() => {
+                successCount++;
+                console.log(`✅ Upload réussi (${successCount}/${uploadPromises.length})`);
+              })
+              .catch((error) => {
+                failCount++;
+                console.error(`❌ Échec upload ${docType}:`, error);
+              })
+          );
+        } else {
+          console.warn(`⚠️ Aucun backendId pour le produit ${frontendProductId} (clé: ${key})`);
         }
       }
-    };
-
-    createDemandeAtStep3();
-  }, [step, demandeId]);
+    }
+    
+    if (uploadPromises.length > 0) {
+      console.log(`📤 Upload de ${uploadPromises.length} documents...`);
+      await Promise.all(uploadPromises);
+      console.log(`📊 Résultats: ${successCount} succès, ${failCount} échecs`);
+      
+      if (failCount === 0) {
+        showGeneralAlert('Tous les documents ont été téléchargés avec succès!', 'success');
+      } else if (successCount > 0) {
+        showGeneralAlert(`${successCount} documents téléchargés, ${failCount} en échec`, 'error');
+      }
+    } else {
+      console.log('📭 Aucun document à uploader');
+    }
+  };
 
   const addProduct = (type: ProductType) => {
     setFormData(prev => ({
@@ -371,6 +358,11 @@ const ProductDeclaration: React.FC = () => {
     }
 
     console.log(`📤 Uploading document: ${docType} for product ${backendProductId} to demande ${demandeIdParam}`);
+    console.log(`📄 File details:`, {
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
 
     const formData = new FormData();
     formData.append('file', file);
@@ -378,6 +370,8 @@ const ProductDeclaration: React.FC = () => {
     formData.append('productId', backendProductId.toString());
 
     try {
+      console.log(`🚀 Sending request to: /produits/${demandeIdParam}/documents/upload`);
+      
       const response = await api.post(`/produits/${demandeIdParam}/documents/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -390,6 +384,7 @@ const ProductDeclaration: React.FC = () => {
       setUploadedDocs(prev => {
         const newSet = new Set(prev);
         newSet.add(docKey);
+        console.log(`📝 uploadedDocs mis à jour:`, Array.from(newSet));
         return newSet;
       });
       
@@ -403,6 +398,16 @@ const ProductDeclaration: React.FC = () => {
     } catch (error: any) {
       console.error('❌ Error uploading document:', error);
       
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+        console.error('Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Error message:', error.message);
+      }
+      
       if (error.response?.status === 401) {
         showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
         setTimeout(() => {
@@ -410,6 +415,9 @@ const ProductDeclaration: React.FC = () => {
           localStorage.removeItem('user');
           window.location.href = '/login';
         }, 2000);
+      } else if (error.response?.status === 404) {
+        console.error('Endpoint non trouvé. Vérifiez l\'URL:', `/produits/${demandeIdParam}/documents/upload`);
+        showGeneralAlert('L\'URL d\'upload n\'est pas correcte', 'error');
       }
       
       const errorMessage = error.response?.data?.message || 'Erreur lors du téléchargement du document';
@@ -456,7 +464,8 @@ const ProductDeclaration: React.FC = () => {
       files: { ...prev.files, [fileKey]: file }
     }));
 
-    // Ne pas uploader immédiatement, attendre la création de la demande
+    // NE PAS UPLOADER IMMÉDIATEMENT - Attendre la création de la demande à l'étape 3
+    console.log(`📦 Document ${docId} mis en attente (sera uploadé après création de la demande)`);
   };
 
   const createDemande = async () => {
@@ -538,7 +547,8 @@ const ProductDeclaration: React.FC = () => {
         
         console.log(`  Document ${doc.id}: hasFile=${hasFile}, isUploaded=${isUploaded}, hasError=${hasError}`);
         
-        if (!hasFile || !isUploaded || hasError) {
+        // À l'étape 3, on vérifie seulement hasFile (pas isUploaded)
+        if (!hasFile || hasError) {
           missing.push(`${doc.label} (${product.productName || 'Produit'})`);
         }
       });
@@ -548,136 +558,169 @@ const ProductDeclaration: React.FC = () => {
   };
 
   const handleCreatePaymentIntent = async (demandeIdParam: number) => {
-    const token = localStorage.getItem('token');
-    
-    const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/create-intent',
-      {
-        demandeId: demandeIdParam,
-        successUrl: window.location.origin + '/payment-success',
-        cancelUrl: window.location.origin + '/payment-cancel'
-      },
-      {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    return response.data.paymentIntentId;
-  };
-
-  const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any, demandeIdParam: number) => {
-    const token = localStorage.getItem('token');
-    
-    const paymentRequest = {
-      paymentIntentId: paymentIntentId,
+  const token = localStorage.getItem('token');
+  
+  const response = await axios.post(
+    'http://localhost:8080/api/stripe-payment/create-intent',
+    {
       demandeId: demandeIdParam,
-      cardNumber: paymentDetails.cardNumber,
-      cardHolderName: paymentDetails.cardHolder,
-      receiptEmail: paymentDetails.paymentEmail,
-      expMonth: parseInt(paymentDetails.expiryMonth),
-      expYear: parseInt(paymentDetails.expiryYear),
-      cvv: paymentDetails.cvv,
-      amount: fees.total
-    };
-    
-    const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/confirm-payment',
-      paymentRequest,
-      {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      successUrl: window.location.origin + '/payment-success',
+      cancelUrl: window.location.origin + '/payment-cancel'
+    },
+    {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
       }
-    );
-    
-    return response.data;
-  };
-
-  const handlePaymentSubmit = async (paymentDetails: any) => {
-    setPaymentLoading(true);
-    setPaymentError(null);
-    setPaymentSuccess(null);
-    
-    try {
-      if (!demandeId) {
-        setPaymentError('ID de demande non trouvé. Veuillez créer une demande d\'abord.');
-        setPaymentLoading(false);
-        return;
-      }
-      
-      console.log('💰 Paiement pour la demande ID:', demandeId);
-      
-      const paymentIntentId = await handleCreatePaymentIntent(demandeId);
-      
-      if (!paymentIntentId) {
-        throw new Error('Impossible de créer le PaymentIntent');
-      }
-      
-      const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeId);
-      
-      if (result.success) {
-        setPaymentSuccess({
-          success: true,
-          message: 'Paiement effectué avec succès!',
-          paymentReference: result.paymentReference,
-          amount: result.amount,
-          status: result.status
-        });
-
-        setIsPaid(true);
-        
-        setTimeout(() => {
-          setPaymentSuccess(null);
-        }, 3000);
-        
-      } else {
-        setPaymentError(result.message || 'Erreur de paiement');
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Erreur:', error);
-      
-      if (error.response?.status === 401) {
-        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
-        setTimeout(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
-        }, 2000);
-      } else {
-        setPaymentError(error.response?.data?.message || error.message || 'Erreur lors du paiement');
-      }
-    } finally {
-      setPaymentLoading(false);
     }
+  );
+  
+  return response.data; // Retourne l'objet complet avec paymentIntentId et clientSecret
+};
+
+const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any, demandeIdParam: number) => {
+  const token = localStorage.getItem('token');
+  
+  // Modification importante: on envoie paymentMethodId au lieu des détails de la carte
+  const paymentRequest = {
+    paymentIntentId: paymentIntentId,
+    demandeId: demandeIdParam,
+    paymentMethodId: paymentDetails.paymentMethodId, // Reçu du PaymentForm
+    cardHolderName: paymentDetails.cardHolder,
+    receiptEmail: paymentDetails.receiptEmail
   };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Session expirée. Veuillez vous reconnecter.');
+  
+  const response = await axios.post(
+    'http://localhost:8080/api/stripe-payment/confirm-payment',
+    paymentRequest,
+    {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
       }
+    }
+  );
+  
+  return response.data;
+};
 
-      if (!demandeId) {
-        // Étape 1: Créer la demande (si on clique sur suivant sans passer par l'étape 3)
-        console.log('Step 1: Creating demande');
+
+const handlePaymentSubmit = async (paymentDetails: any) => {
+  setPaymentLoading(true);
+  setPaymentError(null);
+  setPaymentSuccess(null);
+  
+  try {
+    if (!demandeId) {
+      setPaymentError('Aucune demande trouvée. Veuillez créer une demande d\'abord.');
+      setPaymentLoading(false);
+      return;
+    }
+    
+    console.log('💰 Paiement pour la demande ID:', demandeId);
+    
+    // Étape 1: Créer le PaymentIntent
+    const createIntentResponse = await handleCreatePaymentIntent(demandeId);
+    const paymentIntentId = createIntentResponse.paymentIntentId;
+    
+    if (!paymentIntentId) {
+      throw new Error('Impossible de créer le PaymentIntent');
+    }
+    
+    console.log('✅ PaymentIntent créé:', paymentIntentId);
+    
+    // Étape 2: Confirmer le paiement avec le PaymentMethod ID
+    const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeId);
+    
+    if (result.success) {
+      setPaymentSuccess({
+        success: true,
+        message: 'Paiement effectué avec succès!',
+        amount: result.amount
+      });
+
+      setIsPaid(true);
+      
+      // Ne pas rediriger immédiatement, laisser l'utilisateur voir le succès
+      setTimeout(() => {
+        // Optionnel: rediriger après 2 secondes
+        // setStep(step + 1);
+      }, 2000);
+      
+    } else {
+      setPaymentError(result.message || 'Erreur de paiement');
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Erreur:', error);
+    
+    if (error.response?.status === 401) {
+      setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+      setTimeout(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }, 2000);
+    } else {
+      // 🔴 CORRECTION ICI 🔴
+      // Votre backend renvoie { "error": "message" } pas { "message": "..." }
+      const errorData = error.response?.data;
+      
+      if (errorData && errorData.error) {
+        // Cas où le backend renvoie { "error": "message technique" }
+        const errorMessage = errorData.error;
+        
+        // Nettoyer le message pour l'utilisateur
+        if (errorMessage.includes('card_declined')) {
+          setPaymentError('Votre carte a été refusée. Veuillez vérifier vos informations ou utiliser une autre carte.');
+        } else if (errorMessage.includes('insufficient_funds')) {
+          setPaymentError('Fonds insuffisants sur cette carte. Veuillez utiliser une autre carte.');
+        } else if (errorMessage.includes('expired_card')) {
+          setPaymentError('Votre carte a expiré. Veuillez utiliser une carte valide.');
+        } else if (errorMessage.includes('incorrect_cvc')) {
+          setPaymentError('Le code de sécurité (CVV) est incorrect. Veuillez vérifier et réessayer.');
+        } else {
+          // Extraire la première partie du message technique
+          const cleanMessage = errorMessage.split(';')[0];
+          setPaymentError(cleanMessage);
+        }
+      } else if (errorData && errorData.message) {
+        setPaymentError(errorData.message);
+      } else if (typeof errorData === 'string') {
+        setPaymentError(errorData);
+      } else {
+        setPaymentError(error.message || 'Erreur lors du paiement');
+      }
+    }
+  } finally {
+    setPaymentLoading(false);
+  }
+};
+
+  // Gérer le clic sur Suivant
+  const handleNextStep = async () => {
+    // Étape 3: Documents - CRÉER LA DEMANDE (BROUILLON) + UPLOAD
+    if (step === 3) {
+      setIsLoading(true);
+      try {
+        // Vérifier que tous les documents requis sont sélectionnés
+        const missingDocs = checkRequiredDocuments();
+        if (missingDocs.length > 0) {
+          showGeneralAlert(`Documents manquants: ${missingDocs.join(', ')}`, 'error');
+          setIsLoading(false);
+          return;
+        }
+        
+        // Créer la demande (statut BROUILLON)
+        console.log('📝 Étape 3: Création de la demande en BROUILLON...');
         const data = await createDemande();
-        console.log('✅ Demande créée avec ID:', data.id);
+        console.log('✅ Demande créée avec ID:', data.id, 'statut:', data.status);
         
         localStorage.setItem('currentDemandeId', data.id.toString());
         setDemandeId(data.id);
         setDeclarationRef(data.reference);
-        showGeneralAlert('Demande créée avec succès!', 'success');
         
+        // Créer le mapping des produits
         const newProductIdMap = new Map<string, number>();
         
         formData.products.forEach((frontendProduct, index) => {
@@ -690,64 +733,82 @@ const ProductDeclaration: React.FC = () => {
         
         setProductIdMap(newProductIdMap);
         
-        // Uploader tous les fichiers en attente
-        const uploadPromises = [];
-        for (const [key, file] of Object.entries(formData.files)) {
-          if (file instanceof File) {
-            const [frontendProductId, docType] = key.split('_');
-            const backendProductId = newProductIdMap.get(frontendProductId);
-            
-            if (backendProductId) {
-              console.log(`Queueing upload for ${docType} to product ${backendProductId}`);
-              uploadPromises.push(uploadDocument(frontendProductId, backendProductId, docType, file, data.id));
-            }
-          }
-        }
+        // Attendre que le state soit mis à jour
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        if (uploadPromises.length > 0) {
-          console.log(`Uploading ${uploadPromises.length} documents...`);
-          await Promise.all(uploadPromises);
-          console.log('All documents uploaded');
-          showGeneralAlert('Tous les documents ont été téléchargés avec succès!', 'success');
-        }
+        // Uploader les documents
+        console.log('📤 Début de l\'upload des documents...');
+        await uploadAllDocuments(data.id, newProductIdMap);
+        console.log('✅ Upload terminé');
         
+        showGeneralAlert('Demande créée avec succès!', 'success');
+        
+        // Passer à l'étape 4 (Validation)
         setStep(step + 1);
-      } else if (step < 5) {
-        console.log(`Step ${step}: Moving to step ${step + 1}`);
-        
-        if (step === 4 && !isPaid) {
-          showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
-          setIsLoading(false);
-          return;
-        }
-        
-        setStep(step + 1);
-      } else {
-        console.log('Final step: Submitting demande');
-        
-        if (!isPaid) {
-          showGeneralAlert('Le paiement n\'a pas été effectué', 'error');
-          setIsLoading(false);
-          return;
-        }
-        
-        await submitDemande();
-        localStorage.removeItem('productDeclarationDraft');
-        localStorage.removeItem('currentDemandeId');
-        setIsSubmitted(true);
-        showGeneralAlert('Déclaration soumise avec succès!', 'success');
+      } catch (error: any) {
+        console.error('❌ Erreur:', error);
+        showGeneralAlert(error.message || 'Erreur lors de la création de la demande', 'error');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err: any) {
-      console.error('❌ Error in handleSubmit:', err);
+    } 
+    // Étape 4: Validation - SOUMETTRE LA DEMANDE (SOUMISE)
+    else if (step === 4) {
+      if (!isAgreed) {
+        showGeneralAlert('Vous devez cocher la case pour continuer', 'error');
+        return;
+      }
       
-      if (err.response?.status === 401) {
-        showGeneralAlert('Session expirée. Veuillez vous reconnecter.', 'error');
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 2000);
-      } else {
-        showGeneralAlert(err.response?.data?.message || err.message || 'Une erreur est survenue', 'error');
+      setIsLoading(true);
+      try {
+        console.log('📤 Étape 4: Soumission de la demande...');
+        await submitDemande();
+        console.log('✅ Demande soumise avec succès (statut: SOUMISE)');
+        
+        showGeneralAlert('Demande soumise avec succès!', 'success');
+        
+        // Passer à l'étape 5 (Paiement)
+        setStep(step + 1);
+      } catch (error: any) {
+        console.error('❌ Erreur lors de la soumission:', error);
+        showGeneralAlert(error.message || 'Erreur lors de la soumission', 'error');
+      } finally {
+        setIsLoading(false);
       }
+    }
+    // Étape 5: Paiement - juste vérifier que le paiement est effectué
+    // Le changement de statut vers EN_COURS_VALIDATION est fait par le backend
+    else if (step === 5) {
+      if (!isPaid) {
+        showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
+        return;
+      }
+      // Passer à l'écran final
+      setStep(step + 1);
+    }
+    // Autres étapes: simple navigation
+    else {
+      setStep(step + 1);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Cette fonction n'est appelée qu'à l'étape 6 (après paiement)
+    // pour afficher l'écran de confirmation
+    
+    setIsLoading(true);
+    try {
+      // Simuler un délai
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      localStorage.removeItem('productDeclarationDraft');
+      localStorage.removeItem('currentDemandeId');
+      setIsSubmitted(true);
+      showGeneralAlert('Déclaration soumise avec succès!', 'success');
+    } catch (err: any) {
+      console.error('❌ Error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -870,7 +931,7 @@ const ProductDeclaration: React.FC = () => {
   return (
     <div className="max-w-5xl mx-auto py-8">
       <div className="flex items-center justify-between mb-12 px-8">
-        {['Produits', 'Logistique', 'Documents','Paiement', 'Validation'].map((label, i) => (
+        {['Produits', 'Logistique', 'Documents', 'Validation', 'Paiement'].map((label, i) => (
           <div key={label} className="flex items-center flex-1 last:flex-none">
             <div className="flex flex-col items-center gap-2">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all ${
@@ -1277,9 +1338,74 @@ const ProductDeclaration: React.FC = () => {
           )}
 
           {step === 4 && (
+            <div className="space-y-8 animate-fade-in">
+              <div className="border-b border-slate-50 pb-6">
+                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 4 : Validation Finale</h2>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Vérification et signature électronique</p>
+                
+                {generalAlert && (
+                  <div className="mt-4 w-full animate-slide-down">
+                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
+                      <FormAlert 
+                        type={generalAlert.type}
+                        message={generalAlert.message}
+                        onClose={closeGeneralAlert}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Récapitulatif sur toute la largeur */}
+                  <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6 shadow-sm w-full">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                      <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Récapitulatif du lot</h4>
+                      <span className="text-xs font-black italic text-tunisia-red">{formData.products.length} Produit(s)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-8 max-w-md">
+                      <div className="space-y-4">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Alimentaires</p>
+                        <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
+                          {formData.products.filter(p => p.type === 'alimentaire').length}
+                        </p>
+                      </div>
+                      <div className="space-y-4">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Industriels</p>
+                        <p className="text-2xl font-black italic tracking-tighter text-blue-600">
+                          {formData.products.filter(p => p.type === 'industriel').length}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+              {/* BOX D'ENGAGEMENT EN BAS - DÉPLACÉE ICI */}
+              <div className="bg-amber-50 p-8 rounded-[2.5rem] border border-amber-100 space-y-6 shadow-sm mt-4">
+                <div className="flex justify-between items-center border-b border-amber-200 pb-4">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-600">Engagement</h4>
+                  <i className="fas fa-file-signature text-amber-500"></i>
+                </div>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4">
+                    <input 
+                      type="checkbox" 
+                      id="certify"
+                      checked={isAgreed}
+                      onChange={(e) => setIsAgreed(e.target.checked)}
+                      className="mt-1 w-5 h-5 rounded border-amber-300 text-tunisia-red focus:ring-tunisia-red cursor-pointer"
+                      disabled={isLoading}
+                    />
+                    <label htmlFor="certify" className="text-xs font-bold text-amber-900 leading-relaxed cursor-pointer">
+                      Je certifie sur l'honneur l'exactitude des informations fournies. Je reconnais que toute fausse déclaration m'expose aux sanctions prévues par le code des douanes et la réglementation du commerce extérieur de la République Tunisienne.
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
             <div className="space-y-12 animate-fade-in">
               <div className="border-b border-slate-50 pb-6">
-                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 4 : Paiement des frais</h2>
+                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 5 : Paiement des frais</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Règlement des frais de dossier multi-produits</p>
                 
                 {generalAlert && (
@@ -1359,84 +1485,11 @@ const ProductDeclaration: React.FC = () => {
                       </div>
                       <div>
                         <p className="text-lg font-black text-emerald-900 uppercase italic tracking-tighter">Paiement Confirmé</p>
-                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Transaction #TXN-{Math.floor(Math.random() * 1000000)}</p>
+                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Transaction #{paymentSuccess.paymentReference?.substring(0, 8)}</p>
                       </div>
-                      <button className="text-[9px] font-black uppercase tracking-widest text-emerald-700 underline decoration-2 underline-offset-4">Télécharger le reçu</button>
                     </div>
                   )}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {step === 5 && (
-            <div className="space-y-8 animate-fade-in">
-              <div className="border-b border-slate-50 pb-6">
-                <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 5 : Validation Finale</h2>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Vérification et signature électronique</p>
-                
-                {generalAlert && (
-                  <div className="mt-4 w-full animate-slide-down">
-                    <div className="max-w-sm" style={{ marginLeft: '500px' }}>
-                      <FormAlert 
-                        type={generalAlert.type}
-                        message={generalAlert.message}
-                        onClose={closeGeneralAlert}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6 shadow-sm">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Récapitulatif du lot</h4>
-                    <span className="text-xs font-black italic text-tunisia-red">{formData.products.length} Produit(s)</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Alimentaires</p>
-                      <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
-                        {formData.products.filter(p => p.type === 'alimentaire').length}
-                      </p>
-                    </div>
-                    <div className="space-y-4">
-                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Industriels</p>
-                      <p className="text-2xl font-black italic tracking-tighter text-blue-600">
-                        {formData.products.filter(p => p.type === 'industriel').length}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-emerald-50 p-8 rounded-[2.5rem] border border-emerald-100 space-y-6 shadow-sm">
-                  <div className="flex justify-between items-center border-b border-emerald-200 pb-4">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600">Statut du Paiement</h4>
-                    <i className="fas fa-check-circle text-emerald-500"></i>
-                  </div>
-                  <div className="space-y-4">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600/60">Montant réglé</p>
-                    <p className="text-2xl font-black italic tracking-tighter text-emerald-700">
-                      {fees.total.toFixed(3)} TND
-                    </p>
-                    <p className="text-[8px] font-bold text-emerald-500 uppercase tracking-widest">Transaction validée par le système</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-8 bg-amber-50 rounded-[2rem] border border-amber-100 flex items-start gap-6">
-                <input 
-                  type="checkbox" 
-                  id="certify"
-                  checked={isAgreed}
-                  onChange={(e) => setIsAgreed(e.target.checked)}
-                  className="mt-1 w-6 h-6 rounded-lg border-amber-300 text-tunisia-red focus:ring-tunisia-red cursor-pointer"
-                  disabled={isLoading}
-                />
-                <label htmlFor="certify" className="text-xs font-bold text-amber-900 leading-relaxed cursor-pointer">
-                  Je certifie sur l'honneur l'exactitude des informations fournies. Je reconnais que toute fausse déclaration m'expose aux sanctions prévues par le code des douanes et la réglementation du commerce extérieur de la République Tunisienne.
-                </label>
               </div>
             </div>
           )}
@@ -1455,16 +1508,16 @@ const ProductDeclaration: React.FC = () => {
           <div className="flex-grow"></div>
           {step < 5 ? (
             <button 
-              onClick={() => {
-                if (step === 4 && !isPaid) {
-                  showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
-                  return;
-                }
-                setStep(step + 1);
-              }}
-              disabled={isLoading || (step === 1 && formData.products.length === 0)}
+              onClick={handleNextStep}
+              disabled={
+                isLoading || 
+                (step === 1 && formData.products.length === 0) ||
+                (step === 4 && !isAgreed)
+              }
               className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
-                isLoading || (step === 1 && formData.products.length === 0)
+                isLoading || 
+                (step === 1 && formData.products.length === 0) ||
+                (step === 4 && !isAgreed)
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   : 'bg-slate-900 text-white hover:bg-black'
               }`}
@@ -1486,7 +1539,7 @@ const ProductDeclaration: React.FC = () => {
               {isLoading ? (
                 <><i className="fas fa-spinner fa-spin mr-2"></i> Envoi...</>
               ) : (
-                'Soumettre la déclaration'
+                'Voir le récapitulatif'
               )}
             </button>
           )}

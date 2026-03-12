@@ -4,12 +4,9 @@ import FormAlert from './FormAlert';
 interface PaymentFormProps {
   amount: number;
   onSubmit: (paymentDetails: {
-    cardNumber: string;
+    paymentMethodId: string;
     cardHolder: string;
-    paymentEmail: string;
-    expiryMonth: string;
-    expiryYear: string;
-    cvv: string;
+    receiptEmail: string;
   }) => Promise<void>;
   onCancel?: () => void;
   onBack?: () => void;
@@ -20,6 +17,22 @@ interface PaymentFormProps {
     amount?: number;
   } | null;
 }
+
+// Mapping des numéros de carte vers les PaymentMethod IDs Stripe
+const CARD_TO_PAYMENT_METHOD: Record<string, string> = {
+  '4242424242424242': 'pm_card_visa',
+  '4000056655665556': 'pm_card_mastercard',
+  '5555555555554444': 'pm_card_mastercard',
+  '378282246310005': 'pm_card_amex',
+  '4012888888881881': 'pm_card_visa',
+  '4000000000000077': 'pm_card_chargeDeclined',
+  '4000000000009995': 'pm_card_chargeDeclinedInsufficientFunds',
+  '4000000000000069': 'pm_card_chargeDeclinedExpiredCard',
+  '4000000000000127': 'pm_card_chargeDeclinedIncorrectCvc',
+  '4000000000000101': 'pm_card_chargeDeclinedLostCard',
+  '4000000000000119': 'pm_card_chargeDeclinedStolenCard',
+  '4000002760003184': 'pm_card_threeDSecureRequired',
+};
 
 const PaymentForm: React.FC<PaymentFormProps> = ({
   amount,
@@ -32,7 +45,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 }) => {
   const [cardNumber, setCardNumber] = useState('');
   const [cardHolder, setCardHolder] = useState('');
-  const [paymentEmail, setPaymentEmail] = useState('');
+  const [receiptEmail, setReceiptEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [expiryMonth, setExpiryMonth] = useState('');
   const [expiryYear, setExpiryYear] = useState('');
@@ -51,6 +64,11 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     if (formError) setFormError('');
   };
 
+  const getPaymentMethodId = (cleanCardNumber: string): string => {
+    // Retourne le PaymentMethod ID correspondant au numéro de carte de test
+    return CARD_TO_PAYMENT_METHOD[cleanCardNumber] || 'pm_card_visa';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -63,7 +81,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(paymentEmail)) {
+    if (!emailRegex.test(receiptEmail)) {
       setEmailError("Veuillez saisir une adresse e-mail valide pour le reçu.");
       return;
     }
@@ -84,13 +102,15 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       return;
     }
 
+    // Convertir le numéro de carte en PaymentMethod ID
+    const paymentMethodId = getPaymentMethodId(cleanCard);
+    
+    console.log(`💳 Carte ${cleanCard} → PaymentMethod ID: ${paymentMethodId}`);
+
     await onSubmit({
-      cardNumber: cleanCard,
-      cardHolder,
-      paymentEmail,
-      expiryMonth,
-      expiryYear,
-      cvv
+      paymentMethodId,
+      cardHolder: cardHolder.toUpperCase(),
+      receiptEmail
     });
   };
 
@@ -105,7 +125,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
           </div>
         </div>
 
-        {/* ALERTE DE SUCCÈS - CORRIGÉ */}
+        {/* ALERTE DE SUCCÈS */}
         {success && (
           <div className="mb-6 animate-fade-in-scale">
             <FormAlert 
@@ -162,9 +182,9 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Adresse e-mail (Reçu)</label>
             <input 
               type="text" 
-              value={paymentEmail}
+              value={receiptEmail}
               onChange={(e) => { 
-                setPaymentEmail(e.target.value); 
+                setReceiptEmail(e.target.value); 
                 if (emailError) setEmailError(''); 
               }}
               className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 ${emailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 

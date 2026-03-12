@@ -25,4 +25,7 @@ public class PaymentResponseDTO {
     // Nouveaux champs optionnels
     private String cardHolderName;
     private String emailDestination;
+
+    private Boolean requiresAction;
+    private String clientSecret;
 }

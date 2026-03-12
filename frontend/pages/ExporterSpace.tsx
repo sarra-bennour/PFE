@@ -392,144 +392,166 @@ const ExporterSpace: React.FC = () => {
 
   // Fonction pour créer le PaymentIntent via le backend
   const handleCreatePaymentIntent = async () => {
-    // Vérifier que demandeId existe
-    if (!dossierInfo?.demandeId) {
-      throw new Error('ID de demande non trouvé');
-    }
-    
-    const token = localStorage.getItem('token');
-    
-    const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/create-intent',
-      {
-        demandeId: dossierInfo.demandeId,
-        successUrl: window.location.origin + '/payment-success',
-        cancelUrl: window.location.origin + '/payment-cancel'
-      },
-      {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+  // Vérifier que demandeId existe
+  if (!dossierInfo?.demandeId) {
+    throw new Error('ID de demande non trouvé');
+  }
+  
+  const token = localStorage.getItem('token');
+  
+  const response = await axios.post(
+    'http://localhost:8080/api/stripe-payment/create-intent',
+    {
+      demandeId: dossierInfo.demandeId,
+      successUrl: window.location.origin + '/payment-success',
+      cancelUrl: window.location.origin + '/payment-cancel'
+    },
+    {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
       }
-    );
-    
-    setPaymentIntentId(response.data.paymentIntentId);
-    
-    // Retourner l'ID du PaymentIntent pour l'étape suivante
-    return response.data.paymentIntentId;
-  };
+    }
+  );
+  
+  setPaymentIntentId(response.data.paymentIntentId);
+  
+  // Retourner l'objet complet avec paymentIntentId et clientSecret
+  return response.data;
+};
 
   // Fonction pour traiter le paiement via le backend
   const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any) => {
-    const token = localStorage.getItem('token');
-    
-    // Préparer la requête de paiement
-    const paymentRequest = {
-      paymentIntentId: paymentIntentId,
-      demandeId: dossierInfo?.demandeId,
-      cardNumber: paymentDetails.cardNumber,
-      cardHolderName: paymentDetails.cardHolder,
-      receiptEmail: paymentDetails.paymentEmail,
-      expMonth: parseInt(paymentDetails.expiryMonth),
-      expYear: parseInt(paymentDetails.expiryYear),
-      cvv: paymentDetails.cvv,
-      amount: 500.0
-    };
-    
-    // Appeler le backend pour confirmer le paiement
-    const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/confirm-payment',
-      paymentRequest,
-      {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    return response.data;
+  const token = localStorage.getItem('token');
+  
+  // IMPORTANT: On envoie paymentMethodId (reçu du PaymentForm) au lieu des détails de la carte
+  const paymentRequest = {
+    paymentIntentId: paymentIntentId,
+    demandeId: dossierInfo?.demandeId,
+    paymentMethodId: paymentDetails.paymentMethodId, // Reçu du PaymentForm
+    cardHolderName: paymentDetails.cardHolder,
+    receiptEmail: paymentDetails.receiptEmail
   };
+  
+  console.log('💰 Envoi de la requête de paiement:', paymentRequest);
+  
+  // Appeler le backend pour confirmer le paiement
+  const response = await axios.post(
+    'http://localhost:8080/api/stripe-payment/confirm-payment',
+    paymentRequest,
+    {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+  
+  return response.data;
+};
 
   // Fonction principale de paiement - maintenant utilisée par PaymentForm
-  const handlePaymentSubmit = async (paymentDetails: any) => {
-    setLoading(true);
-    setPaymentError(null);
-    setPaymentSuccess(null);
-    
-    try {
-      // Vérifier que demandeId existe
-      if (!dossierInfo?.demandeId) {
-        setPaymentError('ID de demande non trouvé. Veuillez réessayer.');
-        setLoading(false);
-        return;
-      }
-      
-      // Étape 1: Créer le PaymentIntent
-      const paymentIntentId = await handleCreatePaymentIntent();
-      
-      if (!paymentIntentId) {
-        throw new Error('Impossible de créer le PaymentIntent');
-      }
-      
-      // Étape 2: Traiter le paiement
-      const result = await handleProcessPayment(paymentIntentId, paymentDetails);
-      
-      if (result.success) {
-        // Afficher l'alerte de succès
-        setPaymentSuccess({
-          success: true,
-          message: 'Paiement effectué avec succès!',
-          paymentReference: result.paymentReference,
-          amount: result.amount,
-          status: result.status
-        });
+  // Dans ExporterSpace.tsx, modifier la fonction handlePaymentSubmit
 
-        updateUserStatus('PAYMENT_PENDING');
-        
-        // Mettre à jour le statut localement
-        setDossierInfo(prev => ({
-          ...prev,
-          status: 'EN_COURS_VALIDATION'
-        } as DossierResponse));
-
-        // Mettre à jour le cache avec le nouveau statut
-        updateDossierStatus('EN_COURS_VALIDATION', 'REUSSI', { 
-          demandeId: dossierInfo?.demandeId 
-        });
-        
-        // Rafraîchir les données depuis le backend
-        await refreshDossierData();
-        
-        // Fermer le terminal après 3 secondes
-        setTimeout(() => {
-          setShowTerminal(false);
-          setShowInvoice(false);
-          setPaymentSuccess(null);
-        }, 3000);
-        
-      } else {
-        setPaymentError(result.message || 'Erreur de paiement');
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Erreur:', error);
-      
-      // Vérifier si l'erreur est due à un token expiré
-      if (error.response?.status === 401) {
-        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
-        setTimeout(() => {
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-        }, 2000);
-      } else {
-        setPaymentError(error.response?.data?.message || error.message || 'Erreur lors du paiement');
-      }
-    } finally {
+const handlePaymentSubmit = async (paymentDetails: any) => {
+  setLoading(true);
+  setPaymentError(null);
+  setPaymentSuccess(null);
+  
+  try {
+    // Vérifier que demandeId existe
+    if (!dossierInfo?.demandeId) {
+      setPaymentError('ID de demande non trouvé. Veuillez réessayer.');
       setLoading(false);
+      return;
     }
-  };
+    
+    console.log('💰 Début du processus de paiement pour la demande:', dossierInfo.demandeId);
+    
+    // Étape 1: Créer le PaymentIntent
+    const createIntentResponse = await handleCreatePaymentIntent();
+    const paymentIntentId = createIntentResponse.paymentIntentId;
+    
+    if (!paymentIntentId) {
+      throw new Error('Impossible de créer le PaymentIntent');
+    }
+    
+    console.log('✅ PaymentIntent créé:', paymentIntentId);
+    
+    // Étape 2: Traiter le paiement avec le PaymentMethod ID
+    const result = await handleProcessPayment(paymentIntentId, paymentDetails);
+    
+    if (result.success) {
+      // Afficher l'alerte de succès
+      setPaymentSuccess({
+        success: true,
+        message: 'Paiement effectué avec succès!',
+        paymentReference: result.paymentReference || result.transactionId,
+        amount: result.amount,
+        status: result.status
+      });
+
+      updateUserStatus('PAYMENT_PENDING');
+      
+      setDossierInfo(prev => ({
+        ...prev,
+        status: 'EN_COURS_VALIDATION',
+        paymentStatus: 'REUSSI'
+      } as DossierResponse));
+
+      updateDossierStatus('EN_COURS_VALIDATION', 'REUSSI', { 
+        demandeId: dossierInfo?.demandeId 
+      });
+      
+      await refreshDossierData();
+      
+      setTimeout(() => {
+        setShowTerminal(false);
+        setShowInvoice(false);
+        setPaymentSuccess(null);
+      }, 3000);
+      
+    } else {
+      setPaymentError(result.message || 'Erreur de paiement');
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Erreur détaillée:', error);
+    
+    if (error.response?.status === 401) {
+      setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+      setTimeout(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }, 2000);
+    } else if (error.response?.data) {
+      // 🔴 CORRECTION IMPORTANTE ICI 🔴
+      // Le backend renvoie { "error": "message" }
+      const errorData = error.response.data;
+      
+      if (typeof errorData === 'string') {
+        setPaymentError(errorData);
+      } else if (errorData.error) {
+        // Cas où le backend renvoie { "error": "message" }
+        setPaymentError(errorData.error);
+      } else if (errorData.message) {
+        setPaymentError(errorData.message);
+      } else if (errorData.userMessage) {
+        // Si vous utilisez PaymentException avec userMessage
+        setPaymentError(errorData.userMessage);
+      } else {
+        setPaymentError('Erreur de paiement. Veuillez réessayer.');
+      }
+      
+      console.log('Détails de l\'erreur:', errorData);
+    } else {
+      setPaymentError(error.message || 'Erreur lors du paiement');
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   // MODIFICATION: Simplification de handlePayLater
   const handlePayLater = () => {
@@ -667,7 +689,7 @@ const ExporterSpace: React.FC = () => {
   }
 
   // --- RENDU : PREMIÈRE CONNEXION / DOSSIER INCOMPLET ---
-  if (!dossierInfo?.hasDossier || user?.status === 'PROFILE_INCOMPLETE') {
+  if (!dossierStatus || user?.status === 'PROFILE_INCOMPLETE') {
     const requiredFields: (keyof KycData)[] = [
       'rcCert', 'rcTranslation', 'rcLegalization', 
       'statutes', 'statutesTranslation', 'tinCert', 

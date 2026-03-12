@@ -68,25 +68,21 @@ public class StripePaymentController {
      * Confirmer le paiement avec les détails de la carte (appelé par le frontend)
      */
     @PostMapping("/confirm-payment")
-    public ResponseEntity<PaymentResponseDTO> confirmPayment(
+    public ResponseEntity<?> confirmPayment(
             @RequestHeader("Authorization") String authHeader,
             @RequestBody Map<String, Object> paymentDetails) {
 
         try {
-            log.info("💳 Confirmation de paiement - Header: {}", authHeader != null ? "présent" : "absent");
+            log.info("💳 Confirmation de paiement");
 
-            // Vérifier que le header est présent
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 log.error("❌ Header Authorization manquant ou invalide");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body(PaymentResponseDTO.builder()
-                                .success(false)
-                                .message("Token d'authentification manquant")
-                                .build());
+                        .body(Map.of("error", "Token d'authentification manquant"));
             }
 
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-            log.info("✅ Exportateur authentifié pour confirmation: {}", exportateur.getId());
+            log.info("✅ Exportateur authentifié: {}", exportateur.getId());
 
             PaymentResponseDTO response = stripePaymentService.confirmPayment(
                     exportateur.getId(),
@@ -96,12 +92,9 @@ public class StripePaymentController {
             return ResponseEntity.ok(response);
 
         } catch (RuntimeException e) {
-            log.error("❌ Erreur lors de la confirmation du paiement", e);
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(PaymentResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .build());
+            log.error("❌ Erreur: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 

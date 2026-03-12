@@ -59,10 +59,33 @@ export const useAuth = () => {
 };
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode, roles?: UserRole[] }> = ({ children, roles }) => {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
-  return <>{children}</>;
+  const { user, isLoading } = useAuth();
+
+  console.log('🛡️ ProtectedRoute - isLoading:', isLoading, 'user:', user);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-3xl text-tunisia-red mb-4"></i>
+          <p className="text-sm font-bold">Chargement de votre session...</p>
+        </div>
+      </div>
+    );
+  }
+  // ✅ Une fois le chargement terminé, vérifier l'utilisateur
+    if (!user) {
+      console.log('🚫 Pas d\'utilisateur, redirection vers login');
+      return <Navigate to="/login" replace />;
+    }
+
+    if (roles && !roles.includes(user.role)) {
+      console.log('🚫 Rôle non autorisé, redirection vers accueil');
+      return <Navigate to="/" replace />;
+    }
+    
+    console.log('✅ Accès autorisé');
+    return <>{children}</>;
 };
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -122,48 +145,40 @@ const App: React.FC = () => {
   const { i18n } = useTranslation();
   const authHook = useAuthHook(); // Utiliser le hook personnalisé
   
-  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
-  // Synchroniser l'utilisateur depuis le hook au chargement
-  useEffect(() => {
-    if (authHook.user) {
-      setUser(authHook.user as User);
-    }
-  }, [authHook.user]);
 
   const login = (userData: User, token: string) => {
     authHook.login(userData, token); // Utiliser le login du hook
-    setUser(userData);
   };
 
   const logout = () => {
     authHook.logout(); // Utiliser le logout du hook
-    setUser(null);
   };
 
   const updateUserStatus = (status: ExporterStatus) => {
-    if (user) {
-      const updatedUser = { ...user, status };
-      setUser(updatedUser);
+    if (authHook.user) {
+      const updatedUser = { ...authHook.user, status };
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      Object.assign(authHook.user, updatedUser); 
     }
   };
 
   const updateUser = (data: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...data };
-      setUser(updatedUser);
+    if (authHook.user) {
+      const updatedUser = { ...authHook.user, ...data };
       localStorage.setItem('user', JSON.stringify(updatedUser));
+      Object.assign(authHook.user, updatedUser);
     }
   };
 
   return (
     <AuthContext.Provider value={{ 
-      user, 
+      user: authHook.user, 
+      isLoading: authHook.isLoading,
       login, 
       logout, 
       updateUserStatus, 
