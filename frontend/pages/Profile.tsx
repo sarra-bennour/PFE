@@ -133,10 +133,10 @@ const Profile: React.FC = () => {
     fetchProfileData();
   }, [user?.email]);
 
-  // Vérification du statut 2FA
+  // Vérification du statut 2FA (uniquement pour exportateur)
   useEffect(() => {
     const check2FAStatus = async () => {
-      if (user?.email) {
+      if (user?.email && (user.role === 'EXPORTATEUR' || user.role === 'exporter')) {
         try {
           const token = localStorage.getItem('token');
           const response = await fetch(`http://localhost:8080/api/auth/2fa/status/${user.email}`, {
@@ -146,10 +146,9 @@ const Profile: React.FC = () => {
           });
 
           if (response.status === 400) {
-          // L'utilisateur n'existe pas ou autre erreur
-          console.warn('Statut 2FA non disponible pour:', user.email);
-          return;
-        }
+            console.warn('Statut 2FA non disponible pour:', user.email);
+            return;
+          }
           
           const data = await response.json();
           if (data.success && data.enabled !== user.twoFactorEnabled) {
@@ -227,46 +226,46 @@ const Profile: React.FC = () => {
 
   // Fonction pour prévisualiser un document
   const handlePreviewDocument = async (documentId: number, fileName: string, fileType: string) => {
-  try {
-    const token = localStorage.getItem('token');
-    const fileUrl = `http://localhost:8080/api/exportateur/documents/${documentId}/file`;
-    
-    const response = await fetch(fileUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    if (response.ok) {
-      const blob = await response.blob();
+    try {
+      const token = localStorage.getItem('token');
+      const fileUrl = `http://localhost:8080/api/exportateur/documents/${documentId}/file`;
       
-      // Déterminer le type MIME correct
-      let mimeType = 'application/octet-stream';
-      if (fileType.toLowerCase().includes('pdf')) {
-        mimeType = 'application/pdf';
-      } else if (fileType.toLowerCase().includes('jpg') || fileType.toLowerCase().includes('jpeg')) {
-        mimeType = 'image/jpeg';
-      } else if (fileType.toLowerCase().includes('png')) {
-        mimeType = 'image/png';
-      }
-      
-      // Créer un blob avec le bon type MIME
-      const correctBlob = new Blob([blob], { type: mimeType });
-      const url = URL.createObjectURL(correctBlob);
-      
-      setPreviewDoc({
-        name: fileName,
-        url: url,
-        type: fileType.toLowerCase().includes('pdf') ? 'pdf' : 'image'
+      const response = await fetch(fileUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
-    } else {
-      setError('Impossible de charger le document');
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        
+        // Déterminer le type MIME correct
+        let mimeType = 'application/octet-stream';
+        if (fileType.toLowerCase().includes('pdf')) {
+          mimeType = 'application/pdf';
+        } else if (fileType.toLowerCase().includes('jpg') || fileType.toLowerCase().includes('jpeg')) {
+          mimeType = 'image/jpeg';
+        } else if (fileType.toLowerCase().includes('png')) {
+          mimeType = 'image/png';
+        }
+        
+        // Créer un blob avec le bon type MIME
+        const correctBlob = new Blob([blob], { type: mimeType });
+        const url = URL.createObjectURL(correctBlob);
+        
+        setPreviewDoc({
+          name: fileName,
+          url: url,
+          type: fileType.toLowerCase().includes('pdf') ? 'pdf' : 'image'
+        });
+      } else {
+        setError('Impossible de charger le document');
+      }
+    } catch (err) {
+      console.error('Erreur prévisualisation:', err);
+      setError('Erreur lors de la prévisualisation du document');
     }
-  } catch (err) {
-    console.error('Erreur prévisualisation:', err);
-    setError('Erreur lors de la prévisualisation du document');
-  }
-};
+  };
 
   // Fonction pour obtenir le nom d'affichage d'un document selon son type
   const getDocumentDisplayName = (docType: string, defaultName: string): string => {
@@ -344,54 +343,54 @@ const Profile: React.FC = () => {
   };
 
   // ========== MAPPER LES DOCUMENTS RÉELS VERS LE FORMAT AFFICHAGE ==========
-const getDisplayDocuments = () => {
-  if (documents.length > 0) {
-    // Liste des 4 documents principaux à afficher
-    const mainDocTypes = ['RC_CERT', 'STATUTES', 'TIN_CERT', 'PASSPORT'];
+  const getDisplayDocuments = () => {
+    if (documents.length > 0) {
+      // Liste des 4 documents principaux à afficher
+      const mainDocTypes = ['RC_CERT', 'STATUTES', 'TIN_CERT', 'PASSPORT'];
+      
+      // Filtrer pour n'avoir que les 4 types principaux
+      const mainDocs = documents.filter(doc => mainDocTypes.includes(doc.documentType));
+      
+      // Si on a moins de 4 documents, on prend les premiers disponibles
+      const docsToShow = mainDocs.length > 0 ? mainDocs : documents.slice(0, 4);
+      
+      return docsToShow.map(doc => ({
+        id: doc.id,
+        name: getDocumentDisplayName(doc.documentType, doc.fileName),
+        status: doc.status === 'VALIDE' ? 'Validé' : 
+                doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
+        date: new Date(doc.uploadedAt).toLocaleDateString('fr-FR'),
+        icon: getDocumentIcon(doc.documentType),
+        fileType: doc.fileType,
+        fileName: doc.fileName
+      }));
+    }
     
-    // Filtrer pour n'avoir que les 4 types principaux
-    const mainDocs = documents.filter(doc => mainDocTypes.includes(doc.documentType));
-    
-    // Si on a moins de 4 documents, on prend les premiers disponibles
-    const docsToShow = mainDocs.length > 0 ? mainDocs : documents.slice(0, 4);
-    
-    return docsToShow.map(doc => ({
-      id: doc.id,
-      name: getDocumentDisplayName(doc.documentType, doc.fileName),
-      status: doc.status === 'VALIDE' ? 'Validé' : 
-              doc.status === 'REJETE' ? 'Rejeté' : 'En cours',
-      date: new Date(doc.uploadedAt).toLocaleDateString('fr-FR'),
-      icon: getDocumentIcon(doc.documentType),
-      fileType: doc.fileType,
-      fileName: doc.fileName
-    }));
-  }
-  
-  // Sinon, données mock basées sur le statut de la demande
-  if (dossierStatusLocal?.status === 'VALIDEE') {
-    return [
-      { id: 1, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
-      { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
-      { id: 3, name: "Attestation fiscale", status: "Validé", date: "12/01/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
-      { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
-    ];
-  } else if (dossierStatusLocal?.status === 'EN_COURS_VALIDATION' || dossierStatusLocal?.status === 'SOUMISE') {
-    return [
-      { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
-      { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
-      { id: 3, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
-      { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
-    ];
-  } else {
-    // Données par défaut
-    return [
-      { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
-      { id: 2, name: "Registre du commerce", status: "En cours", date: "15/02/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
-      { id: 3, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
-      { id: 4, name: "Passeport du gérant", status: "En cours", date: "15/02/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
-    ];
-  }
-};
+    // Sinon, données mock basées sur le statut de la demande
+    if (dossierStatusLocal?.status === 'VALIDEE') {
+      return [
+        { id: 1, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
+        { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
+        { id: 3, name: "Attestation fiscale", status: "Validé", date: "12/01/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
+        { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
+      ];
+    } else if (dossierStatusLocal?.status === 'EN_COURS_VALIDATION' || dossierStatusLocal?.status === 'SOUMISE') {
+      return [
+        { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
+        { id: 2, name: "Registre du commerce", status: "Validé", date: "12/01/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
+        { id: 3, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
+        { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
+      ];
+    } else {
+      // Données par défaut
+      return [
+        { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
+        { id: 2, name: "Registre du commerce", status: "En cours", date: "15/02/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
+        { id: 3, name: "Attestation fiscale", status: "En cours", date: "15/02/2024", icon: "fa-file-invoice-dollar", fileType: "pdf", fileName: "fiscale.pdf" },
+        { id: 4, name: "Passeport du gérant", status: "En cours", date: "15/02/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
+      ];
+    }
+  };
 
   // ========== MAPPER POUR LE DOSSIER COMPLET ==========
   const getFullDossierData = () => {
@@ -532,7 +531,7 @@ const getDisplayDocuments = () => {
     }
   };
 
-  // ========== FONCTIONS 2FA ==========
+  // ========== FONCTIONS 2FA (UNIQUEMENT POUR EXPORTATEUR) ==========
   const toggle2FA = async () => {
     if (isLoading) return;
     
@@ -581,46 +580,46 @@ const getDisplayDocuments = () => {
   };
 
   const verifyAndEnable2FA = async (code: string) => {
-  setIsLoading(true);
-  setError('');
+    setIsLoading(true);
+    setError('');
 
-  try {
-    const token = localStorage.getItem('token');
-    
-    // Nettoyer le code (enlever les espaces)
-    const cleanCode = code.replace(/\s/g, '');
-    
-    const response = await fetch('http://localhost:8080/api/auth/2fa/enable', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        email: user.email,
-        code: cleanCode
-      })
-    });
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Nettoyer le code (enlever les espaces)
+      const cleanCode = code.replace(/\s/g, '');
+      
+      const response = await fetch('http://localhost:8080/api/auth/2fa/enable', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: user.email,
+          code: cleanCode
+        })
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Code de vérification invalide');
+      if (!response.ok) {
+        throw new Error(data.error || 'Code de vérification invalide');
+      }
+
+      updateUser({ twoFactorEnabled: true });
+      localStorage.setItem(`2fa_${user.email}`, 'true');
+      
+      setSuccessMessage('2FA activé avec succès !');
+      setShow2FASetup(false);
+      setTwoFactorCode(['', '', '', '', '', '']);
+      
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-
-    updateUser({ twoFactorEnabled: true });
-    localStorage.setItem(`2fa_${user.email}`, 'true');
-    
-    setSuccessMessage('2FA activé avec succès !');
-    setShow2FASetup(false);
-    setTwoFactorCode(['', '', '', '', '', '']);
-    
-  } catch (err: any) {
-    setError(err.message);
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const verifyAndDisable2FA = async (code: string) => {
     setIsLoading(true);
@@ -738,9 +737,78 @@ const getDisplayDocuments = () => {
     admin: 'bg-slate-900'
   };
 
+  // ========== FONCTION POUR LE BADGE DE STATUT (MODIFIÉE) ==========
   const userStatusBadge = () => {
     if (user.role === 'EXPORTATEUR' || user.role === 'exporter') {
+      // Récupérer les statuts depuis le localStorage ou dossierStatus
+      const demandeStatus = dossierStatus?.demandeStatus || dossierStatusLocal?.status;
+      const paymentStatus = dossierStatus?.paymentStatus || dossierStatusLocal?.paymentStatus;
+      
+      // CAS 1: SOUMISE + EN_ATTENTE = Attente de paiement
+      if (demandeStatus === 'SOUMISE' && paymentStatus === 'EN_ATTENTE') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 border border-amber-200 shadow-sm">
+            ATTENTE PAIEMENT
+          </span>
+        );
+      }
+      
+      // CAS 2: EN_COURS_VALIDATION + REUSSI = En cours de validation
+      if (demandeStatus === 'EN_COURS_VALIDATION' && paymentStatus === 'REUSSI') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
+            VALIDATION EN COURS
+          </span>
+        );
+      }
+      
+      // CAS 3: VALIDEE + REUSSI = Vérifié
+      if (demandeStatus === 'VALIDEE' && paymentStatus === 'REUSSI') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm">
+            COMPTE VÉRIFIÉ
+          </span>
+        );
+      }
+      
+      // CAS 4: REJETEE
+      if (demandeStatus === 'REJETEE') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-100 text-red-700 border border-red-200 shadow-sm">
+            DOSSIER REJETÉ
+          </span>
+        );
+      }
+      
+      // CAS 5: SUSPENDUE
+      if (demandeStatus === 'SUSPENDUE') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-700 border border-slate-200 shadow-sm">
+            COMPTE SUSPENDU
+          </span>
+        );
+      }
+      
+      // CAS 6: EN_ATTENTE_INFO
+      if (demandeStatus === 'EN_ATTENTE_INFO') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-orange-100 text-orange-700 border border-orange-200 shadow-sm">
+            INFO REQUISE
+          </span>
+        );
+      }
+      
+      // CAS 7: BROUILLON (pas encore soumis) ou autres cas
       const status = user.statut || user.status;
+      if (status === 'INACTIF' || status === 'PENDING_VERIFICATION') {
+        return (
+          <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-50 text-amber-600 border border-amber-200">
+            EN ATTENTE
+          </span>
+        );
+      }
+      
+      // Fallback: statut utilisateur par défaut
       return (
         <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
           status === 'ACTIF' || status === 'VERIFIED' ? 'bg-green-50 text-green-600 border-green-200' : 
@@ -750,20 +818,26 @@ const getDisplayDocuments = () => {
           {status || 'EN ATTENTE'}
         </span>
       );
+    } else if (user.role === 'IMPORTATEUR' || user.role === 'importer') {
+      return (
+        <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-200">
+          MOBILE ID VÉRIFIÉ
+        </span>
+      );
     }
+    
     return (
       <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-50 text-slate-600 border border-slate-200">
-        Agent Officiel
+        AGENT OFFICIEL
       </span>
     );
   };
 
-  // Déterminer si la bannière de paiement doit s'afficher
-  // Utilise les statuts du cache (dossierStatus) ou les statuts locaux
+  // Déterminer si la bannière de paiement doit s'afficher (uniquement pour exportateur)
   const shouldShowPaymentBanner = 
+    (user.role === 'EXPORTATEUR' || user.role === 'exporter') &&
     (dossierStatus?.demandeStatus === 'SOUMISE' || dossierStatusLocal?.status === 'SOUMISE') && 
     (dossierStatus?.paymentStatus === 'EN_ATTENTE' || dossierStatusLocal?.paymentStatus === 'EN_ATTENTE');
-
 
   const isVerifiedExporter = (user.role === 'EXPORTATEUR' || user.role === 'exporter') && 
                             (user.statut === 'ACTIF' || user.emailVerified === true);
@@ -788,76 +862,76 @@ const getDisplayDocuments = () => {
   };
 
   const handleDownloadCert = () => {
-  if (!showCertificate) {
-    setError('Veuillez d\'abord ouvrir le certificat');
-    return;
-  }
-
-  let certificateElement = document.getElementById('certificat-nee') as HTMLElement;
-  
-  if (!certificateElement) {
-    certificateElement = document.querySelector('.certificate-content') as HTMLElement;
-  }
-  
-  if (!certificateElement) {
-    const modal = document.querySelector('.fixed.inset-0.z-\\[120\\]');
-    if (modal) {
-      certificateElement = modal.querySelector('.border-\\[12px\\]') as HTMLElement;
+    if (!showCertificate) {
+      setError('Veuillez d\'abord ouvrir le certificat');
+      return;
     }
-  }
 
-  if (!certificateElement) {
-    setError('Certificat non trouvé');
-    return;
-  }
-
-  const options = {
-    scale: 2,
-    backgroundColor: '#ffffff',
-    logging: false,
-    allowTaint: false,
-    useCORS: true
-  };
-
-  html2canvas(certificateElement, options)
-    .then((canvas: HTMLCanvasElement) => {
-      try {
-        const pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'px',
-          format: [canvas.width, canvas.height]
-        });
-        
-        const imgData = canvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-        
-        const fileName = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.pdf`;
-        pdf.save(fileName);
-        
-      } catch (pdfError) {
-        // Fallback PNG
-        try {
-          const link = document.createElement('a');
-          link.download = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.png`;
-          link.href = canvas.toDataURL('image/png');
-          link.click();
-          setError('PDF non disponible, téléchargement en PNG effectué');
-        } catch (pngError) {
-          setError('Erreur lors de la création du fichier');
-        }
+    let certificateElement = document.getElementById('certificat-nee') as HTMLElement;
+    
+    if (!certificateElement) {
+      certificateElement = document.querySelector('.certificate-content') as HTMLElement;
+    }
+    
+    if (!certificateElement) {
+      const modal = document.querySelector('.fixed.inset-0.z-\\[120\\]');
+      if (modal) {
+        certificateElement = modal.querySelector('.border-\\[12px\\]') as HTMLElement;
       }
-    })
-    .catch((err: Error) => {
-      setError('Erreur lors de la capture du certificat: ' + err.message);
-    });
-};
+    }
+
+    if (!certificateElement) {
+      setError('Certificat non trouvé');
+      return;
+    }
+
+    const options = {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      logging: false,
+      allowTaint: false,
+      useCORS: true
+    };
+
+    html2canvas(certificateElement, options)
+      .then((canvas: HTMLCanvasElement) => {
+        try {
+          const pdf = new jsPDF({
+            orientation: 'landscape',
+            unit: 'px',
+            format: [canvas.width, canvas.height]
+          });
+          
+          const imgData = canvas.toDataURL('image/png');
+          pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+          
+          const fileName = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.pdf`;
+          pdf.save(fileName);
+          
+        } catch (pdfError) {
+          // Fallback PNG
+          try {
+            const link = document.createElement('a');
+            link.download = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            setError('PDF non disponible, téléchargement en PNG effectué');
+          } catch (pngError) {
+            setError('Erreur lors de la création du fichier');
+          }
+        }
+      })
+      .catch((err: Error) => {
+        setError('Erreur lors de la capture du certificat: ' + err.message);
+      });
+  };
 
   const getRoleColor = () => {
     const role = user.role?.toUpperCase() || 'EXPORTATEUR';
     return roleColors[role] || roleColors['EXPORTATEUR'];
   };
 
-  // Obtenir les documents à afficher
+  // Obtenir les documents à afficher (uniquement pour exportateur)
   const displayDocuments = getDisplayDocuments();
   const fullDossierData = getFullDossierData();
 
@@ -1006,7 +1080,7 @@ const getDisplayDocuments = () => {
         </div>
       )}
 
-      {/* ALERTE PAIEMENT PERSISTANTE - basée sur les statuts du cache */}
+      {/* ALERTE PAIEMENT PERSISTANTE - basée sur les statuts du cache (uniquement pour exportateur) */}
       {shouldShowPaymentBanner && (
         <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl mb-10 flex items-center justify-between border-4 border-tunisia-red/20 animate-fade-in-scale">
            <div className="flex items-center gap-6">
@@ -1046,9 +1120,17 @@ const getDisplayDocuments = () => {
                 <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">
                   {user.companyName || user.raisonSociale || user.email.split('@')[0]}
                 </h1>
+                {/* BADGE DE STATUT - C'EST ICI QUE ÇA CHANGE */}
                 {userStatusBadge()}
               </div>
               <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">{user.email}</p>
+              {/* Afficher le matricule Mobile ID pour les importateurs */}
+              {(user.role === 'IMPORTATEUR' || user.role === 'importer') && user.mobileIdMatricule && (
+                <p className="text-emerald-600 font-bold text-xs tracking-widest mt-1">
+                  <i className="fas fa-mobile-alt mr-2"></i>
+                  Matricule Mobile ID: {user.mobileIdMatricule}
+                </p>
+              )}
             </div>
             <div className="flex gap-4">
               <button 
@@ -1065,7 +1147,8 @@ const getDisplayDocuments = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-8">
-           {isVerifiedExporter && (
+           {/* Certificat NEE - UNIQUEMENT POUR EXPORTATEUR */}
+           {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && isVerifiedExporter && (
               <div className="bg-emerald-600 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
                  <div className="absolute -top-10 -right-10 opacity-10 group-hover:scale-110 transition-transform">
                     <i className="fas fa-award text-9xl"></i>
@@ -1084,24 +1167,52 @@ const getDisplayDocuments = () => {
               </div>
            )}
 
+           {/* Carte d'information Mobile ID - POUR IMPORTATEUR */}
+           {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+             <div className="bg-emerald-600 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
+               <div className="absolute -top-10 -right-10 opacity-10">
+                 <i className="fas fa-mobile-alt text-9xl"></i>
+               </div>
+               <h3 className="text-[10px] font-black uppercase tracking-widest text-emerald-100 mb-6">Authentification</h3>
+               <div className="space-y-4">
+                 <div>
+                   <span className="block text-xs font-black uppercase tracking-tight mb-1">Mobile ID</span>
+                   <span className="block text-sm font-bold text-emerald-100">Vérifié le {new Date().toLocaleDateString()}</span>
+                 </div>
+                 <div className="pt-4 border-t border-emerald-500/30">
+                   <div className="flex items-center gap-3">
+                     <i className="fas fa-check-circle text-emerald-300"></i>
+                     <span className="text-xs font-bold">Identité certifiée</span>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           )}
+
            <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Sécurité & Compte</h3>
               <div className="space-y-4">
-                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                    <div className="flex items-center gap-3">
+                 
+                 {/* MODIFICATION MOT DE PASSE - UNIQUEMENT POUR EXPORTATEUR ET ADMIN */}
+                 {(user.role === 'EXPORTATEUR' || user.role === 'exporter' || user.role === 'admin') && (
+                   <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                     <div className="flex items-center gap-3">
                        <i className="fas fa-key text-slate-400"></i>
                        <span className="text-sm font-bold text-slate-700">Mot de passe</span>
-                    </div>
-                    <button 
-                      onClick={() => setIsChangingPassword(true)}
-                      className="text-[10px] font-black text-tunisia-red uppercase tracking-widest hover:underline"
-                    >
-                      Modifier
-                    </button>
-                 </div>
+                     </div>
+                     <button 
+                       onClick={() => setIsChangingPassword(true)}
+                       className="text-[10px] font-black text-tunisia-red uppercase tracking-widest hover:underline"
+                     >
+                       Modifier
+                     </button>
+                   </div>
+                 )}
                  
-                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                    <div className="flex items-center gap-3">
+                 {/* 2FA - UNIQUEMENT POUR EXPORTATEUR */}
+                 {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+                   <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                     <div className="flex items-center gap-3">
                        <i className="fas fa-shield-alt text-slate-400"></i>
                        <div>
                          <span className="text-sm font-bold text-slate-700">Connexion 2FA</span>
@@ -1111,21 +1222,37 @@ const getDisplayDocuments = () => {
                            </p>
                          )}
                        </div>
-                    </div>
-                    <button 
-                      onClick={toggle2FA}
-                      disabled={isLoading}
-                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none ${
-                        user.twoFactorEnabled ? 'bg-emerald-500' : 'bg-slate-300'
-                      } ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                      <span
-                        className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform shadow-lg ${
-                          user.twoFactorEnabled ? 'translate-x-7' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                 </div>
+                     </div>
+                     <button 
+                       onClick={toggle2FA}
+                       disabled={isLoading}
+                       className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none ${
+                         user.twoFactorEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                       } ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                     >
+                       <span
+                         className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform shadow-lg ${
+                           user.twoFactorEnabled ? 'translate-x-7' : 'translate-x-1'
+                         }`}
+                       />
+                     </button>
+                   </div>
+                 )}
+
+                 {/* MESSAGE POUR IMPORTATEUR - INDISPONIBILITÉ DE CERTAINES FONCTIONS */}
+                 {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                     <div className="flex items-center gap-3">
+                       <i className="fas fa-info-circle text-emerald-600"></i>
+                       <div>
+                         <span className="text-sm font-bold text-slate-700">Authentification Mobile ID</span>
+                         <p className="text-[8px] text-slate-500 font-medium">
+                           Vous êtes connecté via Mobile ID. La gestion du mot de passe et 2FA n'est pas disponible.
+                         </p>
+                       </div>
+                     </div>
+                   </div>
+                 )}
 
                  <div className="pt-4 border-t border-slate-50">
                     {deactivationRequested ? (
@@ -1165,17 +1292,17 @@ const getDisplayDocuments = () => {
                           </div>
 
                           <div className="flex items-center gap-2 px-1">
-                          <input 
-                            type="checkbox" 
-                            id="urgent-deactivation"
-                            checked={isUrgent}
-                            onChange={(e) => setIsUrgent(e.target.checked)}
-                            className="w-4 h-4 rounded border-slate-300 text-tunisia-red focus:ring-tunisia-red"
-                          />
-                          <label htmlFor="urgent-deactivation" className="text-[10px] font-bold text-slate-600 uppercase tracking-wide cursor-pointer">
-                            Marquer comme urgent
-                          </label>
-                        </div>
+                            <input 
+                              type="checkbox" 
+                              id="urgent-deactivation"
+                              checked={isUrgent}
+                              onChange={(e) => setIsUrgent(e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-tunisia-red focus:ring-tunisia-red"
+                            />
+                            <label htmlFor="urgent-deactivation" className="text-[10px] font-bold text-slate-600 uppercase tracking-wide cursor-pointer">
+                              Marquer comme urgent
+                            </label>
+                          </div>
 
                           <div className="flex gap-2">
                             <button 
@@ -1246,17 +1373,17 @@ const getDisplayDocuments = () => {
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Adresse
+                    Email
                   </label>
                   <input 
-                    type="text" 
-                    value={formData.address} 
-                    onChange={(e) => setFormData({...formData, address: e.target.value})}
-                    disabled={isLoading}
-                    className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                    type="email" 
+                    value={user.email || ''} 
+                    disabled={true}
+                    className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-100 cursor-not-allowed opacity-70" 
                   />
                 </div>
 
+                {/* AFFICHER CES CHAMPS UNIQUEMENT POUR EXPORTATEUR */}
                 {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1351,14 +1478,20 @@ const getDisplayDocuments = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
-                  <div>
-                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                      {t('company_name')}
-                    </span>
-                    <span className="text-lg font-black text-slate-800">
-                      {user.companyName || user.raisonSociale || 'Non défini'}
-                    </span>
-                  </div>
+                  
+                  {/* COMPANY NAME - UNIQUEMENT POUR EXPORTATEUR */}
+                  {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+                    <div>
+                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                        {t('company_name')}
+                      </span>
+                      <span className="text-lg font-black text-slate-800">
+                        {user.companyName || user.raisonSociale || 'Non défini'}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* TELEPHONE - POUR TOUS LES RÔLES */}
                   <div>
                     <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                       {t('phone_number')}
@@ -1368,6 +1501,17 @@ const getDisplayDocuments = () => {
                     </span>
                   </div>
                   
+                  {/* EMAIL - POUR TOUS LES RÔLES */}
+                  <div className="md:col-span-2">
+                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                      Email
+                    </span>
+                    <span className="text-lg font-black text-slate-800">
+                      {user.email || 'Non défini'}
+                    </span>
+                  </div>
+                  
+                  {/* CHAMPS SPÉCIFIQUES EXPORTATEUR */}
                   {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                     <>
                       <div>
@@ -1410,23 +1554,39 @@ const getDisplayDocuments = () => {
                           {user.legalRep || user.representantLegal || 'Non défini'}
                         </span>
                       </div>
+                      
+                      {/* ADRESSE DU SIÈGE - UNIQUEMENT POUR EXPORTATEUR */}
+                      <div className="md:col-span-2 pt-6 border-t border-slate-50">
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          Adresse du siège
+                        </span>
+                        <span className="text-sm font-bold text-slate-600 italic">
+                          {user.address || user.adresseLegale || 'Non défini'}
+                        </span>
+                      </div>
                     </>
                   )}
 
-                  <div className="md:col-span-2 pt-6 border-t border-slate-50">
-                     <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                       Adresse du siège
-                     </span>
-                     <span className="text-sm font-bold text-slate-600 italic">
-                       {user.address || user.adresseLegale || 'Non défini'}
-                     </span>
-                  </div>
+                  {/* POUR IMPORTATEUR - AFFICHER UNIQUEMENT LES INFOS DE BASE */}
+                  {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+                    <>
+                      {/* INFORMATIONS SUPPLÉMENTAIRES POUR IMPORTATEUR (OPTIONNEL) */}
+                      <div className="md:col-span-2 pt-4">
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                          <p className="text-xs font-bold text-slate-600">
+                            <i className="fas fa-mobile-alt text-emerald-600 mr-2"></i>
+                            Compte authentifié via Mobile ID
+                          </p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )
             )}
           </div>
 
-          {/* DOSSIER DE CONFORMITÉ - AVEC DONNÉES RÉELLES */}
+          {/* DOSSIER DE CONFORMITÉ - UNIQUEMENT POUR EXPORTATEUR */}
           {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
             <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
               <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
@@ -1445,14 +1605,18 @@ const getDisplayDocuments = () => {
                     </span>
                     <span className={`px-3 py-1 text-[8px] font-black uppercase rounded-full ${
                       demandeInfo.status === 'VALIDEE' ? 'bg-emerald-50 text-emerald-600' :
-                      demandeInfo.status === 'SOUMISE' || demandeInfo.status === 'EN_COURS_VALIDATION' ? 'bg-blue-50 text-blue-600' :
+                      demandeInfo.status === 'SOUMISE' ? 'bg-blue-50 text-blue-600' :
+                      demandeInfo.status === 'EN_COURS_VALIDATION' ? 'bg-purple-50 text-purple-600' :
+                      demandeInfo.status === 'REJETEE' ? 'bg-red-50 text-red-600' :
+                      demandeInfo.status === 'EN_ATTENTE_INFO' ? 'bg-orange-50 text-orange-600' :
                       'bg-amber-50 text-amber-600'
                     }`}>
-                      {demandeInfo.status === 'VALIDEE' ? 'Validé' :
-                       demandeInfo.status === 'SOUMISE' ? 'Soumis' :
-                       demandeInfo.status === 'EN_COURS_VALIDATION' ? 'En cours' :
-                       demandeInfo.status === 'EN_ATTENTE_INFO' ? 'Info requise' :
-                       demandeInfo.status || 'Brouillon'}
+                      {demandeInfo.status === 'VALIDEE' ? 'VALIDÉ' :
+                       demandeInfo.status === 'SOUMISE' ? 'SOUMIS' :
+                       demandeInfo.status === 'EN_COURS_VALIDATION' ? 'EN COURS' :
+                       demandeInfo.status === 'REJETEE' ? 'REJETÉ' :
+                       demandeInfo.status === 'EN_ATTENTE_INFO' ? 'INFO REQUISE' :
+                       demandeInfo.status || 'BROUILLON'}
                     </span>
                   </div>
                 )}
@@ -1507,6 +1671,28 @@ const getDisplayDocuments = () => {
                   </div>
                 </div>
                 <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
+              </div>
+            </div>
+          )}
+
+          {/* MESSAGE POUR IMPORTATEUR - PAS DE DOSSIER DE CONFORMITÉ */}
+          {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+            <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 border border-emerald-100">
+                  <i className="fas fa-mobile-alt text-2xl"></i>
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 uppercase italic tracking-tighter mb-1">
+                    Authentification Mobile ID
+                  </h3>
+                  <p className="text-xs font-bold text-slate-400">
+                    Matricule: {user.mobileIdMatricule || 'Non disponible'}
+                  </p>
+                  <p className="text-[8px] text-slate-500 mt-2 max-w-md">
+                    Les importateurs tunisiens sont authentifiés via Mobile ID. Aucun dossier de conformité n'est requis.
+                  </p>
+                </div>
               </div>
             </div>
           )}

@@ -146,7 +146,7 @@ const FileUploadBox = ({
 
 const ExporterSpace: React.FC = () => {
   const { t } = useTranslation();
-  const { user, updateUserStatus, dossierStatus, updateDossierStatus } = useAuth();
+  const { user, updateUser, dossierStatus, updateDossierStatus } = useAuth();
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
@@ -209,63 +209,61 @@ const ExporterSpace: React.FC = () => {
   ];
 
   // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
-  const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
+  // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
+const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
+  const token = localStorage.getItem('token');
+  if (!token) return;
 
-    try {
-      // Utiliser d'abord le cache si disponible et pas de rafraîchissement forcé
-      if (!forceRefresh && dossierStatus) {
-        console.log('📋 Utilisation des statuts en cache:', dossierStatus);
-        setDossierInfo({
-          hasDossier: true,
-          status: dossierStatus.demandeStatus,
-          paymentStatus: dossierStatus.paymentStatus,
-          demandeId: dossierStatus.demandeId,
-          reference: dossierStatus.reference,
-          success: true,
-          message: '',
-          timestamp: dossierStatus.lastUpdated
-        } as DossierResponse);
-        return;
-      }
-
-      // Sinon, appel API
-      console.log('🌐 Appel API pour rafraîchir les statuts');
-      const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setDossierInfo(response.data);
-      
-      // Mettre à jour le cache dans useAuth
-      if (response.data.hasDossier) {
-        updateDossierStatus(
-          response.data.status || '',
-          response.data.paymentStatus || 'EN_ATTENTE',
-          {
-            demandeId: response.data.demandeId,
-            reference: response.data.reference
-          }
-        );
-      }
-      
-      // Mettre à jour le statut utilisateur en fonction du dossier
-      if (response.data.hasDossier) {
-        if (response.data.status === 'SOUMISE' || response.data.status === 'EN_ATTENTE_PAIEMENT') {
-          updateUserStatus('PENDING_VERIFICATION');
-        } else if (response.data.status === 'VALIDEE') {
-          updateUserStatus('VERIFIED');
-        } else if (response.data.status === 'BROUILLON') {
-          updateUserStatus('PROFILE_INCOMPLETE');
-        } else if (response.data.status === 'PAYEE') {
-          updateUserStatus('PAYMENT_PENDING');
-        }
-      }
-    } catch (error) {
-      console.error('Erreur lors de la récupération du dossier:', error);
+  try {
+    // Utiliser d'abord le cache si disponible et pas de rafraîchissement forcé
+    if (!forceRefresh && dossierStatus) {
+      console.log('📋 Utilisation des statuts en cache:', dossierStatus);
+      setDossierInfo({
+        hasDossier: true,
+        status: dossierStatus.demandeStatus,
+        paymentStatus: dossierStatus.paymentStatus,
+        demandeId: dossierStatus.demandeId,
+        reference: dossierStatus.reference,
+        success: true,
+        message: '',
+        timestamp: dossierStatus.lastUpdated
+      } as DossierResponse);
+      return;
     }
-  }, [dossierStatus, updateDossierStatus, updateUserStatus]);
+
+    // Sinon, appel API
+    console.log('🌐 Appel API pour rafraîchir les statuts');
+    const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log('🔍🔍🔍🔍🔍 Réponse API brute:', response.data); 
+    
+    setDossierInfo(response.data);
+    
+    // Mettre à jour le cache dans useAuth
+    if (response.data.hasDossier) {
+      updateDossierStatus(
+        response.data.status || '',
+        response.data.paymentStatus || '',
+        {
+          demandeId: response.data.demandeId,
+          reference: response.data.reference
+        }
+      );
+      
+      // Mettre à jour l'utilisateur avec des informations pertinentes
+      // mais sans statut statique
+      updateUser({
+        dossierStatut: response.data.status,
+        dossierId: response.data.demandeId,
+        dossierReference: response.data.reference
+      });
+    }
+  } catch (error) {
+    console.error('Erreur lors de la récupération du dossier:', error);
+  }
+}, [dossierStatus, updateDossierStatus, updateUser]);
+
 
   // Chargement initial - ne s'exécute qu'une fois
   useEffect(() => {
@@ -451,7 +449,6 @@ const ExporterSpace: React.FC = () => {
 };
 
   // Fonction principale de paiement - maintenant utilisée par PaymentForm
-  // Dans ExporterSpace.tsx, modifier la fonction handlePaymentSubmit
 
 const handlePaymentSubmit = async (paymentDetails: any) => {
   setLoading(true);
@@ -491,7 +488,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
         status: result.status
       });
 
-      updateUserStatus('PAYMENT_PENDING');
+      // Remplacer updateUserStatus par updateUser
+      updateUser({
+        dossierStatut: 'EN_COURS_VALIDATION',
+        paymentStatus: 'REUSSI'
+      });
       
       setDossierInfo(prev => ({
         ...prev,
@@ -689,7 +690,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
   }
 
   // --- RENDU : PREMIÈRE CONNEXION / DOSSIER INCOMPLET ---
-  if (!dossierStatus || user?.status === 'PROFILE_INCOMPLETE') {
+if (!dossierStatus || !dossierInfo?.hasDossier) {
     const requiredFields: (keyof KycData)[] = [
       'rcCert', 'rcTranslation', 'rcLegalization', 
       'statutes', 'statutesTranslation', 'tinCert', 
@@ -864,7 +865,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight italic uppercase">Dashboard Exportateur</h2>
           <div className="mt-1">
-             {dossierInfo?.status === 'VALIDEE' || user?.status === 'VERIFIED' ? (
+             {dossierInfo?.status === 'VALIDEE' ? (
                 <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                    Profil Vérifié & Agréé

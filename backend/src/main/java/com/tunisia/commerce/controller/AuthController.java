@@ -5,6 +5,7 @@ import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.exception.AuthException;
+import com.tunisia.commerce.exception.MobileAuthException;
 import com.tunisia.commerce.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -132,8 +133,43 @@ public class AuthController {
     }
 
     @PostMapping("/login/mobile")
-    public ResponseEntity<LoginResponse> mobileLogin(@RequestBody MobileLoginRequest request) {
-        return ResponseEntity.ok(userService.mobileLogin(request));
+    public ResponseEntity<?> mobileLogin(@RequestBody MobileLoginRequest request) {
+        try {
+            log.info("Tentative de login mobile avec matricule: " + request.getMatricule());
+
+            LoginResponse response = userService.mobileLogin(request);
+
+            Map<String, Object> successResponse = new HashMap<>();
+            successResponse.put("success", true);
+            successResponse.put("token", response.getToken());
+            successResponse.put("requiresTwoFactor", response.isRequiresTwoFactor());
+            successResponse.put("user", response.getUser());
+            successResponse.put("timestamp", LocalDateTime.now().toString());
+
+            return ResponseEntity.ok(successResponse);
+
+        } catch (MobileAuthException e) {
+            log.warn("Échec login mobile: {} - {}", e.getErrorCode(), e.getMessage());
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("timestamp", LocalDateTime.now().toString());
+
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+
+        } catch (Exception e) {
+            log.error("Erreur inattendue lors du login mobile", e);
+
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", "SERVER_ERROR");
+            errorResponse.put("message", "Une erreur interne est survenue");
+            errorResponse.put("timestamp", LocalDateTime.now().toString());
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
     }
 
     @PostMapping("/logout")

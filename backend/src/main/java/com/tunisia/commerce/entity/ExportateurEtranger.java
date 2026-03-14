@@ -87,7 +87,4 @@ public class ExportateurEtranger extends User {
     private LocalDateTime resetPasswordTokenExpiry;
     @Column(name = "last_password_change")
     private LocalDateTime lastPasswordChange;
-
-
-
 }

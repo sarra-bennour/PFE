@@ -155,7 +155,7 @@ public class ValidationServiceImpl implements ValidationService {
             exportateur.setStatutAgrement(StatutAgrement.VALIDE);
             exportateur.setNumeroAgrement(numeroAgrement);
             exportateur.setDateAgrement(LocalDate.now());
-            exportateur.setStatut(UserStatus.ACTIF);
+            exportateur.setUserStatut(UserStatus.ACTIF);
 
             emailService.sendDemandeApprouveeNotification(
                     exportateur.getEmail(),

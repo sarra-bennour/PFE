@@ -5,6 +5,7 @@ import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.enums.*;
 import com.tunisia.commerce.exception.AuthException;
+import com.tunisia.commerce.exception.MobileAuthException;
 import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.EmailService;
 import com.tunisia.commerce.service.UserService;
@@ -126,7 +127,7 @@ public class UserServiceImpl implements UserService {
         exportateur.setEmail(request.getEmail());            // Email
         exportateur.setTelephone(request.getPhone());        // Téléphone
         exportateur.setRole(UserRole.EXPORTATEUR);          // Rôle
-        exportateur.setStatut(UserStatus.INACTIF);           // Statut (inactif tant que email non vérifié)
+        exportateur.setUserStatut(UserStatus.INACTIF);           // Statut (inactif tant que email non vérifié)
         exportateur.setDateCreation(LocalDateTime.now());    // Date de création
 
         // === CHAMPS SPÉCIFIQUES À L'EXPORTATEUR ===
@@ -257,7 +258,7 @@ public class UserServiceImpl implements UserService {
 
         // Mettre à jour
         exportateur.setEmailVerified(true);
-        exportateur.setStatut(UserStatus.PROFILE_INCOMPLETE);
+        exportateur.setUserStatut(UserStatus.ACTIF);
         exportateur.setVerificationToken(null);
         exportateur.setVerificationTokenExpiry(null);
 
@@ -415,15 +416,79 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public LoginResponse mobileLogin(MobileLoginRequest request) {
+        logger.info("=== LOGIN MOBILE ===");
+        logger.info("Matricule reçu: " + request.getMatricule());
+
+        // Validation du format du matricule
+        if (request.getMatricule() == null || !request.getMatricule().matches("\\d{10}")) {
+            throw MobileAuthException.invalidMatriculeFormat();
+        }
+
+        // Validation du format du PIN
+        if (request.getPin() == null || !request.getPin().matches("\\d{6}")) {
+            throw MobileAuthException.invalidPinFormat();
+        }
+
         // Rechercher l'importateur par matricule Mobile ID
         ImportateurTunisien importateur = importateurRepository
                 .findByMobileIdMatricule(request.getMatricule())
-                .orElseThrow(() -> new RuntimeException("Importateur non trouvé"));
+                .orElseThrow(() -> MobileAuthException.importateurNotFound(request.getMatricule()));
 
-        // Vérifier le PIN (dans un cas réel, cela serait vérifié via l'API Mobile ID)
-        if (!importateur.getMobileIdPin().equals(request.getPin())) {
-            throw new IllegalArgumentException("PIN incorrect");
+        logger.info("Importateur trouvé: " + importateur.getEmail() + " avec statut: " + importateur.getUserStatut());
+
+        // Vérifier si le compte est actif
+        if (importateur.getUserStatut() != UserStatus.ACTIF) {
+            if (importateur.getUserStatut() == UserStatus.INACTIF) {
+                // Vérifier si le compte est verrouillé temporairement
+                if (importateur.getLastFailedLoginAttempt() != null) {
+                    LocalDateTime unlockTime = importateur.getLastFailedLoginAttempt().plusMinutes(30);
+                    if (LocalDateTime.now().isBefore(unlockTime)) {
+                        long minutesRemaining = Duration.between(LocalDateTime.now(), unlockTime).toMinutes();
+                        throw MobileAuthException.accountLocked((int) minutesRemaining);
+                    } else {
+                        // Déverrouiller automatiquement
+                        importateur.setUserStatut(UserStatus.ACTIF);
+                        importateur.setFailedLoginAttempts(0);
+                        importateur.setLastFailedLoginAttempt(null);
+                    }
+                } else {
+                    throw MobileAuthException.accountInactive(importateur.getUserStatut().name());
+                }
+            } else {
+                throw MobileAuthException.accountInactive(importateur.getUserStatut().name());
+            }
         }
+
+        // Vérifier si Mobile ID est vérifié
+        if (!importateur.isMobileIdVerified()) {
+            throw MobileAuthException.mobileIdNotVerified();
+        }
+
+        // Vérifier le PIN
+        if (!importateur.getMobileIdPin().equals(request.getPin())) {
+            // Incrémenter les tentatives échouées
+            int failedAttempts = importateur.getFailedLoginAttempts() + 1;
+            importateur.setFailedLoginAttempts(failedAttempts);
+            importateur.setLastFailedLoginAttempt(LocalDateTime.now());
+
+            logger.warning("PIN incorrect pour le matricule: " + request.getMatricule() +
+                    " (tentative " + failedAttempts + "/5)");
+
+            // Verrouiller après 5 tentatives
+            if (failedAttempts >= 5) {
+                importateur.setUserStatut(UserStatus.INACTIF);
+                importateurRepository.save(importateur);
+                logger.warning("Compte verrouillé après " + failedAttempts + " tentatives");
+                throw MobileAuthException.accountLocked(30);
+            }
+
+            importateurRepository.save(importateur);
+            throw MobileAuthException.invalidPin();
+        }
+
+        // Réinitialiser les tentatives échouées
+        importateur.setFailedLoginAttempts(0);
+        importateur.setLastFailedLoginAttempt(null);
 
         // Mettre à jour la dernière connexion
         importateur.setLastLogin(LocalDateTime.now());
@@ -432,10 +497,15 @@ public class UserServiceImpl implements UserService {
         // Générer le token JWT
         String token = jwtUtil.generateToken(importateur.getEmail(), importateur.getRole().name());
 
+        // Mapper vers DTO
+        UserDTO userDTO = mapToUserDTO(importateur);
+
+        logger.info("✅ Login mobile réussi pour: " + importateur.getEmail());
+
         return LoginResponse.builder()
                 .token(token)
                 .requiresTwoFactor(false)
-                .user(mapToUserDTO(importateur))
+                .user(userDTO)
                 .build();
     }
 
@@ -457,7 +527,7 @@ public class UserServiceImpl implements UserService {
         dto.setEmail(user.getEmail());
         dto.setTelephone(user.getTelephone());
         dto.setRole(user.getRole());
-        dto.setStatut(user.getStatut());
+        dto.setStatut(user.getUserStatut());
         dto.setDateCreation(user.getDateCreation());
         dto.setLastLogin(user.getLastLogin());
 
@@ -479,6 +549,13 @@ public class UserServiceImpl implements UserService {
             dto.setEmailVerified(exportateur.isEmailVerified());
             dto.setTwoFactorEnabled(exportateur.isTwoFactorEnabled());
             dto.setDocumentsCount(exportateur.getDocuments() != null ? exportateur.getDocuments().size() : 0);
+        }
+
+        if (user instanceof ImportateurTunisien) {
+            ImportateurTunisien importateur = (ImportateurTunisien) user;
+            dto.setMobileIdMatricule(importateur.getMobileIdMatricule());
+            dto.setMobileIdPin(importateur.getMobileIdPin());
+            dto.setEmailVerified(true);
         }
 
         return dto;

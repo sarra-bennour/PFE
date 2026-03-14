@@ -18,17 +18,28 @@ import ProductDeclaration from './pages/ProductDeclaration';
 import DeclarationsList from './pages/DeclarationsList';
 
 // Define User types for the simulation
-export type UserRole = 'EXPORTATEUR' | 'importer' | 'validator' | 'admin';
-export type ExporterStatus = 'SIGNED_UP' | 'PROFILE_INCOMPLETE' | 'PAYMENT_PENDING' | 'PENDING_VERIFICATION' | 'VERIFIED';
+export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'validator' | 'admin';
 
 export interface User {
   email: string;
   role: UserRole;
-  status?: ExporterStatus;
   companyName?: string;
   phone?: string;
   isTwoFactorEnabled?: boolean;
   submissionDate?: string;
+  // Champs spécifiques aux exportateurs
+  raisonSociale?: string;
+  paysOrigine?: string;
+  numeroRegistreCommerce?: string;
+  adresseLegale?: string;
+  ville?: string;
+  siteWeb?: string;
+  representantLegal?: string;
+  numeroTVA?: string;
+  emailVerified?: boolean;
+  // Champs spécifiques aux importateurs
+  mobileIdMatricule?: string;
+  mobileIdPin?: string;
 }
 
 // Interface pour les statuts du dossier
@@ -42,9 +53,9 @@ interface DossierStatus {
 
 interface AuthContextType {
   user: User | null;
+  isLoading: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
-  updateUserStatus: (status: ExporterStatus) => void;
   updateUser: (data: Partial<User>) => void;
   dossierStatus: DossierStatus | null;
   updateDossierStatus: (demandeStatus: string, paymentStatus: string, additionalData?: any) => void;
@@ -159,19 +170,11 @@ const App: React.FC = () => {
     authHook.logout(); // Utiliser le logout du hook
   };
 
-  const updateUserStatus = (status: ExporterStatus) => {
-    if (authHook.user) {
-      const updatedUser = { ...authHook.user, status };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      Object.assign(authHook.user, updatedUser); 
-    }
-  };
-
   const updateUser = (data: Partial<User>) => {
     if (authHook.user) {
       const updatedUser = { ...authHook.user, ...data };
       localStorage.setItem('user', JSON.stringify(updatedUser));
-      Object.assign(authHook.user, updatedUser);
+      authHook.updateUser(updatedUser);
     }
   };
 
@@ -181,7 +184,6 @@ const App: React.FC = () => {
       isLoading: authHook.isLoading,
       login, 
       logout, 
-      updateUserStatus, 
       updateUser,
       dossierStatus: authHook.dossierStatus,
       updateDossierStatus: authHook.updateDossierStatus
@@ -218,7 +220,7 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/importer" element={
-              <ProtectedRoute roles={['importer']}>
+              <ProtectedRoute roles={['IMPORTATEUR']}>
                 <ImporterSpace />
               </ProtectedRoute>
             } />

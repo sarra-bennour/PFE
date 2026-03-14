@@ -39,8 +39,8 @@ public class UserDTO {
     private int documentsCount;
 
     // Champs spécifiques aux importateurs
-    private String matriculeFiscale;
-    private String numeroRegistreCommerceTN;
+    private String mobileIdMatricule;
+    private String mobileIdPin;
 
 
 }

@@ -1,4 +1,3 @@
-// hooks/useAuth.ts - Version corrigée COMPLÈTE
 import { useState, useEffect } from 'react';
 
 // Interface pour typer les statuts

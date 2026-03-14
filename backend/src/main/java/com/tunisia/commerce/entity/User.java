@@ -38,9 +38,9 @@ public class User {
     private LocalDateTime dateCreation = LocalDateTime.now();
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "statut", nullable = false)
+    @Column(name = "user_statut", nullable = false)
     @Builder.Default
-    private UserStatus statut = UserStatus.INACTIF;
+    private UserStatus userStatut = UserStatus.INACTIF;
 
     @Column(name = "last_login")
     private LocalDateTime lastLogin;

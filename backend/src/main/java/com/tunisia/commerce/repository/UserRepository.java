@@ -25,7 +25,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     void incrementFailedAttempts(@Param("email") String email);
 
     @Modifying
-    @Query(value = "UPDATE users SET statut = :status, failed_login_attempts = 0, last_failed_login_attempt = NULL WHERE email = :email", nativeQuery = true)
+    @Query(value = "UPDATE users SET user_statut = :status, failed_login_attempts = 0, last_failed_login_attempt = NULL WHERE email = :email", nativeQuery = true)
     void lockAccount(@Param("email") String email, @Param("status") String status);
 
     @Modifying
@@ -35,7 +35,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query(value = "SELECT failed_login_attempts FROM users WHERE email = :email", nativeQuery = true)
     Integer getFailedAttempts(@Param("email") String email);
 
-    @Query(value = "SELECT statut FROM users WHERE email = :email", nativeQuery = true)
+    @Query(value = "SELECT user_statut FROM users WHERE email = :email", nativeQuery = true)
     String getUserStatus(@Param("email") String email);
 
     @Query(value = "SELECT last_failed_login_attempt FROM users WHERE email = :email", nativeQuery = true)

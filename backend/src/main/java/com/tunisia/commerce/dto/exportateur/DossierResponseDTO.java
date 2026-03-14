@@ -16,6 +16,7 @@ public class DossierResponseDTO {
     private boolean hasDossier;
     private Long demandeId;
     private String status;
+    private String paymentStatus;
     private String reference;
     private LocalDateTime submittedAt;
 

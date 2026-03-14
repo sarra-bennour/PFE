@@ -54,7 +54,6 @@ public class ExportateurController {
             System.out.println("✅ Exportateur trouvé ID: " + exportateur.getId());
 
             // 2. RECHERCHER UNIQUEMENT LE DOSSIER DE CONFORMITÉ (KYC)
-            // Qui commence par "DOS-" dans la référence
             Optional<DemandeEnregistrement> dossierConformiteOpt =
                     demandeRepository.findDossierConformiteByExportateurId(exportateur.getId());
 
@@ -83,7 +82,7 @@ public class ExportateurController {
                                 "Télécharger les documents requis",
                                 "Soumettre le dossier pour validation"
                         ))
-                        .declarationsCount(declarationsProduits.size()) // Ajoutez ce champ dans DossierResponseDTO
+                        .declarationsCount(declarationsProduits.size())
                         .timestamp(LocalDateTime.now())
                         .build();
             } else {
@@ -92,12 +91,14 @@ public class ExportateurController {
                 System.out.println("✅ Dossier conformité trouvé ID: " + dossier.getId());
                 System.out.println("   - Référence: " + dossier.getReference());
                 System.out.println("   - Statut: " + dossier.getStatus());
+                System.out.println("   - Payment Status: " + dossier.getPaymentStatus()); // AJOUTER CE LOG
 
                 response = DossierResponseDTO.builder()
                         .success(true)
                         .hasDossier(true)
                         .demandeId(dossier.getId())
                         .status(dossier.getStatus().name())
+                        .paymentStatus(dossier.getPaymentStatus().name())
                         .reference(dossier.getReference())
                         .submittedAt(dossier.getSubmittedAt())
                         .message(getStatusMessage(dossier.getStatus()))
@@ -105,7 +106,7 @@ public class ExportateurController {
                         .prochainesEtapes(getProchainesEtapes(dossier.getStatus()))
                         .exportateurInfo(ExportateurInfoDTO.fromEntity(exportateur))
                         .documentsCount(getDocumentsCount(exportateur))
-                        .declarationsCount(declarationsProduits.size()) // Ajoutez ce champ
+                        .declarationsCount(declarationsProduits.size())
                         .timestamp(LocalDateTime.now())
                         .build();
             }

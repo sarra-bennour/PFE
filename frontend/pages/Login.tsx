@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth, UserRole, ExporterStatus, User } from '../App';
+import { useAuth, UserRole, User } from '../App';
 import ExporterSignUp from './ExporterSignUp';
 import ForgotPassword from './ForgotPassword';
 import TwoFactorAuth from './TwoFactorAuth';
@@ -212,11 +212,10 @@ const Login: React.FC = () => {
     }
 
     let role: UserRole = 'EXPORTATEUR';
-    let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
+    // let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
     
     if (userEmail.includes('admin')) role = 'admin';
     if (userEmail.includes('validator')) role = 'validator';
-    if (userEmail.includes('importer')) role = 'importer';
 
     const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
 
@@ -314,43 +313,63 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleMobileLogin = async (e: React.FormEvent) => {
+  // Remplacer la fonction handleMobileLogin par celle-ci:
+
+const handleMobileLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (matricule.length !== 10 || pin.length !== 6) return;
+    
+    if (matricule.length !== 10 || pin.length !== 6) {
+        showAlert('Le matricule doit faire 10 chiffres et le PIN 6 chiffres', 'error');
+        return;
+    }
 
     setLoading(true);
     closeAlert();
     
     try {
-      const response = await fetch('http://localhost:8080/api/auth/login/mobile', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          matricule: matricule,
-          pin: pin
-        }),
-      });
+        const response = await fetch('http://localhost:8080/api/auth/login/mobile', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                matricule: matricule,
+                pin: pin
+            }),
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      if (response.ok) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        
-        showAlert('✅ Authentification mobile réussie', 'success');
-        setMobileStep(2);
-      } else {
-        showAlert(data.message || 'Échec de la connexion mobile', 'error');
-      }
+        if (response.ok) {
+            // Stocker le token et l'utilisateur
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+
+            // Utiliser la fonction login du hook useAuth
+            login(data.user, data.token);
+            
+            showAlert('✅ Authentification mobile réussie !', 'success');
+            
+            // Rediriger vers le dashboard importateur
+            setTimeout(() => {
+                navigate('/importer');
+            }, 1500);
+        } else {
+            // Gestion des erreurs
+            const errorMessage = data.message || data.error || 'Échec de la connexion mobile';
+            showAlert(`❌ ${errorMessage}`, 'error');
+            
+            // Réinitialiser le PIN en cas d'erreur
+            setPin('');
+        }
     } catch (error) {
-      console.error('Erreur lors de la connexion mobile:', error);
-      showAlert('❌ Erreur de connexion au serveur', 'error');
+        console.error('Erreur lors de la connexion mobile:', error);
+        showAlert('❌ Erreur de connexion au serveur', 'error');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  };
+};
+
 
   const handle2FAVerify = async (code: string) => {
     setLoading(true);
@@ -398,43 +417,6 @@ const Login: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const finalizeMobileLogin = () => {
-    setLoading(true);
-    setTimeout(() => {
-      let role: UserRole = 'importer';
-      let companyName = 'Opérateur Mobile ID';
-
-      if (matricule === '1111111111' && pin === '111111') {
-        role = 'importer';
-        companyName = 'Importateur Tunisien (SARL)';
-      } else if (matricule === '2222222222' && pin === '222222') {
-        role = 'validator';
-        companyName = "INSSPA (Validation Sanitaire)";
-      } else if (matricule === '3333333333' && pin === '333333') {
-        role = 'admin';
-        companyName = 'Haut Fonctionnaire (Décideur)';
-      } else if (matricule === '0000000000' && pin === '000000') {
-        role = 'admin';
-        companyName = 'ADMINISTRATEUR CENTRAL';
-      }
-
-      const mobileEmail = matricule + '@mobile.tn';
-      const is2FA = localStorage.getItem(`2fa_${mobileEmail}`) === 'true';
-      
-      login({ 
-        email: mobileEmail, 
-        role, 
-        isTwoFactorEnabled: is2FA,
-        companyName
-      });
-      
-      showAlert('✅ Connexion mobile réussie !', 'success');
-      
-      if (role === 'admin') navigate('/admin');
-      else navigate(`/${role}`);
-    }, 1000);
   };
 
   const handleResetPasswordBack = () => {
@@ -570,7 +552,7 @@ const Login: React.FC = () => {
                       <i className="fas fa-fingerprint text-2xl"></i>
                     </div>
                     <p className="text-[10px] font-black uppercase tracking-widest">Confirmez sur Mobile ID</p>
-                    <button onClick={finalizeMobileLogin} className="w-full py-4 border-2 border-white rounded-2xl font-black uppercase tracking-widest hover:bg-white hover:text-emerald-600 transition-all">Valider l'accès</button>
+                    <button className="w-full py-4 border-2 border-white rounded-2xl font-black uppercase tracking-widest hover:bg-white hover:text-emerald-600 transition-all">Valider l'accès</button>
                     <button onClick={() => setMobileStep(1)} className="text-[9px] font-black uppercase text-emerald-100/50 hover:text-white transition-colors">Retour</button>
                   </div>
                 )}

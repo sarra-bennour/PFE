@@ -535,7 +535,7 @@ public class DemandeEnregistrementService {
         dto.setEmail(exportateur.getEmail());
         dto.setTelephone(exportateur.getTelephone());
         dto.setRole(exportateur.getRole());
-        dto.setStatut(exportateur.getStatut());
+        dto.setStatut(exportateur.getUserStatut());
         dto.setDateCreation(exportateur.getDateCreation());
         dto.setLastLogin(exportateur.getLastLogin());
         dto.setEmailVerified(exportateur.isEmailVerified());
