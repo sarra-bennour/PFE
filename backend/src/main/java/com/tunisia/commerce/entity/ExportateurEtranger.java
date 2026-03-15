@@ -1,5 +1,6 @@
 package com.tunisia.commerce.entity;
 
+import com.tunisia.commerce.enums.SiteType;
 import com.tunisia.commerce.enums.StatutAgrement;
 import jakarta.persistence.*;
 import lombok.*;
@@ -46,6 +47,32 @@ public class ExportateurEtranger extends User {
 
     @Column(name = "numero_tva")
     private String numeroTVA;
+
+    @Column(name = "username", unique = true)
+    private String username;
+
+    @Column(name = "numero_officiel_enregistrement", unique = true)
+    private String numeroOfficielEnregistrement;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "site_type")
+    private SiteType siteType;
+
+    @Column(name = "representant_role")
+    private String representantRole;
+
+    @Column(name = "representant_email")
+    private String representantEmail;
+
+    @Column(name = "capacite_annuelle")
+    private String capaciteAnnuelle;
+
+    @Column(name = "pre_kyc_completed")
+    @Builder.Default
+    private boolean preKycCompleted = false;
+
+    @Column(name = "pre_kyc_completed_at")
+    private LocalDateTime preKycCompletedAt;
 
     @OneToMany(mappedBy = "exportateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default

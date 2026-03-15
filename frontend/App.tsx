@@ -24,6 +24,7 @@ export interface User {
   email: string;
   role: UserRole;
   companyName?: string;
+  legalRep?: string;
   phone?: string;
   isTwoFactorEnabled?: boolean;
   submissionDate?: string;

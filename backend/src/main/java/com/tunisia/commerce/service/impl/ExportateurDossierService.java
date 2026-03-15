@@ -1,15 +1,13 @@
 package com.tunisia.commerce.service.impl;
 
 import com.tunisia.commerce.dto.exportateur.CreerDossierRequest;
+import com.tunisia.commerce.dto.exportateur.PreKycRequest;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.entity.Document;
 import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.entity.Product;
-import com.tunisia.commerce.enums.DemandeStatus;
-import com.tunisia.commerce.enums.DocumentStatus;
-import com.tunisia.commerce.enums.DocumentType;
-import com.tunisia.commerce.enums.PaymentStatus;
+import com.tunisia.commerce.enums.*;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
@@ -26,10 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -321,6 +316,132 @@ public class ExportateurDossierService {
                 .uploadedAt(document.getUploadedAt())
                 .downloadUrl("/api/exportateur/documents/" + document.getId() + "/telecharger")
                 .build();
+    }
+
+    /**
+     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
+     */
+    /**
+     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
+     */
+    @Transactional
+    public ExportateurEtranger completePreKyc(String email, PreKycRequest request) {
+        logger.info("Complétion du Pré-KYC pour l'email: " + email);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé avec l'email: " + email));
+
+        // Vérifier si le Pré-KYC n'est pas déjà complété
+        if (exportateur.isPreKycCompleted()) {
+            throw new RuntimeException("Le Pré-KYC a déjà été complété");
+        }
+
+        // Validation du username
+        String username = request.getUsername();
+        if (username == null || username.trim().isEmpty()) {
+            throw new RuntimeException("Le nom d'utilisateur est requis");
+        }
+
+        // Normaliser le username (enlever espaces, caractères spéciaux)
+        username = username.toLowerCase().trim();
+        if (!username.matches("^[a-z0-9_]+$")) {
+            throw new RuntimeException("Le nom d'utilisateur ne peut contenir que des lettres minuscules, chiffres et underscores");
+        }
+
+        // Vérifier l'unicité
+        if (exportateurRepository.existsByUsername(username)) {
+            // Si le username est déjà pris, suggérer des alternatives
+            List<String> suggestions = suggererUsernames(exportateur.getRaisonSociale(), email);
+            String suggestionsStr = String.join(", ", suggestions);
+            throw new RuntimeException("Ce nom d'utilisateur est déjà pris. Suggestions: " + suggestionsStr);
+        }
+
+        // Vérifier le numéro officiel d'enregistrement (si nécessaire)
+        if (request.getNumeroOfficielEnregistrement() != null &&
+                exportateurRepository.existsByNumeroOfficielEnregistrement(request.getNumeroOfficielEnregistrement())) {
+            throw new RuntimeException("Ce numéro d'enregistrement officiel est déjà utilisé");
+        }
+
+        // Mettre à jour les champs
+        exportateur.setUsername(username);
+        exportateur.setNumeroOfficielEnregistrement(request.getNumeroOfficielEnregistrement());
+        exportateur.setSiteType(request.getSiteType());
+        exportateur.setRepresentantRole(request.getRepresentantRole());
+        exportateur.setRepresentantEmail(request.getRepresentantEmail());
+        exportateur.setCapaciteAnnuelle(request.getCapaciteAnnuelle());
+        exportateur.setPreKycCompleted(true);
+        exportateur.setPreKycCompletedAt(LocalDateTime.now());
+
+        // Mettre à jour le statut utilisateur
+        exportateur.setUserStatut(UserStatus.ACTIF);
+
+        ExportateurEtranger savedExportateur = exportateurRepository.save(exportateur);
+        logger.info("Pré-KYC complété avec succès pour l'exportateur ID: " + savedExportateur.getId() +
+                ", username: " + username);
+
+        return savedExportateur;
+    }
+
+    /**
+     * Générer des suggestions de username basées sur le nom de l'entreprise
+     */
+    public List<String> suggererUsernames(String companyName, String email) {
+        logger.info("Génération de suggestions de username pour: " + companyName);
+
+        List<String> suggestions = new ArrayList<>();
+
+        if (companyName == null || companyName.isEmpty()) {
+            // Si pas de nom d'entreprise, utiliser la partie locale de l'email
+            String emailPrefix = email.split("@")[0];
+            companyName = emailPrefix;
+        }
+
+        // Nettoyer le nom de l'entreprise (enlever caractères spéciaux, espaces, etc.)
+        String baseName = companyName.toLowerCase()
+                .trim()
+                .replaceAll("[^a-z0-9]", "_") // Remplacer caractères non alphanumériques par _
+                .replaceAll("_+", "_")         // Remplacer plusieurs _ consécutifs par un seul
+                .replaceAll("^_|_$", "");      // Enlever _ au début et à la fin
+
+        if (baseName.isEmpty()) {
+            baseName = "exportateur";
+        }
+
+        // Suggestions de base
+        suggestions.add(baseName);
+        suggestions.add(baseName + "_export");
+        suggestions.add(baseName + "_tn");
+        suggestions.add(baseName + "_tunisie");
+
+        // Ajouter des variantes avec des chiffres
+        for (int i = 1; i <= 5; i++) {
+            suggestions.add(baseName + i);
+            suggestions.add(baseName + "_" + i);
+        }
+
+        // Vérifier l'unicité et générer des alternatives si nécessaire
+        List<String> suggestionsUniques = new ArrayList<>();
+        for (String suggestion : suggestions) {
+            if (!exportateurRepository.existsByUsername(suggestion)) {
+                suggestionsUniques.add(suggestion);
+            }
+            if (suggestionsUniques.size() >= 5) {
+                break; // On garde 5 suggestions max
+            }
+        }
+
+        // Si pas assez de suggestions, en générer avec des nombres aléatoires
+        int counter = 1;
+        while (suggestionsUniques.size() < 5) {
+            String suggestion = baseName + "_" + (100 + counter);
+            if (!exportateurRepository.existsByUsername(suggestion)) {
+                suggestionsUniques.add(suggestion);
+            }
+            counter++;
+        }
+
+        logger.info(suggestionsUniques.size() + " suggestions générées");
+        return suggestionsUniques;
     }
 
 

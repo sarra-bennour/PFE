@@ -28,4 +28,5 @@ public interface UserService {
     boolean disableTwoFactorAuth(String email, String code);
     boolean verifyTwoFactorCode(String email, String code);
     void resendTwoFactorCode(String email);
+
 }

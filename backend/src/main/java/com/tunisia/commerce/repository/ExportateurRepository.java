@@ -14,4 +14,8 @@ public interface ExportateurRepository extends JpaRepository<ExportateurEtranger
     @Query("SELECT e FROM ExportateurEtranger e WHERE e.verificationToken = :token")
     Optional<ExportateurEtranger> findByVerificationToken(@Param("token") String token);
     Optional<ExportateurEtranger> findByResetPasswordToken(String token);
+
+    boolean existsByUsername(String username);
+    boolean existsByNumeroOfficielEnregistrement(String numeroOfficielEnregistrement);
+
 }

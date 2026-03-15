@@ -22,10 +22,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 @RestController
@@ -37,7 +35,9 @@ public class ExportateurController {
     private final JwtUtil jwtUtil;
     private final ExportateurRepository exportateurRepository;
     private final DemandeEnregistrementRepository demandeRepository;
-    private final DocumentRepository documentRepository;
+
+    private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
+
 
     /**
      * Récupérer le statut du dossier de l'exportateur connecté
@@ -368,6 +368,102 @@ public class ExportateurController {
                             "success", false,
                             "error", e.getMessage()
                     ));
+        }
+    }
+
+    /**
+     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
+     */
+    @PostMapping("/pre-kyc/completer")
+    public ResponseEntity<?> completePreKyc(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody PreKycRequest request) {
+
+        try {
+            // Récupérer l'exportateur à partir du token
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            // Appeler le service spécialisé
+            ExportateurEtranger updatedExportateur = dossierService.completePreKyc(exportateur.getEmail(), request);
+
+            // Convertir en DTO pour la réponse
+            ExportateurInfoDTO exportateurInfo = ExportateurInfoDTO.fromEntity(updatedExportateur);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Informations préalables enregistrées avec succès");
+            response.put("exportateur", exportateurInfo);
+            response.put("preKycCompleted", updatedExportateur.isPreKycCompleted());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            logger.severe("Erreur lors du Pré-KYC: " + e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            logger.severe("Erreur interne lors du Pré-KYC "+ e);
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "Erreur interne: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * Suggérer des noms d'utilisateur basés sur le nom de l'entreprise
+     */
+    @GetMapping("/pre-kyc/suggerer-usernames")
+    public ResponseEntity<?> suggererUsernames(
+            @RequestHeader("Authorization") String authHeader) {
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            String companyName = exportateur.getRaisonSociale(); // ou getCompanyName() selon votre DTO
+            String email = exportateur.getEmail();
+
+            List<String> suggestions = dossierService.suggererUsernames(companyName, email);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("suggestions", suggestions);
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.severe("Erreur lors de la génération des suggestions "+ e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Vérifier si un username est disponible
+     */
+    @GetMapping("/pre-kyc/verifier-username")
+    public ResponseEntity<?> verifierUsername(
+            @RequestParam String username) {
+
+        try {
+            boolean estDisponible = !exportateurRepository.existsByUsername(username);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("username", username);
+            response.put("disponible", estDisponible);
+            response.put("message", estDisponible ?
+                    "Nom d'utilisateur disponible" :
+                    "Ce nom d'utilisateur est déjà pris");
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 

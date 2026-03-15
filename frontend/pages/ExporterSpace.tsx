@@ -22,6 +22,15 @@ interface KycData {
   externalAudit: File | null;
 }
 
+interface PreKycData {
+  username: string;
+  officialRegistrationNumber: string;
+  siteType: 'Siège' | 'Usine' | 'entrepôt' | 'distributeur' | '';
+  representativeRole: string;
+  representativeEmail: string;
+  annualCapacity: string;
+}
+
 // Interface pour la réponse du dossier
 interface DossierResponse {
   success: boolean;
@@ -165,6 +174,23 @@ const ExporterSpace: React.FC = () => {
   const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
+  const [isPreKycDone, setIsPreKycDone] = useState(false);
+
+  const [preKycData, setPreKycData] = useState<PreKycData>({
+    username: '',
+    officialRegistrationNumber: '',
+    siteType: '',
+    representativeRole: '',
+    representativeEmail: user?.email || '',
+    annualCapacity: '',
+  });
+
+  // États pour la gestion du username (déplacés ici au niveau racine)
+  const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameMessage, setUsernameMessage] = useState<string>('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
+
   // Ref pour éviter les appels multiples
   const hasFetchedRef = useRef(false);
 
@@ -208,7 +234,6 @@ const ExporterSpace: React.FC = () => {
     }
   ];
 
-  // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
   // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
 const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
   const token = localStorage.getItem('token');
@@ -272,6 +297,61 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
       fetchDossierStatus();
     }
   }, [user?.email, fetchDossierStatus]);
+
+  // useEffect pour charger les suggestions de username (déplacé ici)
+  useEffect(() => {
+    const fetchUsernameSuggestions = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axios.get(
+          'http://localhost:8080/api/exportateur/pre-kyc/suggerer-usernames',
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setUsernameSuggestions(response.data.suggestions);
+      } catch (error) {
+        console.error('Erreur lors de la récupération des suggestions:', error);
+      }
+    };
+    
+    fetchUsernameSuggestions();
+  }, []);
+
+  // Debounce pour vérifier la disponibilité du username
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (preKycData.username) {
+        checkUsernameAvailability(preKycData.username);
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [preKycData.username]);
+
+  // Fonction pour vérifier la disponibilité en temps réel
+  const checkUsernameAvailability = async (username: string) => {
+    if (!username || username.length < 3) {
+      setUsernameAvailable(null);
+      setUsernameMessage('');
+      return;
+    }
+    
+    setCheckingUsername(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `http://localhost:8080/api/exportateur/pre-kyc/verifier-username?username=${username}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setUsernameAvailable(response.data.disponible);
+      setUsernameMessage(response.data.message);
+    } catch (error) {
+      console.error('Erreur lors de la vérification:', error);
+      setUsernameAvailable(null);
+      setUsernameMessage('Erreur de vérification');
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
 
   // Fonction pour rafraîchir les données (appelée manuellement)
   const refreshDossierData = useCallback(async () => {
@@ -689,6 +769,209 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
     );
   }
 
+  // --- RENDU : FORMULAIRE PRÉ-KYC ---
+if ((!dossierStatus || !dossierInfo?.hasDossier) && !isPreKycDone) {
+    return (
+        <div className="max-w-4xl mx-auto py-12 px-4 animate-fade-in-scale">
+            <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+                <div className="p-10 bg-slate-900 text-white relative overflow-hidden">
+                    <div className="absolute -right-10 -top-10 opacity-10">
+                        <i className="fas fa-id-card text-[10rem]"></i>
+                    </div>
+                    <div className="relative z-10">
+                        <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-none">Informations Préalables</h2>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Étape 1 sur 2 : Configuration du profil exportateur</p>
+                    </div>
+                </div>
+
+                <form 
+                    onSubmit={(e) => { e.preventDefault(); setIsPreKycDone(true); }}
+                    className="p-10 space-y-10"
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Section 1: Identifiants */}
+                        <div className="space-y-6">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Identifiants Système</h3>
+                            
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    Nom d'utilisateur (Identifiant)
+                                    {checkingUsername && <i className="fas fa-spinner fa-spin ml-2"></i>}
+                                </label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={preKycData.username}
+                                        onChange={(e) => {
+                                            setPreKycData({...preKycData, username: e.target.value});
+                                        }}
+                                        className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 transition-all font-bold text-sm ${
+                                            usernameAvailable === true 
+                                                ? 'border-emerald-500 focus:border-emerald-500' 
+                                                : usernameAvailable === false 
+                                                    ? 'border-red-500 focus:border-red-500'
+                                                    : 'border-transparent focus:border-tunisia-red'
+                                        }`}
+                                        placeholder="ex: company_export_tn"
+                                    />
+                                    <i className="fas fa-at absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                                </div>
+                                
+                                {/* Message de disponibilité */}
+                                {usernameMessage && (
+                                    <p className={`text-[8px] font-black uppercase tracking-widest mt-1 ${
+                                        usernameAvailable ? 'text-emerald-600' : 'text-red-600'
+                                    }`}>
+                                        <i className={`fas ${usernameAvailable ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-1`}></i>
+                                        {usernameMessage}
+                                    </p>
+                                )}
+                                
+                                {/* Suggestions de username */}
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {usernameSuggestions.map(suggestion => (
+                                        <button
+                                            key={suggestion}
+                                            type="button"
+                                            onClick={() => {
+                                                setPreKycData({...preKycData, username: suggestion});
+                                                checkUsernameAvailability(suggestion);
+                                            }}
+                                            className="text-[8px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-tunisia-red hover:text-white transition-all"
+                                        >
+                                            {suggestion}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro Officiel d'Enregistrement</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={preKycData.officialRegistrationNumber}
+                                        onChange={(e) => setPreKycData({...preKycData, officialRegistrationNumber: e.target.value})}
+                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                                        placeholder="ex: RC-TN-2024-XXXX"
+                                    />
+                                    <i className="fas fa-hashtag absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Section 2: Détails du Site */}
+                        <div className="space-y-6">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Localisation & Type</h3>
+                            
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Type de site de l'entreprise</label>
+                                <div className="relative">
+                                    <select 
+                                        required
+                                        value={preKycData.siteType}
+                                        onChange={(e) => setPreKycData({...preKycData, siteType: e.target.value as any})}
+                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer"
+                                    >
+                                        <option value="">Sélectionner un type...</option>
+                                        <option value="Siège">Siège Social</option>
+                                        <option value="Usine">Usine de Production</option>
+                                        <option value="entrepôt">Entrepôt Logistique</option>
+                                        <option value="distributeur">Centre de Distribution</option>
+                                    </select>
+                                    <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Capacité / Volume annuel estimé</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={preKycData.annualCapacity}
+                                        onChange={(e) => setPreKycData({...preKycData, annualCapacity: e.target.value})}
+                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                                        placeholder="ex: 500 Tonnes / an"
+                                    />
+                                    <i className="fas fa-chart-line absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Section 3: Représentant Légal */}
+                    <div className="space-y-6 pt-4 border-t border-slate-100">
+                        <div className="flex items-center gap-3">
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Représentant Légal</h3>
+                            {user?.legalRep && (
+                                <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-widest">
+                                    Identifié : {user.legalRep}
+                                </span>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    Fonction {user?.legalRep ? `de ${user.legalRep}` : ''}
+                                </label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        required
+                                        value={preKycData.representativeRole}
+                                        onChange={(e) => setPreKycData({...preKycData, representativeRole: e.target.value})}
+                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                                        placeholder="ex: Gérant, Directeur Général..."
+                                    />
+                                    <i className="fas fa-user-tie absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email de contact direct</label>
+                                <div className="relative">
+                                    <input 
+                                        type="email" 
+                                        required
+                                        value={preKycData.representativeEmail}
+                                        onChange={(e) => setPreKycData({...preKycData, representativeEmail: e.target.value})}
+                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                                        placeholder="directeur@entreprise.tn"
+                                    />
+                                    <i className="fas fa-envelope absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-6">
+                        <button 
+                            type="submit"
+                            disabled={usernameAvailable !== true}
+                            className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 ${
+                                usernameAvailable === true
+                                    ? 'bg-tunisia-red text-white hover:scale-[1.02] active:scale-[0.98] shadow-red-500/20'
+                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                        >
+                            <span>Continuer vers le dossier de conformité</span>
+                            <i className="fas fa-arrow-right"></i>
+                        </button>
+                        
+                        {usernameAvailable === false && (
+                            <p className="text-center text-[8px] font-black text-red-500 uppercase tracking-widest mt-3">
+                                Veuillez choisir un nom d'utilisateur disponible
+                            </p>
+                        )}
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
   // --- RENDU : PREMIÈRE CONNEXION / DOSSIER INCOMPLET ---
 if (!dossierStatus || !dossierInfo?.hasDossier) {
     const requiredFields: (keyof KycData)[] = [
@@ -1077,4 +1360,4 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
   );
 };
 
-export default ExporterSpace; 
+export default ExporterSpace;

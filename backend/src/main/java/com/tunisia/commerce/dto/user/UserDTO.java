@@ -1,5 +1,6 @@
 package com.tunisia.commerce.dto.user;
 
+import com.tunisia.commerce.enums.SiteType;
 import com.tunisia.commerce.enums.StatutAgrement;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.enums.UserStatus;
@@ -37,6 +38,15 @@ public class UserDTO {
     private String numeroAgrement;
     private LocalDate dateAgrement;
     private int documentsCount;
+
+    private String username;
+    private String numeroOfficielEnregistrement;
+    private SiteType siteType;
+    private String representantRole;
+    private String representantEmail;
+    private String capaciteAnnuelle;
+    private boolean preKycCompleted;
+    private LocalDateTime preKycCompletedAt;
 
     // Champs spécifiques aux importateurs
     private String mobileIdMatricule;
