@@ -1,5 +1,6 @@
 package com.tunisia.commerce.dto.user;
 
+import com.tunisia.commerce.dto.produits.ProduitDTO;
 import com.tunisia.commerce.enums.SiteType;
 import com.tunisia.commerce.enums.StatutAgrement;
 import com.tunisia.commerce.enums.UserRole;
@@ -8,6 +9,7 @@ import lombok.Data;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class UserDTO {
@@ -52,5 +54,6 @@ public class UserDTO {
     private String mobileIdMatricule;
     private String mobileIdPin;
 
+    private List<ProduitDTO> produits;
 
 }

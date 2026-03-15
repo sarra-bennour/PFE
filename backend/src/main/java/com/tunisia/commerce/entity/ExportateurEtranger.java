@@ -114,4 +114,9 @@ public class ExportateurEtranger extends User {
     private LocalDateTime resetPasswordTokenExpiry;
     @Column(name = "last_password_change")
     private LocalDateTime lastPasswordChange;
+
+    @OneToMany(mappedBy = "exportateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    @ToString.Exclude
+    private List<DemandeEnregistrement> demandes = new ArrayList<>();
 }

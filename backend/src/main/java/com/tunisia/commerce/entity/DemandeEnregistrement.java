@@ -68,6 +68,12 @@ public class DemandeEnregistrement {
     @ToString.Exclude
     private List<DemandeHistory> history = new ArrayList<>();
 
+    @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    @ToString.Exclude
+    private List<Product> produits = new ArrayList<>();
+
+
     public void addHistory(DemandeHistory history) {
         this.history.add(history);
         history.setDemande(this);
