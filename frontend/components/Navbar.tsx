@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
-import { get } from 'http';
 
 const Navbar: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -12,8 +11,25 @@ const Navbar: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  // Masquer la Navbar standard si on est dans le Back-office admin
+  const mockNotifications = [
+    { 
+      id: 4, 
+      title: 'Sarra Importer a ajouté ton produit Huile d\'Olive', 
+      time: 'À l\'instant', 
+      icon: 'fa-plus-circle', 
+      color: 'text-tunisia-red',
+      type: 'action',
+      role: 'EXPORTATEUR'
+    },
+    { id: 1, title: 'Déclaration validée', time: 'Il y a 2h', icon: 'fa-check-circle', color: 'text-emerald-500', type: 'info' },
+    { id: 2, title: 'Nouveau message', time: 'Il y a 5h', icon: 'fa-envelope', color: 'text-blue-500', type: 'info' },
+    { id: 3, title: 'Paiement reçu', time: 'Hier', icon: 'fa-credit-card', color: 'text-amber-500', type: 'info' },
+  ];
+
+  const filteredNotifications = mockNotifications.filter(n => !n.role || (user && n.role === user.role));
+
   const isAdminPanel = location.pathname === '/admin' && user?.role === 'admin';
 
   useEffect(() => {
@@ -38,7 +54,6 @@ const Navbar: React.FC = () => {
       navigate('/login');
     } catch (error) {
       console.error('Erreur lors de la déconnexion:', error);
-      // Forcer la déconnexion locale en cas d'erreur
       localStorage.clear();
       sessionStorage.clear();
       window.location.href = '/login';
@@ -54,11 +69,11 @@ const Navbar: React.FC = () => {
 
   const allNavLinks = [
     { path: '/', label: 'nav_home', roles: ['EXPORTATEUR','IMPORTATEUR'] },
-    { path: '/exportateur', label: 'nav_exporter', roles: ['EXPORTATEUR'] }, // Modifié en majuscules
-    { path: '/importer', label: 'nav_importer', roles: ['IMPORTATEUR'] }, // Modifié en majuscules
-    { path: '/validator', label: 'nav_validator', roles: ['VALIDATOR'] }, // Modifié
-    { path: '/dashboard', label: 'nav_dashboard', roles: ['ADMIN', 'VALIDATOR'] }, // Modifié en majuscules
-    { path: '/admin', label: 'nav_admin', roles: ['ADMIN'] }, // Modifié en majuscules
+    { path: '/exportateur', label: 'nav_exporter', roles: ['EXPORTATEUR'] },
+    { path: '/importer', label: 'nav_importer', roles: ['IMPORTATEUR'] },
+    { path: '/validator', label: 'nav_validator', roles: ['VALIDATOR'] },
+    { path: '/dashboard', label: 'nav_dashboard', roles: ['ADMIN', 'VALIDATOR'] },
+    { path: '/admin', label: 'nav_admin', roles: ['ADMIN'] },
   ];
 
   const visibleLinks = allNavLinks.filter(link => {
@@ -67,39 +82,30 @@ const Navbar: React.FC = () => {
     return link.roles.includes(user.role);
   });
 
-  // Fonction pour obtenir le nom à afficher
   const getDisplayName = () => {
-  if (!user) return '';
-  
-  // Si c'est un exportateur avec un nom d'entreprise
-  if (user.role === 'EXPORTATEUR' && user.companyName) {
-    // Tronquer le nom si trop long (optionnel)
-    const companyName = user.companyName;
-    return companyName.length > 15 ? companyName.substring(0, 12) + '...' : companyName;
-  }
-  
-  // Si c'est un importateur ou autre avec prénom/nom
-  if (user.prenom || user.nom) {
-    const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
-    if (fullName.length > 0) {
-      // Prendre seulement le prénom ou une version courte
-      const firstName = user.prenom || user.nom || '';
-      return firstName.length > 12 ? firstName.substring(0, 10) + '...' : firstName;
+    if (!user) return '';
+    
+    if (user.role === 'EXPORTATEUR' && user.companyName) {
+      const companyName = user.companyName;
+      return companyName.length > 15 ? companyName.substring(0, 12) + '...' : companyName;
     }
-  }
-  
-  // Fallback à l'email
-  return user.email.split('@')[0];
-};
+    
+    if (user.prenom || user.nom) {
+      const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
+      if (fullName.length > 0) {
+        const firstName = user.prenom || user.nom || '';
+        return firstName.length > 12 ? firstName.substring(0, 10) + '...' : firstName;
+      }
+    }
+    
+    return user.email.split('@')[0];
+  };
 
-
-  // Fonction pour obtenir le rôle en majuscules pour l'affichage
   const getRoleDisplay = () => {
     if (!user || !user.role) return '';
     return user.role.toUpperCase();
   };
 
-  // Fonction pour obtenir les initiales de l'avatar
   const getInitials = () => {
     if (!user) return '';
     
@@ -226,6 +232,65 @@ const Navbar: React.FC = () => {
 
               {user ? (
                 <div className="flex items-center gap-4">
+                  {/* Notification Icon */}
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className={`relative w-8 h-8 rounded-full flex items-center justify-center border transition-all group ${
+                        showNotifications ? 'border-tunisia-red bg-tunisia-red/5' : 'bg-slate-50 border-slate-100 hover:border-tunisia-red'
+                      }`}
+                    >
+                      <i className={`fas fa-bell text-[10px] transition-colors ${showNotifications ? 'text-tunisia-red' : 'text-slate-500 group-hover:text-tunisia-red'}`}></i>
+                      <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-tunisia-red rounded-full border border-white"></span>
+                    </button>
+
+                    {/* Notification Dropdown */}
+                    {showNotifications && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-[110]" 
+                          onClick={() => setShowNotifications(false)}
+                        ></div>
+                        <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-[120] animate-fade-in-scale">
+                          <div className="p-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notifications</h4>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-tunisia-red">{filteredNotifications.length} Nouvelles</span>
+                          </div>
+                          <div className="max-h-96 overflow-y-auto">
+                            {filteredNotifications.map(notif => (
+                              <div key={notif.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer">
+                                <div className="flex gap-4 items-start">
+                                  <div className={`w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                                    <i className={`fas ${notif.icon} text-[10px] ${notif.color}`}></i>
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex flex-col gap-1">
+                                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight leading-tight">{notif.title}</span>
+                                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{notif.time}</span>
+                                    </div>
+                                    {notif.type === 'action' && (
+                                      <div className="flex gap-2 mt-3">
+                                        <button className="flex-1 py-2 bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-tunisia-red transition-colors">
+                                          Accepter
+                                        </button>
+                                        <button className="flex-1 py-2 bg-slate-100 text-slate-400 text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-200 transition-colors">
+                                          Rejeter
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <button className="w-full py-4 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-tunisia-red hover:bg-slate-50 transition-all border-t border-slate-50">
+                            Voir tout
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
                   {/* Menu utilisateur avec dropdown */}
                   <div className="relative group">
                     <button className="flex items-center gap-3 group">
@@ -248,7 +313,6 @@ const Navbar: React.FC = () => {
                     {/* Dropdown menu */}
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform translate-y-2 group-hover:translate-y-0 z-50">
                       <div className="p-1">
-                        {/* Informations utilisateur dans le dropdown */}
                         <div className="px-4 py-3 border-b border-slate-100 mb-1">
                           <div className="text-[9px] font-black text-slate-900 uppercase tracking-widest truncate max-w-[150px]" title={user.email}>
                             {user.email}
