@@ -69,7 +69,7 @@ const ImporterSpace: React.FC = () => {
       </div>
 
       {/* Content Area */}
-      <div className="animate-fade-in-scale">
+      <div>
         {view === 'declare' ? (
           <div className="space-y-6">
             <button onClick={() => setView('main')} className="text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-tunisia-red flex items-center gap-2">
