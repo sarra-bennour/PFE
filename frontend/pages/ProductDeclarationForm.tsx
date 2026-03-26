@@ -1,14 +1,8 @@
 import React, { useState } from 'react';
 import { X, Upload, FileText, Ship, Plane, Truck, Info, Check } from 'lucide-react';
-import { Exporter } from '../types/Exporter';
-import { Product } from '../types/Product';
+import {ProductDeclarationFormProps} from '../types/ProductDeclarationFormProps';
 
-interface ProductDeclarationFormProps {
-  product: Product;
-  exporter: Exporter;
-  onClose: () => void;
-  onSuccess: () => void;
-}
+
 
 const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({ product, exporter, onClose, onSuccess }) => {
   const [step, setStep] = useState(1);

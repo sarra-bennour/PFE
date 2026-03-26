@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
+import Notification from './Notification';
+
 
 const Navbar: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -233,63 +235,7 @@ const Navbar: React.FC = () => {
               {user ? (
                 <div className="flex items-center gap-4">
                   {/* Notification Icon */}
-                  <div className="relative">
-                    <button 
-                      onClick={() => setShowNotifications(!showNotifications)}
-                      className={`relative w-8 h-8 rounded-full flex items-center justify-center border transition-all group ${
-                        showNotifications ? 'border-tunisia-red bg-tunisia-red/5' : 'bg-slate-50 border-slate-100 hover:border-tunisia-red'
-                      }`}
-                    >
-                      <i className={`fas fa-bell text-[10px] transition-colors ${showNotifications ? 'text-tunisia-red' : 'text-slate-500 group-hover:text-tunisia-red'}`}></i>
-                      <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-tunisia-red rounded-full border border-white"></span>
-                    </button>
-
-                    {/* Notification Dropdown */}
-                    {showNotifications && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-[110]" 
-                          onClick={() => setShowNotifications(false)}
-                        ></div>
-                        <div className="absolute right-0 mt-4 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-[120] animate-fade-in-scale">
-                          <div className="p-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900">Notifications</h4>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-tunisia-red">{filteredNotifications.length} Nouvelles</span>
-                          </div>
-                          <div className="max-h-96 overflow-y-auto">
-                            {filteredNotifications.map(notif => (
-                              <div key={notif.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer">
-                                <div className="flex gap-4 items-start">
-                                  <div className={`w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform`}>
-                                    <i className={`fas ${notif.icon} text-[10px] ${notif.color}`}></i>
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="flex flex-col gap-1">
-                                      <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight leading-tight">{notif.title}</span>
-                                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{notif.time}</span>
-                                    </div>
-                                    {notif.type === 'action' && (
-                                      <div className="flex gap-2 mt-3">
-                                        <button className="flex-1 py-2 bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-tunisia-red transition-colors">
-                                          Accepter
-                                        </button>
-                                        <button className="flex-1 py-2 bg-slate-100 text-slate-400 text-[8px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-200 transition-colors">
-                                          Rejeter
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                          <button className="w-full py-4 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-tunisia-red hover:bg-slate-50 transition-all border-t border-slate-50">
-                            Voir tout
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <Notification />
                   
                   {/* Menu utilisateur avec dropdown */}
                   <div className="relative group">

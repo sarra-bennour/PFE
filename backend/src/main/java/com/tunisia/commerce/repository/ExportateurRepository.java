@@ -42,15 +42,12 @@ public interface ExportateurRepository extends JpaRepository<ExportateurEtranger
     // Recherche multi-critères avec JPQL (uniquement statut d'agrément)
     @Query("SELECT DISTINCT e FROM ExportateurEtranger e " +
             "LEFT JOIN e.demandes d " +
-            "LEFT JOIN d.produits p " +
-            "WHERE e.statutAgrement = :statutAgrement " +
-            "AND (LOWER(e.paysOrigine) LIKE %:searchTerm% " +
-            "OR LOWER(e.raisonSociale) LIKE %:searchTerm% " +
-            "OR LOWER(p.productName) LIKE %:searchTerm% " +
-            "OR LOWER(p.hsCode) LIKE %:searchTerm%)")
-    List<ExportateurEtranger> findByStatutAgrementAndSearchCriteria(
-            @Param("statutAgrement") StatutAgrement statutAgrement,
-            @Param("searchTerm") String searchTerm
-    );
+            "LEFT JOIN d.demandeProduits dp " +
+            "LEFT JOIN dp.produit p " +
+            "WHERE (LOWER(e.paysOrigine) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+            "OR LOWER(e.raisonSociale) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+            "OR LOWER(p.productName) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+            "OR LOWER(p.hsCode) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+    List<ExportateurEtranger> findBySearchCriteria(@Param("searchTerm") String searchTerm);
 
 }

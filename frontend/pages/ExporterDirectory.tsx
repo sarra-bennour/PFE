@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import ProductDeclarationForm from './ProductDeclarationForm';
-import  {Exporter}  from '../types/Exporter';
-import  {Product}  from '../types/Product';
-
+import { Exporter } from '../types/Exporter';
+import { Product } from '../types/Product';
+import { useAuth } from '../App';
+import { notificationService } from '../services/notificationService';
+import { ProductAdditionData } from '../types/ProductAdditionData';
 
 interface ExporterDirectoryProps {
   externalSearchQuery?: string;
@@ -21,9 +23,10 @@ const CATEGORIES_INDUSTRIELS = [
   { name: "Appareils électriques", codes: ["8516", "8517", "8528"] },
   { name: "Jouets et modèles", codes: ["9503", "9504"] },
   { name: "Meubles", codes: ["9401", "9403"] },
-];2
+];
 
 const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQuery }) => {
+  const { user } = useAuth();
   const [selectedExporter, setSelectedExporter] = useState<Exporter | null>(null);
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [exporters, setExporters] = useState<Exporter[]>([]);
@@ -32,6 +35,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
   const [showDeclarationForm, setShowDeclarationForm] = useState(false);
   const [selectedProductForForm, setSelectedProductForForm] = useState<(Product & { exporter: Exporter }) | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<(Product & { exporter: Exporter }) | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
 
@@ -75,6 +79,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         }
       }
     }
+    return { color: 'bg-slate-50 text-slate-400', icon: 'fa-box', label: 'Produit' };
   };
 
   const getFlagUrl = (country: string) => {
@@ -84,6 +89,81 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
   const getAuthToken = () => {
     return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  };
+
+  const sendProductAdditionNotification = async (
+    importerId: number,
+    importerName: string,
+    exporterId: number,
+    exporterName: string,
+    product: Product,
+    declarationId: number = 0
+  ) => {
+    try {
+      const notificationData: ProductAdditionData = {
+        importerId,
+        importerName,
+        exporterId,
+        exporterName,
+        productId: Number(product.id),
+        productName: product.name,
+        productPrice: product.price || 'Prix sur demande',
+        productNgp: product.ngp || '',
+        declarationId,
+        message: `${importerName} souhaite ajouter votre produit "${product.name}" à sa déclaration d'importation.`
+      };
+      
+      console.log('Envoi de la notification:', notificationData);
+      const response = await notificationService.createProductAdditionNotification(notificationData);
+      console.log('Notification envoyée avec succès:', response);
+      return response;
+    } catch (error) {
+      console.error('Erreur lors de l\'envoi de la notification:', error);
+      throw error;
+    }
+  };
+
+  const handleAddProduct = async (product: Product & { exporter: Exporter }) => {
+    if (!user) {
+      alert('Vous devez être connecté pour ajouter un produit');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const importerName = `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email;
+      const exporterId = Number(product.exporter.id);
+      
+      console.log('Ajout du produit:', {
+        importerId: user.id,
+        importerName,
+        exporterId,
+        exporterName: product.exporter.name,
+        product
+      });
+      
+      await sendProductAdditionNotification(
+        user.id,
+        importerName,
+        exporterId,
+        product.exporter.name,
+        product,
+        0
+      );
+      
+      alert(`Demande d'ajout du produit "${product.name}" envoyée à l'exportateur ${product.exporter.name} avec succès !`);
+      
+      // Fermer les modals
+      setSelectedProduct(null);
+      setSelectedProductForForm(null);
+      setShowDeclarationForm(false);
+      
+    } catch (error) {
+      console.error('Erreur:', error);
+      alert('Erreur lors de l\'envoi de la demande. Veuillez réessayer.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const fetchExporters = async (query: string = '') => {
@@ -145,7 +225,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           siteWeb: item.siteWeb || '',
           representantLegal: item.representantLegal || '',
           products: Array.isArray(item.produits) ? item.produits.map((p: any) => ({
-            id: p.id,
+            id: p.id?.toString() || Math.random().toString(),
             name: p.productName || p.name || 'Produit sans nom',
             productName: p.productName || '',
             price: p.price || (p.annualQuantityValue ? `${p.annualQuantityValue} ${p.annualQuantityUnit || ''}` : 'Prix sur demande'),
@@ -202,55 +282,85 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
   const mockExporters: Exporter[] = [
     { 
-      id: 'EXP-001', 
+      id: '1', 
       name: 'AgroEuro SA', 
+      companyName: 'AgroEuro SA',
       country: 'Espagne', 
+      paysOrigine: 'Espagne',
       category: 'Alimentaire',
       description: 'Leader européen dans l\'exportation de produits agricoles de haute qualité.',
       registration: 'ES-12345678',
+      numeroRegistreCommerce: 'ES-12345678',
       email: 'contact@agroeuro.es',
       phone: '+34 912 345 678',
+      telephone: '+34 912 345 678',
       coverPhoto: 'https://picsum.photos/seed/agroeuro_cover/1200/400',
       profilePic: 'https://picsum.photos/seed/agroeuro_logo/200/200',
+      statutAgrement: 'APPROUVE',
+      numeroAgrement: 'AGR-001',
+      siteType: 'Alimentaire',
+      ville: 'Madrid',
+      siteWeb: 'www.agroeuro.es',
+      representantLegal: 'Juan Martinez',
       products: [
-        { name: 'Fromage Manchego', price: '22.00 €/Kg', category: 'Alimentaire', image: 'https://picsum.photos/seed/cheese/400/300', ngp: '04069000' },
-        { name: 'Huile d\'olive Extra Vierge', price: '12.50 €/L', category: 'Alimentaire', image: 'https://picsum.photos/seed/olive_oil/400/300', ngp: '15091020' },
-        { name: 'Vin Rouge Reserva', price: '18.00 €/Btl', category: 'Alimentaire', image: null, ngp: '22042100' },
-        { name: 'Amandes Grillées', price: '15.00 €/Kg', category: 'Alimentaire', image: null, ngp: '08021200' },
+        { id: 101, name: 'Fromage Manchego', productName: 'Fromage Manchego', price: '22.00 €/Kg', category: 'Alimentaire', image: 'https://picsum.photos/seed/cheese/400/300', ngp: '04069000', hsCode: '04069000' },
+        { id: 102, name: 'Huile d\'olive Extra Vierge', productName: 'Huile d\'olive Extra Vierge', price: '12.50 €/L', category: 'Alimentaire', image: 'https://picsum.photos/seed/olive_oil/400/300', ngp: '15091020', hsCode: '15091020' },
+        { id: 103, name: 'Vin Rouge Reserva', productName: 'Vin Rouge Reserva', price: '18.00 €/Btl', category: 'Alimentaire', image: null, ngp: '22042100', hsCode: '22042100' },
+        { id: 104, name: 'Amandes Grillées', productName: 'Amandes Grillées', price: '15.00 €/Kg', category: 'Alimentaire', image: null, ngp: '08021200', hsCode: '08021200' },
       ]
     },
     { 
-      id: 'EXP-002', 
+      id: '2', 
       name: 'TechChina Ltd', 
+      companyName: 'TechChina Ltd',
       country: 'Chine', 
+      paysOrigine: 'Chine',
       category: 'Industriel',
       description: 'Spécialiste mondial des composants électroniques et solutions semi-conducteurs.',
       registration: 'CN-88990011',
+      numeroRegistreCommerce: 'CN-88990011',
       email: 'sales@techchina.cn',
       phone: '+86 21 6789 0123',
+      telephone: '+86 21 6789 0123',
       coverPhoto: 'https://picsum.photos/seed/techchina_cover/1200/400',
       profilePic: 'https://picsum.photos/seed/techchina_logo/200/200',
+      statutAgrement: 'APPROUVE',
+      numeroAgrement: 'AGR-002',
+      siteType: 'Industriel',
+      ville: 'Shanghai',
+      siteWeb: 'www.techchina.cn',
+      representantLegal: 'Wei Zhang',
       products: [
-        { name: 'Microprocesseur A1', price: '45.00 $', category: 'Industriel', image: 'https://picsum.photos/seed/cpu/400/300', ngp: '85423100' },
-        { name: 'Écran OLED 4K', price: '120.00 $', category: 'Industriel', image: null, ngp: '85285900' },
-        { name: 'Module RAM 16GB', price: '35.00 $', category: 'Industriel', image: 'https://picsum.photos/seed/ram/400/300', ngp: '84733000' },
+        { id: 201, name: 'Microprocesseur A1', productName: 'Microprocesseur A1', price: '45.00 $', category: 'Industriel', image: 'https://picsum.photos/seed/cpu/400/300', ngp: '85423100', hsCode: '85423100' },
+        { id: 202, name: 'Écran OLED 4K', productName: 'Écran OLED 4K', price: '120.00 $', category: 'Industriel', image: null, ngp: '85285900', hsCode: '85285900' },
+        { id: 203, name: 'Module RAM 16GB', productName: 'Module RAM 16GB', price: '35.00 $', category: 'Industriel', image: 'https://picsum.photos/seed/ram/400/300', ngp: '84733000', hsCode: '84733000' },
       ]
     },
     { 
-      id: 'EXP-003', 
+      id: '3', 
       name: 'Global Fabrics', 
+      companyName: 'Global Fabrics',
       country: 'France', 
+      paysOrigine: 'France',
       category: 'Textile',
       description: 'Maison de textile traditionnelle proposant des tissus premium pour la haute couture.',
       registration: 'FR-55443322',
+      numeroRegistreCommerce: 'FR-55443322',
       email: 'info@globalfabrics.fr',
       phone: '+33 1 45 67 89 00',
+      telephone: '+33 1 45 67 89 00',
       coverPhoto: 'https://picsum.photos/seed/fabrics_cover/1200/400',
       profilePic: 'https://picsum.photos/seed/fabrics_logo/200/200',
+      statutAgrement: 'APPROUVE',
+      numeroAgrement: 'AGR-003',
+      siteType: 'Textile',
+      ville: 'Paris',
+      siteWeb: 'www.globalfabrics.fr',
+      representantLegal: 'Pierre Dubois',
       products: [
-        { name: 'Soie Naturelle', price: '40.00 €/m', category: 'Textile', image: 'https://picsum.photos/seed/silk/400/300', ngp: '50072000' },
-        { name: 'Coton Égyptien', price: '25.00 €/m', category: 'Textile', image: null, ngp: '52081100' },
-        { name: 'Lin Bio', price: '30.00 €/m', category: 'Textile', image: 'https://picsum.photos/seed/linen/400/300', ngp: '53091100' },
+        { id: 301, name: 'Soie Naturelle', productName: 'Soie Naturelle', price: '40.00 €/m', category: 'Textile', image: 'https://picsum.photos/seed/silk/400/300', ngp: '50072000', hsCode: '50072000' },
+        { id: 302, name: 'Coton Égyptien', productName: 'Coton Égyptien', price: '25.00 €/m', category: 'Textile', image: null, ngp: '52081100', hsCode: '52081100' },
+        { id: 303, name: 'Lin Bio', productName: 'Lin Bio', price: '30.00 €/m', category: 'Textile', image: 'https://picsum.photos/seed/linen/400/300', ngp: '53091100', hsCode: '53091100' },
       ]
     }
   ];
@@ -430,12 +540,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setShowDeclarationForm(true);
-                                setSelectedProductForForm({ ...product, exporter: selectedExporter });
+                                handleAddProduct({ ...product, exporter: selectedExporter });
                               }}
-                              className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all flex items-center justify-center gap-2"
+                              disabled={isSubmitting}
+                              className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <i className="fas fa-plus"></i> Ajouter
+                              {isSubmitting ? (
+                                <>
+                                  <i className="fas fa-spinner fa-spin"></i>
+                                  Envoi...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="fas fa-plus"></i> Ajouter
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -510,12 +629,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                   <button 
                     onClick={() => {
                       setSelectedProduct(null);
-                      setShowDeclarationForm(true);
-                      setSelectedProductForForm(selectedProduct);
+                      handleAddProduct(selectedProduct);
                     }}
-                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-slate-200 active:scale-95 transition-all flex items-center justify-center gap-3"
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-slate-200 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <i className="fas fa-plus"></i> Ajouter à ma déclaration
+                    {isSubmitting ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i>
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-plus"></i> Ajouter à ma déclaration
+                      </>
+                    )}
                   </button>
                   <button className="w-full py-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:border-tunisia-red hover:text-tunisia-red transition-all">
                     Contacter l'exportateur
@@ -539,16 +667,39 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
             exporter={{
               name: selectedProductForForm.exporter.name,
               profilePic: selectedProductForForm.exporter.profilePic,
-              country: selectedProductForForm.exporter.country
+              country: selectedProductForForm.exporter.country,
+              id: Number(selectedProductForForm.exporter.id)
             }}
             onClose={() => {
               setShowDeclarationForm(false);
               setSelectedProductForForm(null);
             }}
-            onSuccess={() => {
-              setShowDeclarationForm(false);
-              setSelectedProductForForm(null);
-              alert('Déclaration soumise avec succès !');
+            onSuccess={async (declarationId: number) => {
+              if (user && selectedProductForForm) {
+                setIsSubmitting(true);
+                try {
+                  await sendProductAdditionNotification(
+                    user.id,
+                    `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email,
+                    Number(selectedProductForForm.exporter.id),
+                    selectedProductForForm.exporter.name,
+                    selectedProductForForm,
+                    declarationId
+                  );
+                  alert('Déclaration soumise avec succès ! Une notification a été envoyée à l\'exportateur.');
+                } catch (error) {
+                  console.error('Erreur:', error);
+                  alert('Déclaration soumise avec succès, mais l\'envoi de la notification a échoué.');
+                } finally {
+                  setIsSubmitting(false);
+                  setShowDeclarationForm(false);
+                  setSelectedProductForForm(null);
+                }
+              } else {
+                setShowDeclarationForm(false);
+                setSelectedProductForForm(null);
+                alert('Déclaration soumise avec succès !');
+              }
             }}
           />
         )}
@@ -627,12 +778,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          setShowDeclarationForm(true);
-                          setSelectedProductForForm(product);
+                          handleAddProduct(product);
                         }}
-                        className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all flex items-center justify-center gap-2"
+                        disabled={isSubmitting}
+                        className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <i className="fas fa-plus"></i> Ajouter
+                        {isSubmitting ? (
+                          <>
+                            <i className="fas fa-spinner fa-spin"></i>
+                            Envoi...
+                          </>
+                        ) : (
+                          <>
+                            <i className="fas fa-plus"></i> Ajouter
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -750,12 +910,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 <button 
                   onClick={() => {
                     setSelectedProduct(null);
-                    setShowDeclarationForm(true);
-                    setSelectedProductForForm(selectedProduct);
+                    handleAddProduct(selectedProduct);
                   }}
-                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-slate-200 active:scale-95 transition-all flex items-center justify-center gap-3"
+                  disabled={isSubmitting}
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-slate-200 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <i className="fas fa-plus"></i> Ajouter à ma déclaration
+                  {isSubmitting ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin"></i>
+                      Envoi en cours...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-plus"></i> Ajouter à ma déclaration
+                    </>
+                  )}
                 </button>
                 <button className="w-full py-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest hover:border-tunisia-red hover:text-tunisia-red transition-all">
                   Contacter l'exportateur
@@ -779,16 +948,39 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           exporter={{
             name: selectedProductForForm.exporter.name,
             profilePic: selectedProductForForm.exporter.profilePic,
-            country: selectedProductForForm.exporter.country
+            country: selectedProductForForm.exporter.country,
+            id: Number(selectedProductForForm.exporter.id)
           }}
           onClose={() => {
             setShowDeclarationForm(false);
             setSelectedProductForForm(null);
           }}
-          onSuccess={() => {
-            setShowDeclarationForm(false);
-            setSelectedProductForForm(null);
-            alert('Déclaration soumise avec succès !');
+          onSuccess={async (declarationId: number) => {
+            if (user && selectedProductForForm) {
+              setIsSubmitting(true);
+              try {
+                await sendProductAdditionNotification(
+                  user.id,
+                  `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email,
+                  Number(selectedProductForForm.exporter.id),
+                  selectedProductForForm.exporter.name,
+                  selectedProductForForm,
+                  declarationId
+                );
+                alert('Déclaration soumise avec succès ! Une notification a été envoyée à l\'exportateur.');
+              } catch (error) {
+                console.error('Erreur:', error);
+                alert('Déclaration soumise avec succès, mais l\'envoi de la notification a échoué.');
+              } finally {
+                setIsSubmitting(false);
+                setShowDeclarationForm(false);
+                setSelectedProductForForm(null);
+              }
+            } else {
+              setShowDeclarationForm(false);
+              setSelectedProductForForm(null);
+              alert('Déclaration soumise avec succès !');
+            }
           }}
         />
       )}

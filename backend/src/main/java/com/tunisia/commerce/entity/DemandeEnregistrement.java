@@ -3,6 +3,7 @@ package com.tunisia.commerce.entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.PaymentStatus;
+import com.tunisia.commerce.enums.TypeDemandeur;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -22,11 +23,6 @@ public class DemandeEnregistrement {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @ManyToOne
-    @JoinColumn(name = "exportateur_id" , referencedColumnName = "id")
-    @ToString.Exclude
-    private ExportateurEtranger exportateur;
 
     @Column(unique = true)
     private String reference; // EXP-2025-XXXX
@@ -63,16 +59,29 @@ public class DemandeEnregistrement {
     @Column(name = "date_agrement")
     private LocalDate dateAgrement;
 
+    @Column(name = "type_demandeur")
+    @Enumerated(EnumType.STRING)
+    private TypeDemandeur typeDemandeur;
+
     @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL)
     @JsonIgnore
     @ToString.Exclude
     private List<DemandeHistory> history = new ArrayList<>();
 
-    @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     @ToString.Exclude
-    private List<Product> produits = new ArrayList<>();
+    private List<DemandeProduit> demandeProduits = new ArrayList<>();
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exportateur_id")
+    @ToString.Exclude
+    private ExportateurEtranger exportateur;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "importateur_id")
+    @ToString.Exclude
+    private ImportateurTunisien importateur;
 
     public void addHistory(DemandeHistory history) {
         this.history.add(history);

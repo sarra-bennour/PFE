@@ -6,6 +6,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "products")
 @Data
@@ -56,7 +59,7 @@ public class Product {
     @Column(name = "commercial_brand_name")
     private String commercialBrandName;
 
-    @ManyToOne
-    @JoinColumn(name = "demande_id")
-    private DemandeEnregistrement demande;
+    @OneToMany(mappedBy = "produit", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<DemandeProduit> demandeProduits = new ArrayList<>();
 }

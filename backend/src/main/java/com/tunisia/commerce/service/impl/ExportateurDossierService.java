@@ -63,6 +63,7 @@ public class ExportateurDossierService {
                 .exportateur(exportateur)
                 .reference(generateReference())
                 .status(DemandeStatus.BROUILLON)
+                .typeDemandeur(TypeDemandeur.EXPORTATEUR)
                 .submittedAt(null)
                 .paymentStatus(PaymentStatus.EN_ATTENTE)
                 .build();

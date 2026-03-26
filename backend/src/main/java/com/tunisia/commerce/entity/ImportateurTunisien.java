@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import java.util.ArrayList;
+import java.util.List;
 
 
 @Entity
@@ -33,4 +35,9 @@ public class ImportateurTunisien extends User {
 
     @Column(name = "mobile_id_pin")
     private String mobileIdPin;
+
+    @OneToMany(mappedBy = "importateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    @ToString.Exclude
+    private List<DemandeEnregistrement> demandes = new ArrayList<>();
 }

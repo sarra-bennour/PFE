@@ -20,7 +20,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -37,6 +36,7 @@ public class DemandeEnregistrementService {
     private final DocumentRepository documentRepository;
     private final DemandeHistoryRepository historyRepository;
     private final UserRepository userRepository;
+    private final DemandeProduitRepository demandeProduitRepository;
 
     private static final String REFERENCE_PREFIX = "DEC";
     private static final String UPLOAD_DIR = "uploads/produits/";
@@ -68,15 +68,23 @@ public class DemandeEnregistrementService {
                     .status(DemandeStatus.BROUILLON)
                     .submittedAt(null)
                     .paymentStatus(PaymentStatus.EN_ATTENTE)
+                    .typeDemandeur(TypeDemandeur.EXPORTATEUR)
                     .build();
 
             demande = demandeRepository.save(demande);
 
-            // Sauvegarder les produits avec tous les champs
+            // Sauvegarder les produits et les lier via DemandeProduit
             for (ProductRequestDTO productRequest : request.getProducts()) {
-                Product product = mapToEntity(productRequest, exportateur);
-                product.setDemande(demande);
-                productRepository.save(product);
+                Product product = mapToEntity(productRequest);
+                product = productRepository.save(product);
+
+                // Créer l'association via DemandeProduit
+                DemandeProduit demandeProduit = DemandeProduit.builder()
+                        .demande(demande)
+                        .produit(product)
+                        .type(TypeDemandeur.EXPORTATEUR)
+                        .build();
+                demandeProduitRepository.save(demandeProduit);
             }
 
             // Ajouter l'historique
@@ -97,7 +105,7 @@ public class DemandeEnregistrementService {
     /**
      * Map ProductRequestDTO to Product entity
      */
-    private Product mapToEntity(ProductRequestDTO dto, ExportateurEtranger exportateur) {
+    private Product mapToEntity(ProductRequestDTO dto) {
         return Product.builder()
                 .productType(dto.getProductType())
                 .category(dto.getCategory())
@@ -114,6 +122,7 @@ public class DemandeEnregistrementService {
                 .commercialBrandName(dto.getCommercialBrandName())
                 .build();
     }
+
     /**
      * Uploader un document pour une demande
      */
@@ -144,7 +153,7 @@ public class DemandeEnregistrementService {
             DocumentType documentType;
             try {
                 documentType = DocumentType.valueOf(documentTypeStr);
-            } catch (ProductDeclarationException e) {
+            } catch (IllegalArgumentException e) {
                 throw ProductDeclarationException.invalidDocumentType(e.getMessage());
             }
 
@@ -154,9 +163,10 @@ public class DemandeEnregistrementService {
                 product = productRepository.findById(productId)
                         .orElseThrow(() -> new RuntimeException("Produit non trouvé avec ID: " + productId));
 
-                // Vérifier que le produit appartient à l'exportateur
-                if (!product.getDemande().getExportateur().getId().equals(exportateurId)) {
-                    throw new RuntimeException("Ce produit ne vous appartient pas");
+                // Vérifier que le produit est bien associé à cette demande via DemandeProduit
+                boolean isAssociated = demandeProduitRepository.existsByDemandeIdAndProduitId(demandeId, productId);
+                if (!isAssociated) {
+                    throw new RuntimeException("Ce produit n'appartient pas à cette demande");
                 }
             }
 
@@ -404,9 +414,10 @@ public class DemandeEnregistrementService {
 
     private void validateRequiredDocuments(DemandeEnregistrement demande) {
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
-        List<Product> products = productRepository.findByDemandeId(demande.getId());
+        List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
 
-        for (Product product : products) {
+        for (DemandeProduit dp : demandeProduits) {
+            Product product = dp.getProduit();
             if ("alimentaire".equals(product.getProductType())) {
                 validateFoodProductDocuments(documents, product);
             } else if ("industriel".equals(product.getProductType())) {
@@ -503,7 +514,12 @@ public class DemandeEnregistrementService {
     }
 
     private DemandeEnregistrementDTO mapToDTO(DemandeEnregistrement demande) {
-        List<Product> products = productRepository.findByDemandeId(demande.getId());
+        // Récupérer les produits via DemandeProduit
+        List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+        List<Product> products = demandeProduits.stream()
+                .map(DemandeProduit::getProduit)
+                .collect(Collectors.toList());
+
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
         List<DemandeHistory> history = historyRepository.findByDemandeIdOrderByPerformedAtDesc(demande.getId());
 

@@ -2,11 +2,10 @@ package com.tunisia.commerce.service.impl;
 
 import com.tunisia.commerce.dto.produits.ProduitDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
-import com.tunisia.commerce.entity.DemandeEnregistrement;
-import com.tunisia.commerce.entity.ExportateurEtranger;
-import com.tunisia.commerce.entity.Product;
+import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.enums.StatutAgrement;
 import com.tunisia.commerce.exception.ImportateurException;
+import com.tunisia.commerce.repository.DemandeProduitRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.repository.ProductRepository;
 import com.tunisia.commerce.service.ImportateurService;
@@ -29,6 +28,7 @@ public class ImportateurServiceImpl implements ImportateurService {
 
     private final ExportateurRepository exportateurRepository;
     private final ProductRepository productRepository;
+    private final DemandeProduitRepository demandeProduitRepository;
 
     @Override
     public List<UserDTO> rechercherExportateursValides(String searchTerm) {
@@ -44,14 +44,13 @@ public class ImportateurServiceImpl implements ImportateurService {
 
             // Recherche dans les exportateurs
             List<ExportateurEtranger> exportateurs = exportateurRepository
-                    .findByStatutAgrementAndSearchCriteria(
-                            StatutAgrement.VALIDE,
+                    .findBySearchCriteria(
                             searchTermLower
                     );
 
             log.info("Exportateurs trouvés par recherche directe: {}", exportateurs.size());
 
-            // Si pas de résultats, recherche dans les produits
+            // Si pas de résultats, recherche dans les produits via DemandeProduit
             if (exportateurs.isEmpty()) {
                 List<Product> produits = productRepository.findByProductNameContainingIgnoreCaseOrHsCodeContaining(
                         searchTermLower
@@ -60,8 +59,9 @@ public class ImportateurServiceImpl implements ImportateurService {
                 log.info("Produits trouvés par recherche: {}", produits.size());
 
                 exportateurs = produits.stream()
-                        .map(Product::getDemande)
-                        .filter(demande -> demande != null)
+                        .flatMap(product -> demandeProduitRepository.findByProduitId(product.getId()).stream())
+                        .map(DemandeProduit::getDemande)
+                        .filter(demande -> demande != null && demande.getExportateur() != null)
                         .map(DemandeEnregistrement::getExportateur)
                         .filter(exportateur ->
                                 exportateur != null &&
@@ -155,8 +155,9 @@ public class ImportateurServiceImpl implements ImportateurService {
             }
 
             List<ExportateurEtranger> exportateurs = produits.stream()
-                    .map(Product::getDemande)
-                    .filter(demande -> demande != null)
+                    .flatMap(product -> demandeProduitRepository.findByProduitId(product.getId()).stream())
+                    .map(DemandeProduit::getDemande)
+                    .filter(demande -> demande != null && demande.getExportateur() != null)
                     .map(DemandeEnregistrement::getExportateur)
                     .filter(exportateur ->
                             exportateur != null &&
@@ -192,8 +193,9 @@ public class ImportateurServiceImpl implements ImportateurService {
             }
 
             List<ExportateurEtranger> exportateurs = produits.stream()
-                    .map(Product::getDemande)
-                    .filter(demande -> demande != null)
+                    .flatMap(product -> demandeProduitRepository.findByProduitId(product.getId()).stream())
+                    .map(DemandeProduit::getDemande)
+                    .filter(demande -> demande != null && demande.getExportateur() != null)
                     .map(DemandeEnregistrement::getExportateur)
                     .filter(exportateur ->
                             exportateur != null &&
@@ -259,14 +261,15 @@ public class ImportateurServiceImpl implements ImportateurService {
                 if (exp.getDemandes() != null) {
                     for (DemandeEnregistrement demande : exp.getDemandes()) {
                         log.info("  Demande ID: {}, Status: {}", demande.getId(), demande.getStatus());
-                        log.info("  Nombre de produits dans la demande: {}",
-                                demande.getProduits() != null ? demande.getProduits().size() : 0);
 
-                        if (demande.getProduits() != null) {
-                            for (Product product : demande.getProduits()) {
-                                log.info("    Produit: {} (Code NGP: {})",
-                                        product.getProductName(), product.getHsCode());
-                            }
+                        // Récupérer les produits via DemandeProduit
+                        List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+                        log.info("  Nombre de produits dans la demande: {}", demandeProduits.size());
+
+                        for (DemandeProduit dp : demandeProduits) {
+                            Product product = dp.getProduit();
+                            log.info("    Produit: {} (Code NGP: {})",
+                                    product.getProductName(), product.getHsCode());
                         }
                     }
                 }
@@ -339,7 +342,7 @@ public class ImportateurServiceImpl implements ImportateurService {
             dto.setPreKycCompleted(exportateur.isPreKycCompleted());
             dto.setPreKycCompletedAt(exportateur.getPreKycCompletedAt());
 
-            // RÉCUPÉRATION DES PRODUITS
+            // RÉCUPÉRATION DES PRODUITS via DemandeProduit
             List<ProduitDTO> produitsDTO = new ArrayList<>();
 
             if (exportateur.getDemandes() != null) {
@@ -348,10 +351,14 @@ public class ImportateurServiceImpl implements ImportateurService {
                 for (DemandeEnregistrement demande : exportateur.getDemandes()) {
                     log.info("Traitement de la demande ID: {}", demande.getId());
 
-                    if (demande.getProduits() != null && !demande.getProduits().isEmpty()) {
-                        log.info("Cette demande a {} produits", demande.getProduits().size());
+                    // Récupérer les produits associés à cette demande via DemandeProduit
+                    List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
 
-                        for (Product product : demande.getProduits()) {
+                    if (demandeProduits != null && !demandeProduits.isEmpty()) {
+                        log.info("Cette demande a {} produits associés", demandeProduits.size());
+
+                        for (DemandeProduit dp : demandeProduits) {
+                            Product product = dp.getProduit();
                             log.info("  - Produit: {}, Code NGP: {}",
                                     product.getProductName(), product.getHsCode());
 
@@ -375,7 +382,7 @@ public class ImportateurServiceImpl implements ImportateurService {
                             produitsDTO.add(produitDTO);
                         }
                     } else {
-                        log.info("La demande {} n'a pas de produits", demande.getId());
+                        log.info("La demande {} n'a pas de produits associés", demande.getId());
                     }
                 }
             } else {
