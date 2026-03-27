@@ -41,6 +41,7 @@ export interface User {
   // Champs spécifiques aux importateurs
   mobileIdMatricule?: string;
   mobileIdPin?: string;
+  id?: number; // Ajout de l'ID utilisateur
 }
 
 // Interface pour les statuts du dossier
@@ -60,6 +61,9 @@ interface AuthContextType {
   updateUser: (data: Partial<User>) => void;
   dossierStatus: DossierStatus | null;
   updateDossierStatus: (demandeStatus: string, paymentStatus: string, additionalData?: any) => void;
+  acceptedProducts: Set<number>; // Ajout des produits acceptés
+  addAcceptedProduct: (productId: number) => void; // Fonction pour ajouter un produit accepté
+  clearAcceptedProduct: (productId: number) => void; // Fonction pour effacer un produit accepté
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -157,11 +161,52 @@ const App: React.FC = () => {
   const { i18n } = useTranslation();
   const authHook = useAuthHook(); // Utiliser le hook personnalisé
   
+  // État pour les produits acceptés
+  const [acceptedProducts, setAcceptedProducts] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
+  // Charger les produits acceptés depuis le localStorage au démarrage
+  useEffect(() => {
+    const savedAcceptedProducts = localStorage.getItem('acceptedProducts');
+    if (savedAcceptedProducts) {
+      try {
+        const parsed = JSON.parse(savedAcceptedProducts);
+        setAcceptedProducts(new Set(parsed));
+      } catch (error) {
+        console.error('Erreur lors du chargement des produits acceptés:', error);
+      }
+    }
+  }, []);
+
+  // Sauvegarder les produits acceptés dans le localStorage quand ils changent
+  useEffect(() => {
+    localStorage.setItem('acceptedProducts', JSON.stringify(Array.from(acceptedProducts)));
+  }, [acceptedProducts]);
+
+  // Écouter les événements de notification acceptée
+  useEffect(() => {
+    const handleAcceptedNotification = (event: CustomEvent) => {
+      console.log('Événement notification acceptée reçu dans App:', event.detail);
+      const notification = event.detail;
+      
+      // Extraire l'ID du produit de la notification
+      const productId = notification.targetEntityId;
+      
+      if (productId) {
+        console.log('Ajout du produit accepté:', productId);
+        addAcceptedProduct(productId);
+      }
+    };
+    
+    window.addEventListener('acceptedNotification', handleAcceptedNotification as EventListener);
+    
+    return () => {
+      window.removeEventListener('acceptedNotification', handleAcceptedNotification as EventListener);
+    };
+  }, []);
 
   const login = (userData: User, token: string) => {
     authHook.login(userData, token); // Utiliser le login du hook
@@ -169,6 +214,7 @@ const App: React.FC = () => {
 
   const logout = () => {
     authHook.logout(); // Utiliser le logout du hook
+    // Ne pas effacer les produits acceptés lors de la déconnexion
   };
 
   const updateUser = (data: Partial<User>) => {
@@ -179,6 +225,24 @@ const App: React.FC = () => {
     }
   };
 
+  // Fonction pour ajouter un produit accepté
+  const addAcceptedProduct = (productId: number) => {
+    setAcceptedProducts(prev => {
+      const newSet = new Set(prev);
+      newSet.add(productId);
+      return newSet;
+    });
+  };
+
+  // Fonction pour effacer un produit accepté (après soumission de la déclaration)
+  const clearAcceptedProduct = (productId: number) => {
+    setAcceptedProducts(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(productId);
+      return newSet;
+    });
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user: authHook.user, 
@@ -187,7 +251,10 @@ const App: React.FC = () => {
       logout, 
       updateUser,
       dossierStatus: authHook.dossierStatus,
-      updateDossierStatus: authHook.updateDossierStatus
+      updateDossierStatus: authHook.updateDossierStatus,
+      acceptedProducts, // Exposer les produits acceptés
+      addAcceptedProduct, // Exposer la fonction pour ajouter
+      clearAcceptedProduct // Exposer la fonction pour effacer
     }}>
       <Router>
         <AppLayout>

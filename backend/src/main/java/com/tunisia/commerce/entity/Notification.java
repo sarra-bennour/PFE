@@ -17,12 +17,12 @@ import java.util.Map;
 @Entity
 @Table(name = "notifications",
         indexes = {
-                @Index(name = "idx_user_id", columnList = "user_id"),
                 @Index(name = "idx_sender_id", columnList = "sender_id"),
                 @Index(name = "idx_receiver_id", columnList = "receiver_id"),
                 @Index(name = "idx_status", columnList = "status"),
                 @Index(name = "idx_read_at", columnList = "read_at"),
-                @Index(name = "idx_created_at", columnList = "created_at")
+                @Index(name = "idx_created_at", columnList = "created_at"),
+                @Index(name = "idx_target_entity", columnList = "target_entity_type, target_entity_id")
         })
 @Data
 @NoArgsConstructor

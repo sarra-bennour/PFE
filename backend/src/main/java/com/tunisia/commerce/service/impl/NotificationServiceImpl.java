@@ -241,6 +241,7 @@ public class NotificationServiceImpl implements NotificationService {
         String productName = extractProductNameFromTitle(originalNotification.getTitle());
 
         String exporterName = getExporterName(exporter);
+        Long productId = originalNotification.getTargetEntityId();
 
         String message = accepted ?
                 String.format("%s a accepté votre demande d'ajout du produit \"%s\"",
@@ -257,8 +258,8 @@ public class NotificationServiceImpl implements NotificationService {
                 .notificationType(NotificationType.ACTION)
                 .status(NotificationStatus.NON_LU)
                 .action(accepted ? NotificationAction.ACCEPT : NotificationAction.REJECT)
-                .targetEntityType("PRODUCT_ADDITION_RESPONSE")
-                .targetEntityId(originalNotification.getId())
+                .targetEntityType("PRODUCT")
+                .targetEntityId(productId)
                 .isEmailSent(false)
                 .isSmsSent(false)
                 .build();
