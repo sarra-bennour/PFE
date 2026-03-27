@@ -1,11 +1,25 @@
 import React, { useState } from 'react';
-import { X, Upload, FileText, Ship, Plane, Truck, Info, Check } from 'lucide-react';
-import {ProductDeclarationFormProps} from '../types/ProductDeclarationFormProps';
+import { X, Upload, FileText, Ship, Plane, Truck, Info, Check, Loader2 } from 'lucide-react';
+import { ProductDeclarationFormProps } from '../types/ProductDeclarationFormProps';
+import axios from 'axios';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
+interface FileWithProgress extends File {
+  progress?: number;
+}
 
-const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({ product, exporter, onClose, onSuccess }) => {
+const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({ 
+  product, 
+  exporter, 
+  onClose, 
+  onSuccess 
+}) => {
   const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [error, setError] = useState<string | null>(null);
+  
   const [formData, setFormData] = useState({
     invoiceNumber: '',
     invoiceDate: '',
@@ -16,6 +30,12 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({ product
     loadingPort: '',
     dischargePort: '',
     arrivalDate: '',
+  });
+
+  const [files, setFiles] = useState<{ [key: string]: File | null }>({
+    'Facture commerciale (PDF)': null,
+    'Documents de transport (BL/LTA)': null,
+    'Autres documents requis': null,
   });
 
   const getProductPlaceholder = (category: string) => {
@@ -42,35 +62,234 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({ product
         return { color: 'bg-emerald-50 text-emerald-400', icon: 'fa-utensils', label: 'Alimentaire' };
     }
   };
-const getFlagUrl = (country: string) => {
+
+  const getFlagUrl = (country: string) => {
     const code = country || 'UN';
     return `https://flagcdn.com/w160/${code.toLowerCase()}.png`;
   };
-  
-  const [files, setFiles] = useState<{ [key: string]: File | null }>({
-    'Facture commerciale (PDF)': null,
-    'Documents de transport (BL/LTA)': null,
-    'Autres documents requis': null,
-  });
 
   const handleFileChange = (label: string, file: File | null) => {
-    setFiles(prev => ({ ...prev, [label]: file }));
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (step === 1) {
-      setStep(2);
-    } else {
-      if (!files['Facture commerciale (PDF)'] || !files['Documents de transport (BL/LTA)']) {
-        alert('Veuillez télécharger les documents obligatoires.');
+    if (file) {
+      // Check file size (max 5 MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (file.size > maxSize) {
+        setError(`Le fichier "${file.name}" dépasse la taille maximale autorisée de 5 Mo.`);
         return;
       }
-      onSuccess();
+      
+      // Check file type
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+      if (!allowedTypes.includes(file.type)) {
+        setError('Seuls les fichiers PDF, JPEG et PNG sont autorisés.');
+        return;
+      }
+    }
+    
+    setFiles(prev => ({ ...prev, [label]: file }));
+    if (error) setError(null);
+  };
+
+  const uploadFile = async (file: File, demandeId: number, documentType: string): Promise<boolean> => {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('Session expirée. Veuillez vous reconnecter.');
+    }
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/importateur/demandes/${demandeId}/documents?documentType=${encodeURIComponent(documentType)}`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 30000, // 30 seconds timeout
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setUploadProgress(prev => ({ ...prev, [documentType]: percentCompleted }));
+            }
+          }
+        }
+      );
+      return response.data.success;
+    } catch (error: any) {
+      console.error(`Erreur lors de l'upload du fichier ${documentType}:`, error);
+      
+      // Extract user-friendly error message
+      let errorMessage = `Erreur lors de l'upload du fichier: ${file.name}`;
+      
+      if (error.userMessage) {
+        errorMessage = error.userMessage;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
     }
   };
 
+  const getDocumentType = (label: string): string => {
+    switch (label) {
+      case 'Facture commerciale (PDF)':
+        return 'INVOICE';
+      case 'Documents de transport (BL/LTA)':
+        return 'TRANSPORT_DOCUMENT';
+      case 'Autres documents requis':
+        return 'OTHER_DOCUMENT';
+      default:
+        return 'OTHER_DOCUMENT';
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (step === 1) {
+    setStep(2);
+    return;
+  }
+  
+  // Check file sizes before upload
+  const filesToUpload = Object.entries(files);
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  
+  for (const [label, file] of filesToUpload) {
+    if (file && file instanceof File && file.size > maxSize) {
+      setError(`Le fichier "${file.name}" dépasse la taille maximale de 5 Mo.`);
+      return;
+    }
+  }
+  
+  // Check required documents
+  if (!files['Facture commerciale (PDF)'] || !files['Documents de transport (BL/LTA)']) {
+    setError('Veuillez télécharger la facture commerciale et les documents de transport.');
+    return;
+  }
+  
+  setIsSubmitting(true);
+  setError(null);
+  
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Session expirée. Veuillez vous reconnecter.');
+    }
+    
+    // 1. Créer la demande d'importation
+    const demandeRequest = {
+      produitId: product.id,
+      exportateurId: exporter.id,
+      exportateurName: exporter.name,
+      exportateurCountry: exporter.country,
+      productName: product.name,
+      hsCode: product.hsCode,
+      category: product.category,
+      invoiceNumber: formData.invoiceNumber,
+      invoiceDate: formData.invoiceDate,
+      amount: parseFloat(formData.amount),
+      currency: formData.currency,
+      incoterm: formData.incoterm,
+      transportMode: formData.transportMode,
+      loadingPort: formData.loadingPort,
+      dischargePort: formData.dischargePort,
+      arrivalDate: formData.arrivalDate,
+      documents: []
+    };
+    
+    console.log('Création de la demande d\'importation:', demandeRequest);
+    
+    const demandeResponse = await axios.post(
+      `${API_BASE_URL}/importateur/demandes`,
+      demandeRequest,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    
+    const demande = demandeResponse.data;
+    console.log('Demande créée:', demande);
+    
+    // 2. Uploader les documents
+    const uploadPromises: Promise<boolean>[] = [];
+    const uploadErrors: string[] = [];
+    
+    for (const [label, file] of Object.entries(files)) {
+      if (file && file instanceof File) {
+        const documentType = getDocumentType(label);
+        uploadPromises.push(
+          uploadFile(file, demande.id, documentType).catch((err) => {
+            uploadErrors.push(`${label}: ${err.message}`);
+            throw err;
+          })
+        );
+      }
+    }
+    
+    try {
+      await Promise.all(uploadPromises);
+      console.log('Tous les documents uploadés avec succès');
+    } catch (uploadError) {
+      console.error('Upload failed, errors:', uploadErrors);
+      throw new Error(`Erreur d'upload:\n${uploadErrors.join('\n')}`);
+    }
+    
+    // 3. Soumettre la demande
+    console.log('Soumission de la demande...');
+    await axios.post(
+      `${API_BASE_URL}/importateur/demandes/${demande.id}/soumettre`,
+      {},
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      }
+    );
+    
+    console.log('Demande soumise avec succès');
+    
+    // Appeler le callback de succès
+    if (onSuccess) {
+      onSuccess();
+    }
+    
+    // Fermer le formulaire
+    onClose();
+    
+  } catch (error: any) {
+    console.error('Erreur lors de la création de la demande:', error);
+    
+    let errorMessage = 'Une erreur est survenue lors de la création de la demande.';
+    
+    if (error.userMessage) {
+      errorMessage = error.userMessage;
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setError(errorMessage);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   const placeholder = getProductPlaceholder(product.category || 'Autre');
+  
+  // Vérifier si un upload est en cours
+  const isUploading = Object.values(uploadProgress).some(progress => {
+    return typeof progress === 'number' && progress > 0 && progress < 100;
+  });
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
@@ -101,7 +320,8 @@ const getFlagUrl = (country: string) => {
           </div>
           <button 
             onClick={onClose}
-            className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all"
+            disabled={isSubmitting}
+            className="w-10 h-10 rounded-full bg-white shadow-md flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all disabled:opacity-50"
           >
             <X size={20} />
           </button>
@@ -109,6 +329,13 @@ const getFlagUrl = (country: string) => {
 
         {/* Form Content */}
         <div className="flex-grow overflow-y-auto p-8 md:p-12">
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+              <strong>Erreur :</strong> {error}
+            </div>
+          )}
+          
           {/* Progress Bar */}
           <div className="flex items-center gap-4 mb-10">
             <div className={`flex-1 h-2 rounded-full transition-all duration-500 ${step >= 1 ? 'bg-tunisia-red' : 'bg-slate-100'}`}></div>
@@ -153,6 +380,7 @@ const getFlagUrl = (country: string) => {
                         <input 
                           required
                           type="number" 
+                          step="0.01"
                           value={formData.amount}
                           onChange={(e) => setFormData({...formData, amount: e.target.value})}
                           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red outline-none transition-all" 
@@ -166,9 +394,11 @@ const getFlagUrl = (country: string) => {
                           onChange={(e) => setFormData({...formData, currency: e.target.value})}
                           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red outline-none transition-all appearance-none"
                         >
-                          <option value="TND">TND</option>
-                          <option value="EUR">EUR</option>
-                          <option value="USD">USD</option>
+                          <option value="TND">TND - Dinar Tunisien</option>
+                          <option value="EUR">EUR - Euro</option>
+                          <option value="USD">USD - Dollar US</option>
+                          <option value="GBP">GBP - Livre Sterling</option>
+                          <option value="CAD">CAD - Dollar Canadien</option>
                         </select>
                       </div>
                     </div>
@@ -257,21 +487,45 @@ const getFlagUrl = (country: string) => {
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {[
-                    { label: 'Facture commerciale (PDF)', icon: <FileText className="text-blue-500" /> },
-                    { label: 'Documents de transport (BL/LTA)', icon: <Ship className="text-emerald-500" /> },
-                    { label: 'Autres documents requis', icon: <Info className="text-amber-500" /> }
+                    { label: 'Facture commerciale (PDF)', icon: <FileText className="text-blue-500" />, required: true },
+                    { label: 'Documents de transport (BL/LTA)', icon: <Ship className="text-emerald-500" />, required: true },
+                    { label: 'Autres documents requis', icon: <Info className="text-amber-500" />, required: false }
                   ].map((doc, idx) => {
                     const isUploaded = !!files[doc.label];
+                    const docType = getDocumentType(doc.label);
+                    const progress = uploadProgress[docType];
+                    const isUploadingDoc = typeof progress === 'number' && progress > 0 && progress < 100;
+                    
                     return (
                       <div 
                         key={idx} 
                         className={`group relative border-2 border-dashed rounded-[2rem] p-8 text-center transition-all cursor-pointer ${isUploaded ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-200 hover:border-tunisia-red hover:bg-tunisia-red/5'}`}
                       >
                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform ${isUploaded ? 'bg-emerald-100' : 'bg-slate-50'}`}>
-                          {isUploaded ? <Check className="text-emerald-600" /> : doc.icon}
+                          {isUploadingDoc ? (
+                            <Loader2 className="text-tunisia-red animate-spin" size={24} />
+                          ) : isUploaded ? (
+                            <Check className="text-emerald-600" />
+                          ) : (
+                            doc.icon
+                          )}
                         </div>
-                        <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isUploaded ? 'text-emerald-700' : 'text-slate-900'}`}>{doc.label}</p>
-                        {isUploaded ? (
+                        <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isUploaded ? 'text-emerald-700' : 'text-slate-900'}`}>
+                          {doc.label}
+                          {doc.required && <span className="text-red-500 ml-1">*</span>}
+                        </p>
+                        {isUploadingDoc && (
+                          <div className="mt-2">
+                            <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-tunisia-red transition-all duration-300"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <p className="text-[8px] text-slate-400 mt-1">{progress}%</p>
+                          </div>
+                        )}
+                        {isUploaded && !isUploadingDoc && files[doc.label] && (
                           <div className="space-y-2">
                             <p className="text-[9px] text-emerald-600 font-bold truncate px-2">{files[doc.label]?.name}</p>
                             <button 
@@ -281,19 +535,29 @@ const getFlagUrl = (country: string) => {
                                 handleFileChange(doc.label, null);
                               }}
                               className="text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline"
+                              disabled={isSubmitting}
                             >
                               Supprimer
                             </button>
                           </div>
-                        ) : (
+                        )}
+                        {!isUploaded && (
                           <p className="text-[9px] text-slate-400 font-bold">Cliquez ou glissez un fichier</p>
                         )}
                         <input 
                           type="file" 
                           className="absolute inset-0 opacity-0 cursor-pointer" 
+                          disabled={isSubmitting}
                           onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            handleFileChange(doc.label, file);
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              // Vérifier la taille du fichier (max 5 Mo)
+                              if (file.size > 5 * 1024 * 1024) {
+                                setError('La taille du fichier ne doit pas dépasser 5 Mo.');
+                                return;
+                              }
+                              handleFileChange(doc.label, file);
+                            }
                           }}
                         />
                       </div>
@@ -305,6 +569,7 @@ const getFlagUrl = (country: string) => {
                   <Info className="text-amber-500 flex-shrink-0" size={20} />
                   <p className="text-xs text-amber-800 font-medium leading-relaxed">
                     Assurez-vous que tous les documents sont lisibles et au format PDF. La taille maximale par fichier est de 5 Mo.
+                    Les documents marqués d'un <span className="text-red-500">*</span> sont obligatoires.
                   </p>
                 </div>
               </div>
@@ -317,7 +582,8 @@ const getFlagUrl = (country: string) => {
           {step === 2 && (
             <button 
               onClick={() => setStep(1)}
-              className="px-8 py-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:border-slate-300 transition-all"
+              disabled={isSubmitting}
+              className="px-8 py-4 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:border-slate-300 transition-all disabled:opacity-50"
             >
               Précédent
             </button>
@@ -326,9 +592,11 @@ const getFlagUrl = (country: string) => {
           <button 
             form="declaration-form"
             type="submit"
-            className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-slate-200 hover:bg-tunisia-red transition-all"
+            disabled={isSubmitting || isUploading}
+            className="px-12 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-slate-200 hover:bg-tunisia-red transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {step === 1 ? 'Continuer' : 'Valider la déclaration'}
+            {isSubmitting && <Loader2 className="animate-spin" size={16} />}
+            {step === 1 ? 'Continuer' : (isSubmitting ? 'Traitement...' : 'Valider la déclaration')}
           </button>
         </div>
       </div>

@@ -9,4 +9,6 @@ public interface ImportateurRepository extends JpaRepository<ImportateurTunisien
     Optional<ImportateurTunisien> findByMobileIdMatricule(String mobileIdMatricule);
     boolean existsByMobileIdMatricule(String mobileIdMatricule);
     //boolean existsByMatriculeFiscale(String matriculeFiscale);
+    Optional<ImportateurTunisien> findByEmail(String email);
+
 }

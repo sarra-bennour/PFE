@@ -21,4 +21,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findByProductNameContainingIgnoreCaseOrHsCodeContaining(
             @Param("searchTerm") String searchTerm
     );
+
+    List<Product> findByHsCode(String hsCode);
+
 }

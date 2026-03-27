@@ -1,23 +1,41 @@
 package com.tunisia.commerce.controller;
 
+import com.tunisia.commerce.dto.importateur.DemandeImportationRequestDTO;
+import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
+import com.tunisia.commerce.dto.validation.DocumentDTO;
+import com.tunisia.commerce.entity.ImportateurTunisien;
 import com.tunisia.commerce.exception.ImportateurException;
+import com.tunisia.commerce.repository.ImportateurRepository;
 import com.tunisia.commerce.service.ImportateurService;
+import com.tunisia.commerce.service.impl.DemandeImportationService;
+import com.tunisia.commerce.config.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/importateur")
@@ -28,6 +46,13 @@ import java.util.Map;
 public class ImportateurController {
 
     private final ImportateurService importateurService;
+    private final DemandeImportationService demandeImportationService;
+    private final JwtUtil jwtUtil;
+    private final ImportateurRepository importateurRepository;
+
+    private static final String UPLOAD_DIR = "uploads/importateur/documents/";
+
+    // ==================== ENDPOINTS EXISTANTS POUR LA RECHERCHE ====================
 
     @Operation(
             summary = "Recherche multi-critères d'exportateurs validés",
@@ -40,9 +65,6 @@ public class ImportateurController {
 
         log.info("========== DÉBUT RECHERCHE EXPORTATEURS ==========");
         log.info("Terme de recherche reçu: '{}'", q);
-        log.info("Headers de la requête: ");
-        log.info("User-Agent: {}", getCurrentHttpRequest().getHeader("User-Agent"));
-        log.info("Authorization: {}", getCurrentHttpRequest().getHeader("Authorization") != null ? "Présent" : "Absent");
 
         try {
             long startTime = System.currentTimeMillis();
@@ -55,33 +77,15 @@ public class ImportateurController {
             log.info("Résultats trouvés: {} exportateur(s)", resultats.size());
             log.info("Temps d'exécution: {} ms", duration);
 
-            if (!resultats.isEmpty()) {
-                log.info("Détail des résultats:");
-                for (int i = 0; i < resultats.size(); i++) {
-                    UserDTO exp = resultats.get(i);
-                    log.info("  Exportateur {}: ID={}, Raison sociale='{}', Pays='{}', Email='{}'",
-                            i+1, exp.getId(), exp.getRaisonSociale(), exp.getPaysOrigine(), exp.getEmail());
-
-                    // Log des produits si présents dans le DTO (vous devrez peut-être ajouter cette info)
-                    // if (exp.getProduits() != null) {
-                    //     log.info("    Nombre de produits: {}", exp.getProduits().size());
-                    // }
-                }
-            } else {
-                log.warn("Aucun exportateur trouvé pour le terme: '{}'", q);
-            }
-
             log.info("========== FIN RECHERCHE EXPORTATEURS ==========");
 
             return ResponseEntity.ok(resultats);
 
         } catch (ImportateurException e) {
             log.error("ERREUR ImportateurException: Code={}, Message={}", e.getErrorCode(), e.getMessage());
-            log.error("Stack trace:", e);
             return handleImportateurException(e);
         } catch (Exception e) {
             log.error("ERREUR inattendue: {}", e.getMessage());
-            log.error("Stack trace:", e);
             return handleGenericException(e);
         }
     }
@@ -107,10 +111,6 @@ public class ImportateurController {
 
             log.info("Résultats trouvés pour le pays '{}': {} exportateur(s)", pays, resultats.size());
             log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            resultats.forEach(exp ->
-                    log.info("  - {} ({}): {}", exp.getRaisonSociale(), exp.getEmail(), exp.getStatutAgrement())
-            );
 
             return ResponseEntity.ok(resultats);
 
@@ -141,10 +141,6 @@ public class ImportateurController {
 
             log.info("Résultats trouvés pour '{}': {} exportateur(s)", raisonSociale, resultats.size());
             log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            resultats.forEach(exp ->
-                    log.info("  - {} (Pays: {})", exp.getRaisonSociale(), exp.getPaysOrigine())
-            );
 
             return ResponseEntity.ok(resultats);
 
@@ -264,14 +260,6 @@ public class ImportateurController {
             log.info("Nombre total d'exportateurs validés: {}", exportateurs.size());
             log.info("Temps d'exécution: {} ms", endTime - startTime);
 
-            if (!exportateurs.isEmpty()) {
-                log.info("Liste des exportateurs:");
-                exportateurs.forEach(exp ->
-                        log.info("  - ID: {}, Raison sociale: {}, Pays: {}, Email: {}",
-                                exp.getId(), exp.getRaisonSociale(), exp.getPaysOrigine(), exp.getEmail())
-                );
-            }
-
             return ResponseEntity.ok(exportateurs);
 
         } catch (ImportateurException e) {
@@ -279,6 +267,337 @@ public class ImportateurController {
             return handleImportateurException(e);
         }
     }
+
+    // ==================== NOUVEAUX ENDPOINTS POUR LES DEMANDES D'IMPORTATION ====================
+
+    /**
+     * Créer une nouvelle demande d'importation
+     */
+    @Operation(
+            summary = "Créer une demande d'importation",
+            description = "Crée une nouvelle demande d'importation pour un produit"
+    )
+    @PostMapping("/demandes")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> createImportationDemande(
+            @Valid @RequestBody DemandeImportationRequestDTO request,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== CRÉATION DEMANDE D'IMPORTATION ==========");
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+
+            // Le service retourne maintenant un DTO avec toutes les informations
+            DemandeEnregistrementDTO demande = demandeImportationService.createImportationDemande(
+                    importateur.getId(),
+                    request
+            );
+
+            return new ResponseEntity<>(demande, HttpStatus.CREATED);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la création de la demande: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "CREATION_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * Uploader un document pour une demande d'importation
+     */
+    @Operation(
+            summary = "Uploader un document",
+            description = "Télécharge un document pour une demande d'importation spécifique"
+    )
+    @PostMapping(value = "/demandes/{demandeId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> uploadDocument(
+            @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
+            @Parameter(description = "Type de document") @RequestParam String documentType,
+            @Parameter(description = "Fichier à uploader") @RequestParam("file") MultipartFile file,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== UPLOAD DOCUMENT ==========");
+        log.info("Demande ID: {}", demandeId);
+        log.info("Type de document: {}", documentType);
+        log.info("Nom du fichier: {}", file.getOriginalFilename());
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            log.info("Importateur authentifié: ID={}", importateur.getId());
+
+            // Sauvegarder le document en base de données
+            DocumentDTO document = demandeImportationService.uploadDocument(
+                    demandeId,
+                    importateur.getId(),
+                    file,
+                    documentType
+            );
+
+            log.info("Document uploadé avec succès, ID: {}", document.getId());
+            log.info("========== FIN UPLOAD ==========");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Document téléchargé avec succès");
+            response.put("documentId", document.getId());
+            response.put("fileName", document.getFileName());
+            response.put("documentType", documentType);
+            response.put("status", document.getStatus());
+            response.put("fileSize", document.getFileSize());
+            response.put("uploadedAt", document.getUploadedAt());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'upload du document: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "UPLOAD_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * Soumettre une demande d'importation pour traitement
+     */
+    @Operation(
+            summary = "Soumettre une demande d'importation",
+            description = "Soumet la demande d'importation pour validation par les agents"
+    )
+    @PostMapping("/demandes/{demandeId}/soumettre")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> submitDemande(
+            @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== SOUMISSION DEMANDE D'IMPORTATION ==========");
+        log.info("Demande ID: {}", demandeId);
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            log.info("Importateur authentifié: ID={}", importateur.getId());
+
+            DemandeEnregistrementDTO demande = demandeImportationService.submitImportationDemande(
+                    demandeId,
+                    importateur.getId()
+            );
+
+            log.info("Demande soumise avec succès, référence: {}", demande.getReference());
+            log.info("========== FIN SOUMISSION ==========");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Demande soumise avec succès pour traitement");
+            response.put("demandeId", demande.getId());
+            response.put("reference", demande.getReference());
+            response.put("status", demande.getStatus());
+            response.put("submittedAt", demande.getSubmittedAt());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la soumission de la demande: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "SUBMISSION_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * Récupérer toutes les demandes d'importation de l'importateur connecté
+     */
+    @Operation(
+            summary = "Mes demandes d'importation",
+            description = "Récupère la liste de toutes les demandes d'importation de l'importateur connecté"
+    )
+    @GetMapping("/mes-demandes")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getMyDemandes(
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== RÉCUPÉRATION MES DEMANDES ==========");
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            log.info("Importateur authentifié: ID={}", importateur.getId());
+
+            List<DemandeEnregistrementDTO> demandes = demandeImportationService.getDemandesByImportateur(
+                    importateur.getId()
+            );
+
+            log.info("Nombre de demandes trouvées: {}", demandes.size());
+            log.info("========== FIN RÉCUPÉRATION ==========");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("demandes", demandes);
+            response.put("count", demandes.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des demandes: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "RETRIEVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * Récupérer une demande d'importation spécifique par son ID
+     */
+    @Operation(
+            summary = "Détails d'une demande d'importation",
+            description = "Récupère les détails complets d'une demande d'importation spécifique"
+    )
+    @GetMapping("/demandes/{demandeId}")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getDemandeById(
+            @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== RÉCUPÉRATION DEMANDE ID: {} ==========", demandeId);
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            log.info("Importateur authentifié: ID={}", importateur.getId());
+
+            DemandeEnregistrementDTO demande = demandeImportationService.getDemandeById(
+                    demandeId,
+                    importateur.getId()
+            );
+
+            log.info("Demande trouvée: référence={}, status={}", demande.getReference(), demande.getStatus());
+            log.info("========== FIN RÉCUPÉRATION ==========");
+
+            return ResponseEntity.ok(demande);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération de la demande: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "NOT_FOUND");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+        }
+    }
+
+    /**
+     * Télécharger un document d'une demande d'importation
+     */
+    @Operation(
+            summary = "Télécharger un document",
+            description = "Télécharge le fichier d'un document spécifique"
+    )
+    @GetMapping("/demandes/documents/{documentId}/telecharger")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<Resource> downloadDocument(
+            @Parameter(description = "ID du document") @PathVariable Long documentId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== TÉLÉCHARGEMENT DOCUMENT ID: {} ==========", documentId);
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            log.info("Importateur authentifié: ID={}", importateur.getId());
+
+            Resource resource = demandeImportationService.getDocumentFile(documentId, importateur.getId());
+            DocumentDTO documentInfo = demandeImportationService.getDocumentById(documentId, importateur.getId());
+
+            log.info("Document téléchargé: {}", documentInfo.getFileName());
+            log.info("========== FIN TÉLÉCHARGEMENT ==========");
+
+            // Déterminer le Content-Type
+            String contentType = determineContentType(documentInfo.getFileType());
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + documentInfo.getFileName() + "\"")
+                    .body(resource);
+
+        } catch (Exception e) {
+            log.error("Erreur lors du téléchargement du document: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+    }
+
+    // ==================== MÉTHODES PRIVÉES ====================
+
+    /**
+     * Extraire l'importateur du token JWT
+     */
+    private ImportateurTunisien getImportateurFromToken(String authHeader) {
+        String token = extractToken(authHeader);
+        String email = jwtUtil.extractUsername(token);
+
+        return importateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Importateur non trouvé avec l'email: " + email));
+    }
+
+    /**
+     * Extraire le token du header Authorization
+     */
+    private String extractToken(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("Token d'authentification invalide ou manquant");
+        }
+        return authHeader.substring(7);
+    }
+
+    /**
+     * Sauvegarder un document
+     */
+    private DocumentDTO saveDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr)
+            throws IOException {
+
+        // Créer le répertoire
+        Path uploadPath = Paths.get(UPLOAD_DIR + demandeId);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
+        }
+
+        // Sauvegarder le fichier
+        String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
+        Path filePath = uploadPath.resolve(fileName);
+        Files.copy(file.getInputStream(), filePath);
+
+        // Ici, vous devriez appeler un service pour enregistrer le document en base
+        // Pour l'instant, on retourne un DTO basique
+        return DocumentDTO.builder()
+                .id(System.currentTimeMillis()) // ID temporaire
+                .fileName(file.getOriginalFilename())
+                .filePath(filePath.toString())
+                .fileType(file.getContentType())
+                .fileSize(file.getSize())
+                .documentType(com.tunisia.commerce.enums.DocumentType.valueOf(documentTypeStr))
+                .status(com.tunisia.commerce.enums.DocumentStatus.EN_ATTENTE)
+                .uploadedAt(java.time.LocalDateTime.now())
+                .downloadUrl("/api/importateur/demandes/documents/" + System.currentTimeMillis() + "/telecharger")
+                .build();
+    }
+
+    /**
+     * Déterminer le content type en fonction de l'extension du fichier
+     */
+    private String determineContentType(String fileType) {
+        if (fileType == null) return "application/octet-stream";
+
+        String type = fileType.toLowerCase();
+        if (type.contains("pdf")) return "application/pdf";
+        if (type.contains("jpg") || type.contains("jpeg")) return "image/jpeg";
+        if (type.contains("png")) return "image/png";
+        if (type.contains("gif")) return "image/gif";
+
+        return "application/octet-stream";
+    }
+
+    // ==================== GESTION DES EXCEPTIONS ====================
 
     @ExceptionHandler(ImportateurException.class)
     public ResponseEntity<?> handleImportateurException(ImportateurException e) {

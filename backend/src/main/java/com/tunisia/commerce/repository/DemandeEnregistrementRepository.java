@@ -2,6 +2,7 @@ package com.tunisia.commerce.repository;
 
 import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.enums.DemandeStatus;
+import com.tunisia.commerce.enums.TypeDemandeur;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -39,5 +40,6 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
     boolean existsByReference(String reference);
 
     long countByExportateurIdAndStatusIn(Long exportateurId, List<DemandeStatus> statuses);
+    List<DemandeEnregistrement> findByImportateurIdAndTypeDemandeur(Long importateurId, TypeDemandeur type);
 }
 

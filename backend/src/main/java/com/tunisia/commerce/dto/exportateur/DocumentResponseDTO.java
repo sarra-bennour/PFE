@@ -14,6 +14,8 @@ public class DocumentResponseDTO {
     private Long documentId;
 
     private String fileName;
+    private String filePath;
+    private String fileType;
     private String documentType;
     private String status;
     private Long fileSize;

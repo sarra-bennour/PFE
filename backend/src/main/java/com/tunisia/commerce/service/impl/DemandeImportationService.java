@@ -1,0 +1,506 @@
+package com.tunisia.commerce.service.impl;
+
+import com.tunisia.commerce.dto.importateur.DemandeImportationRequestDTO;
+import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
+import com.tunisia.commerce.dto.produits.ProduitDTO;
+import com.tunisia.commerce.dto.validation.DocumentDTO;
+import com.tunisia.commerce.entity.*;
+import com.tunisia.commerce.enums.*;
+import com.tunisia.commerce.repository.*;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class DemandeImportationService {
+
+    private final DemandeEnregistrementRepository demandeRepository;
+    private final ImportateurRepository importateurRepository;
+    private final ExportateurRepository exportateurRepository;
+    private final ProductRepository productRepository;
+    private final DemandeProduitRepository demandeProduitRepository;
+    private final DocumentRepository documentRepository;
+    private final DemandeHistoryRepository historyRepository;
+    private final DemandeImportateurRepository demandeImportateurRepository;
+
+    private static final String REFERENCE_PREFIX = "IMP-";
+
+    @Transactional
+    public DemandeEnregistrementDTO createImportationDemande(
+            Long importateurId,
+            DemandeImportationRequestDTO request) {
+
+        log.info("Création d'une demande d'importation pour l'importateur ID: {}", importateurId);
+
+        // 1. Récupérer l'importateur
+        ImportateurTunisien importateur = importateurRepository.findById(importateurId)
+                .orElseThrow(() -> new RuntimeException("Importateur non trouvé"));
+
+        // 2. Récupérer l'exportateur
+        ExportateurEtranger exportateur = null;
+        if (request.getExportateurId() != null) {
+            exportateur = exportateurRepository.findById(request.getExportateurId())
+                    .orElse(null);
+        }
+
+        // 3. Récupérer le produit
+        Product product = getProduct(request);
+
+        // 4. Créer la demande d'importation spécifique
+        DemandeImportateur demande = new DemandeImportateur();
+
+        // Champs hérités de DemandeEnregistrement
+        demande.setImportateur(importateur);
+        demande.setExportateur(exportateur);
+        demande.setReference(generateReference());
+        demande.setStatus(DemandeStatus.BROUILLON);
+        demande.setTypeDemandeur(TypeDemandeur.IMPORTATEUR);
+        demande.setSubmittedAt(null);
+        demande.setPaymentStatus(PaymentStatus.EN_ATTENTE);
+
+        // Champs spécifiques importateur
+        demande.setInvoiceNumber(request.getInvoiceNumber());
+        if (request.getInvoiceDate() != null) {
+            demande.setInvoiceDate(LocalDate.parse(request.getInvoiceDate()));
+        }
+        demande.setAmount(request.getAmount());
+        demande.setCurrency(request.getCurrency());
+        demande.setIncoterm(request.getIncoterm());
+        demande.setTransportMode(request.getTransportMode());
+        demande.setLoadingPort(request.getLoadingPort());
+        demande.setDischargePort(request.getDischargePort());
+        if (request.getArrivalDate() != null) {
+            demande.setArrivalDate(LocalDate.parse(request.getArrivalDate()));
+        }
+        demande.setProductName(request.getProductName());
+        demande.setHsCode(request.getHsCode());
+        demande.setCategory(request.getCategory());
+        demande.setExportateurName(request.getExportateurName());
+        demande.setExportateurCountry(request.getExportateurCountry());
+
+        demande = demandeImportateurRepository.save(demande);
+
+        // 5. Créer l'association produit-demande
+        DemandeProduit demandeProduit = DemandeProduit.builder()
+                .demande(demande)
+                .produit(product)
+                .type(TypeDemandeur.IMPORTATEUR)
+                .dateAssociation(LocalDateTime.now())
+                .build();
+        demandeProduitRepository.save(demandeProduit);
+
+        // 6. Ajouter l'historique
+        addHistory(demande, null, DemandeStatus.BROUILLON, "CRÉATION",
+                "Demande d'importation créée pour le produit: " + product.getProductName(),
+                importateur);
+
+        log.info("Demande d'importation créée avec succès, référence: {}", demande.getReference());
+
+        return mapToDTO(demande);
+    }
+
+    private Product getProduct(DemandeImportationRequestDTO request) {
+        // 1. Priorité 1: Utiliser l'ID du produit s'il est fourni
+        if (request.getProduitId() != null) {
+            Optional<Product> existingProduct = productRepository.findById(request.getProduitId());
+            if (existingProduct.isPresent()) {
+                log.info("Produit trouvé par ID: {} - {}", existingProduct.get().getId(), existingProduct.get().getProductName());
+                return existingProduct.get();
+            } else {
+                throw new RuntimeException("Produit non trouvé avec l'ID: " + request.getProduitId());
+            }
+        }
+
+        // 2. Si l'ID n'est pas fourni, chercher par HS Code
+        if (request.getHsCode() != null && !request.getHsCode().isEmpty()) {
+            List<Product> products = productRepository.findByHsCode(request.getHsCode());
+            if (!products.isEmpty()) {
+                log.info("Produit trouvé par HS Code: {} - {}", products.get(0).getHsCode(), products.get(0).getProductName());
+                return products.get(0);
+            }
+        }
+
+        // 3. Si toujours pas trouvé, chercher par nom
+        if (request.getProductName() != null && !request.getProductName().isEmpty()) {
+            List<Product> products = productRepository.findByProductNameContainingIgnoreCase(request.getProductName());
+            if (!products.isEmpty()) {
+                log.info("Produit trouvé par nom: {} - {}", products.get(0).getProductName(), products.get(0).getHsCode());
+                return products.get(0);
+            }
+        }
+
+        // 4. Si aucun produit trouvé, on ne crée PAS de nouveau produit
+        // On lève une exception car le produit devrait exister
+        throw new RuntimeException(
+                String.format("Produit non trouvé. Veuillez fournir un ID de produit valide. (Nom: %s, HS Code: %s)",
+                        request.getProductName(), request.getHsCode())
+        );
+    }
+
+    @Transactional
+    public DemandeEnregistrementDTO submitImportationDemande(Long demandeId, Long importateurId) {
+        log.info("Soumission de la demande d'importation ID: {}", demandeId);
+
+        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+        // Vérifier que la demande appartient à l'importateur
+        if (demande.getImportateur() == null || !demande.getImportateur().getId().equals(importateurId)) {
+            throw new RuntimeException("Accès non autorisé");
+        }
+
+        // Vérifier que la demande est en brouillon
+        if (demande.getStatus() != DemandeStatus.BROUILLON) {
+            throw new RuntimeException("Seules les demandes en brouillon peuvent être soumises");
+        }
+
+        // Valider les documents requis
+        validateImportationDocuments(demande);
+
+        // Mettre à jour le statut
+        demande.setStatus(DemandeStatus.SOUMISE);
+        demande.setSubmittedAt(LocalDateTime.now());
+        demande = demandeRepository.save(demande);
+
+        addHistory(demande, DemandeStatus.BROUILLON, DemandeStatus.SOUMISE,
+                "SOUMISSION", "Demande d'importation soumise pour traitement",
+                demande.getImportateur());
+
+        return mapToDTO(demande);
+    }
+
+    private void validateImportationDocuments(DemandeEnregistrement demande) {
+        List<Document> documents = documentRepository.findByDemandeId(demande.getId());
+
+        // Vérifier que la facture commerciale est présente
+        boolean hasInvoice = documents.stream()
+                .anyMatch(d -> d.getDocumentType() == DocumentType.INVOICE);
+
+        if (!hasInvoice) {
+            throw new RuntimeException("La facture commerciale est obligatoire");
+        }
+
+        // Vérifier que le document de transport est présent
+        boolean hasTransport = documents.stream()
+                .anyMatch(d -> d.getDocumentType() == DocumentType.TRANSPORT_DOCUMENT);
+
+        if (!hasTransport) {
+            throw new RuntimeException("Le document de transport est obligatoire");
+        }
+    }
+
+    private String generateReference() {
+        String dateStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String uniqueId = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return "IMP-" + dateStr + "-" + uniqueId;
+    }
+
+    private void addHistory(DemandeEnregistrement demande, DemandeStatus oldStatus,
+                            DemandeStatus newStatus, String action, String comment, User performedBy) {
+        DemandeHistory history = DemandeHistory.builder()
+                .demande(demande)
+                .oldStatus(oldStatus)
+                .newStatus(newStatus)
+                .action(action)
+                .comment(comment)
+                .performedBy(performedBy)
+                .performedAt(LocalDateTime.now())
+                .build();
+        historyRepository.save(history);
+    }
+
+    private DemandeEnregistrementDTO mapToDTO(DemandeEnregistrement demande) {
+        // Récupérer les produits via DemandeProduit
+        List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+        List<ProduitDTO> products = demandeProduits.stream()
+                .map(demandeProduit -> {
+                    Product product = demandeProduit.getProduit();
+                    return ProduitDTO.builder()
+                            .id(product.getId())
+                            .productType(product.getProductType())
+                            .category(product.getCategory())
+                            .hsCode(product.getHsCode())
+                            .productName(product.getProductName())
+                            .isLinkedToBrand(product.getIsLinkedToBrand())
+                            .brandName(product.getBrandName())
+                            .isBrandOwner(product.getIsBrandOwner())
+                            .hasBrandLicense(product.getHasBrandLicense())
+                            .productState(product.getProductState())
+                            .originCountry(product.getOriginCountry())
+                            .annualQuantityValue(product.getAnnualQuantityValue())
+                            .annualQuantityUnit(product.getAnnualQuantityUnit())
+                            .commercialBrandName(product.getCommercialBrandName())
+                            .processingType(product.getProductState())
+                            .annualExportCapacity(product.getAnnualQuantityValue() != null &&
+                                    product.getAnnualQuantityUnit() != null ?
+                                    product.getAnnualQuantityValue() + " " +
+                                            product.getAnnualQuantityUnit() : null)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        List<Document> documents = documentRepository.findByDemandeId(demande.getId());
+        List<DocumentDTO> documentDTOs = documents.stream()
+                .map(this::convertToDocumentDTO)
+                .collect(Collectors.toList());
+
+        return DemandeEnregistrementDTO.builder()
+                .id(demande.getId())
+                .reference(demande.getReference())
+                .status(demande.getStatus())
+                .submittedAt(demande.getSubmittedAt())
+                .paymentReference(demande.getPaymentReference())
+                .paymentAmount(demande.getPaymentAmount())
+                .paymentStatus(demande.getPaymentStatus())
+                .assignedTo(demande.getAssignedTo())
+                .decisionDate(demande.getDecisionDate())
+                .decisionComment(demande.getDecisionComment())
+                .numeroAgrement(demande.getNumeroAgrement())
+                .dateAgrement(demande.getDateAgrement() != null ?
+                        demande.getDateAgrement().atStartOfDay() : null)
+                .products(products)
+                .documents(documentDTOs)
+                // .history(historyDTOs)  // Commenté car pas de DTO
+                .build();
+    }
+
+    /**
+     * Map Product to ProduitDTO
+     */
+    private List<ProduitDTO> mapProductsToDTO(List<Product> products) {
+        return products.stream()
+                .map(product -> ProduitDTO.builder()
+                        .id(product.getId())
+                        .productType(product.getProductType())
+                        .category(product.getCategory())
+                        .hsCode(product.getHsCode())
+                        .productName(product.getProductName())
+                        .isLinkedToBrand(product.getIsLinkedToBrand())
+                        .brandName(product.getBrandName())
+                        .isBrandOwner(product.getIsBrandOwner())
+                        .hasBrandLicense(product.getHasBrandLicense())
+                        .productState(product.getProductState())
+                        .originCountry(product.getOriginCountry())
+                        .annualQuantityValue(product.getAnnualQuantityValue())
+                        .annualQuantityUnit(product.getAnnualQuantityUnit())
+                        .commercialBrandName(product.getCommercialBrandName())
+                        .processingType(product.getProductState())
+                        .annualExportCapacity(product.getAnnualQuantityValue() != null &&
+                                product.getAnnualQuantityUnit() != null ?
+                                product.getAnnualQuantityValue() + " " +
+                                        product.getAnnualQuantityUnit() : null)
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Map Document to DocumentDTO
+     */
+    private DocumentDTO convertToDocumentDTO(Document document) {
+        if (document == null) return null;
+
+        return DocumentDTO.builder()
+                .id(document.getId())
+                .fileName(document.getFileName())
+                .filePath(document.getFilePath())
+                .fileType(document.getFileType())
+                .fileSize(document.getFileSize())
+                .documentType(document.getDocumentType())
+                .status(document.getStatus())
+                .validationComment(document.getValidationComment())
+                .uploadedAt(document.getUploadedAt())
+                .validatedAt(document.getValidatedAt())
+                .validatedBy(document.getValidatedBy() != null ?
+                        document.getValidatedBy().getNom() + " " + document.getValidatedBy().getPrenom() : null)
+                .downloadUrl("/api/importateur/demandes/documents/" + document.getId() + "/telecharger")
+                .build();
+    }
+
+    /**
+     * Récupérer toutes les demandes d'un importateur
+     */
+    public List<DemandeEnregistrementDTO> getDemandesByImportateur(Long importateurId) {
+        log.info("Récupération des demandes pour l'importateur ID: {}", importateurId);
+
+        List<DemandeEnregistrement> demandes = demandeRepository
+                .findByImportateurIdAndTypeDemandeur(importateurId, TypeDemandeur.IMPORTATEUR);
+
+        return demandes.stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Récupérer une demande spécifique par son ID (avec vérification d'autorisation)
+     */
+    public DemandeEnregistrementDTO getDemandeById(Long demandeId, Long importateurId) {
+        log.info("Récupération de la demande ID: {} pour l'importateur ID: {}", demandeId, importateurId);
+
+        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec l'ID: " + demandeId));
+
+        // Vérifier que la demande appartient à l'importateur
+        if (demande.getImportateur() == null || !demande.getImportateur().getId().equals(importateurId)) {
+            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à cette demande");
+        }
+
+        return mapToDTO(demande);
+    }
+
+    /**
+     * Récupérer un document par son ID (avec vérification d'autorisation)
+     */
+    public DocumentDTO getDocumentById(Long documentId, Long importateurId) {
+        log.info("Récupération du document ID: {} pour l'importateur ID: {}", documentId, importateurId);
+
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
+
+        // Vérifier que le document appartient à une demande de l'importateur
+        if (document.getDemande() == null ||
+                document.getDemande().getImportateur() == null ||
+                !document.getDemande().getImportateur().getId().equals(importateurId)) {
+            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
+        }
+
+        return convertToDocumentDTO(document);
+    }
+
+    /**
+     * Récupérer le fichier d'un document (avec vérification d'autorisation)
+     */
+    public Resource getDocumentFile(Long documentId, Long importateurId) {
+        log.info("Récupération du fichier du document ID: {} pour l'importateur ID: {}", documentId, importateurId);
+
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
+
+        // Vérifier que le document appartient à une demande de l'importateur
+        if (document.getDemande() == null ||
+                document.getDemande().getImportateur() == null ||
+                !document.getDemande().getImportateur().getId().equals(importateurId)) {
+            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
+        }
+
+        try {
+            Path filePath = Paths.get(document.getFilePath());
+            Resource resource = new UrlResource(filePath.toUri());
+
+            if (resource.exists() && resource.isReadable()) {
+                return resource;
+            } else {
+                throw new RuntimeException("Le fichier n'existe pas ou n'est pas accessible");
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur lors de la lecture du fichier: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public DocumentDTO uploadDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr) {
+        log.info("Upload du document pour la demande ID: {}", demandeId);
+
+        // 1. Vérifier que la demande existe et appartient à l'importateur
+        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+        if (demande.getImportateur() == null || !demande.getImportateur().getId().equals(importateurId)) {
+            throw new RuntimeException("Vous n'êtes pas autorisé à ajouter des documents à cette demande");
+        }
+
+        // 2. Créer le répertoire
+        String uploadDir = "uploads/importateur/documents/" + demandeId;
+        Path uploadPath = Paths.get(uploadDir);
+        try {
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Erreur lors de la création du répertoire: " + e.getMessage());
+        }
+
+        // 3. Sauvegarder le fichier
+        String originalFileName = file.getOriginalFilename();
+        String fileExtension = "";
+        if (originalFileName != null && originalFileName.contains(".")) {
+            fileExtension = originalFileName.substring(originalFileName.lastIndexOf("."));
+        }
+        String fileName = UUID.randomUUID().toString() + "_" + System.currentTimeMillis() + fileExtension;
+        Path filePath = uploadPath.resolve(fileName);
+
+        try {
+            Files.copy(file.getInputStream(), filePath);
+            log.info("Fichier sauvegardé: {}", filePath.toString());
+        } catch (IOException e) {
+            throw new RuntimeException("Erreur lors de la sauvegarde du fichier: " + e.getMessage());
+        }
+
+        // 4. Convertir le type de document
+        DocumentType documentType;
+        try {
+            documentType = DocumentType.valueOf(documentTypeStr);
+        } catch (IllegalArgumentException e) {
+            log.warn("Type de document invalide: {}, utilisation de OTHER_DOCUMENT", documentTypeStr);
+            documentType = DocumentType.OTHER_DOCUMENT;
+        }
+
+        // 5. Récupérer le produit associé à la demande
+        List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demandeId);
+        Product product = null;
+        if (!demandeProduits.isEmpty()) {
+            product = demandeProduits.get(0).getProduit();
+        }
+
+        // 6. Créer et sauvegarder le document en base de données
+        Document document = Document.builder()
+                .fileName(originalFileName)
+                .filePath(filePath.toString())
+                .fileType(file.getContentType())
+                .fileSize(file.getSize())
+                .documentType(documentType)
+                .status(DocumentStatus.EN_ATTENTE)
+                .uploadedAt(LocalDateTime.now())
+                .demande(demande)
+                .product(product)
+                .build();
+
+        if (demande.getExportateur() != null) {
+            document.setExportateur(demande.getExportateur());
+        }
+
+        document = documentRepository.save(document);
+        log.info("Document enregistré en base avec ID: {}", document.getId());
+
+        // 7. Retourner le DTO
+        return DocumentDTO.builder()
+                .id(document.getId())
+                .fileName(document.getFileName())
+                .filePath(document.getFilePath())
+                .fileType(document.getFileType())
+                .fileSize(document.getFileSize())
+                .documentType(document.getDocumentType())
+                .status(document.getStatus())
+                .uploadedAt(document.getUploadedAt())
+                .downloadUrl("/api/importateur/demandes/documents/" + document.getId() + "/telecharger")
+                .build();
+    }
+}

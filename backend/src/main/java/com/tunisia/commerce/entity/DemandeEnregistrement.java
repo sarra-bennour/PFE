@@ -6,6 +6,7 @@ import com.tunisia.commerce.enums.PaymentStatus;
 import com.tunisia.commerce.enums.TypeDemandeur;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -15,10 +16,11 @@ import java.util.List;
 
 @Entity
 @Table(name = "demandes_enregistrement")
+@Inheritance(strategy = InheritanceType.JOINED)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class DemandeEnregistrement {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

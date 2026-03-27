@@ -40,7 +40,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/exportateur/**").hasAuthority("EXPORTATEUR")
-                        .requestMatchers("/api/importer/**").hasAuthority("IMPORTATEUR")
+                        .requestMatchers("/api/importateur/**").hasAuthority("IMPORTATEUR")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

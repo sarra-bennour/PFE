@@ -833,6 +833,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         {showDeclarationForm && selectedProductForForm && (
           <ProductDeclarationForm
             product={{
+              id: selectedProductForForm.id,
               name: selectedProductForForm.name,
               price: selectedProductForForm.price || 'Prix sur demande',
               category: selectedProductForForm.category || selectedProductForForm.exporter?.category || 'Autre',

@@ -30,6 +30,16 @@ public class DemandeEnregistrementDTO {
     private String decisionComment;
     private String numeroAgrement;
 
+    private String invoiceNumber;
+    private LocalDate invoiceDate;
+    private BigDecimal amount;
+    private String currency;
+    private String incoterm;
+    private String transportMode;
+    private String loadingPort;
+    private String dischargePort;
+    private LocalDate arrivalDate;
+
     // Informations exportateur simplifiées
     private ExportateurSimpleDTO exportateur;
 

@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -30,6 +31,17 @@ public class DemandeEnregistrementDTO {
     private String decisionComment;
     private String numeroAgrement;
     private LocalDateTime dateAgrement;
+
+    private String invoiceNumber;
+    private LocalDate invoiceDate;
+    private BigDecimal amount;
+    private String currency;
+    private String incoterm;
+    private String transportMode;
+    private String loadingPort;
+    private String dischargePort;
+    private LocalDate arrivalDate;
+
     private List<ProduitDTO> products;
     private List<DocumentDTO> documents;
     private List<DemandeHistoryDTO> history;

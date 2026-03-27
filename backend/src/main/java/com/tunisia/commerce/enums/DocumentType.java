@@ -36,4 +36,7 @@ public enum DocumentType {
 
     // documents industriels
     CONFORMITY_CERT_ANALYSIS_REPORT,
+
+    //document importateur
+    INVOICE,TRANSPORT_DOCUMENT,OTHER_DOCUMENT
 }
