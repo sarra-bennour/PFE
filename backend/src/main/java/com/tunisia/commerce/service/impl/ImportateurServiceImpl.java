@@ -1,13 +1,15 @@
 package com.tunisia.commerce.service.impl;
 
+import com.tunisia.commerce.dto.importateur.ImportateurStatutsDTO;
 import com.tunisia.commerce.dto.produits.ProduitDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.entity.*;
+import com.tunisia.commerce.enums.DemandeStatus;
+import com.tunisia.commerce.enums.NotificationAction;
+import com.tunisia.commerce.enums.NotificationStatus;
 import com.tunisia.commerce.enums.StatutAgrement;
 import com.tunisia.commerce.exception.ImportateurException;
-import com.tunisia.commerce.repository.DemandeProduitRepository;
-import com.tunisia.commerce.repository.ExportateurRepository;
-import com.tunisia.commerce.repository.ProductRepository;
+import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.ImportateurService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,9 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,6 +29,8 @@ public class ImportateurServiceImpl implements ImportateurService {
     private final ExportateurRepository exportateurRepository;
     private final ProductRepository productRepository;
     private final DemandeProduitRepository demandeProduitRepository;
+    private final NotificationRepository notificationRepository;
+    private final DemandeEnregistrementRepository demandeRepository;
 
     @Override
     public List<UserDTO> rechercherExportateursValides(String searchTerm) {
@@ -342,8 +344,8 @@ public class ImportateurServiceImpl implements ImportateurService {
             dto.setPreKycCompleted(exportateur.isPreKycCompleted());
             dto.setPreKycCompletedAt(exportateur.getPreKycCompletedAt());
 
-            // RÉCUPÉRATION DES PRODUITS via DemandeProduit
-            List<ProduitDTO> produitsDTO = new ArrayList<>();
+            // 🔥 CORRECTION : Utiliser un Map pour éviter les doublons par ID produit
+            Map<Long, ProduitDTO> produitsMap = new HashMap<>();
 
             if (exportateur.getDemandes() != null) {
                 log.info("Nombre de demandes pour cet exportateur: {}", exportateur.getDemandes().size());
@@ -359,27 +361,34 @@ public class ImportateurServiceImpl implements ImportateurService {
 
                         for (DemandeProduit dp : demandeProduits) {
                             Product product = dp.getProduit();
-                            log.info("  - Produit: {}, Code NGP: {}",
-                                    product.getProductName(), product.getHsCode());
 
-                            ProduitDTO produitDTO = ProduitDTO.builder()
-                                    .id(product.getId())
-                                    .productType(product.getProductType())
-                                    .category(product.getCategory())
-                                    .hsCode(product.getHsCode())
-                                    .productName(product.getProductName())
-                                    .isLinkedToBrand(product.getIsLinkedToBrand())
-                                    .brandName(product.getBrandName())
-                                    .isBrandOwner(product.getIsBrandOwner())
-                                    .hasBrandLicense(product.getHasBrandLicense())
-                                    .productState(product.getProductState())
-                                    .originCountry(product.getOriginCountry())
-                                    .annualQuantityValue(product.getAnnualQuantityValue())
-                                    .annualQuantityUnit(product.getAnnualQuantityUnit())
-                                    .commercialBrandName(product.getCommercialBrandName())
-                                    .build();
+                            // 🔥 Vérifier si ce produit n'a pas déjà été ajouté
+                            if (!produitsMap.containsKey(product.getId())) {
+                                log.info("  - Ajout du produit: {} (ID: {}), Code NGP: {}",
+                                        product.getProductName(), product.getId(), product.getHsCode());
 
-                            produitsDTO.add(produitDTO);
+                                ProduitDTO produitDTO = ProduitDTO.builder()
+                                        .id(product.getId())
+                                        .productType(product.getProductType())
+                                        .category(product.getCategory())
+                                        .hsCode(product.getHsCode())
+                                        .productName(product.getProductName())
+                                        .isLinkedToBrand(product.getIsLinkedToBrand())
+                                        .brandName(product.getBrandName())
+                                        .isBrandOwner(product.getIsBrandOwner())
+                                        .hasBrandLicense(product.getHasBrandLicense())
+                                        .productState(product.getProductState())
+                                        .originCountry(product.getOriginCountry())
+                                        .annualQuantityValue(product.getAnnualQuantityValue())
+                                        .annualQuantityUnit(product.getAnnualQuantityUnit())
+                                        .commercialBrandName(product.getCommercialBrandName())
+                                        .build();
+
+                                produitsMap.put(product.getId(), produitDTO);
+                            } else {
+                                log.info("  - Produit déjà ajouté (doublon ignoré): {} (ID: {})",
+                                        product.getProductName(), product.getId());
+                            }
                         }
                     } else {
                         log.info("La demande {} n'a pas de produits associés", demande.getId());
@@ -389,8 +398,12 @@ public class ImportateurServiceImpl implements ImportateurService {
                 log.warn("L'exportateur {} n'a pas de demandes", exportateur.getRaisonSociale());
             }
 
+            // Convertir le Map en List
+            List<ProduitDTO> produitsDTO = new ArrayList<>(produitsMap.values());
+
             dto.setProduits(produitsDTO);
-            log.info("Total produits trouvés pour {}: {}", exportateur.getRaisonSociale(), produitsDTO.size());
+            log.info("Total produits UNIQUES trouvés pour {}: {} (avant dédoublonnage: {})",
+                    exportateur.getRaisonSociale(), produitsDTO.size(), produitsMap.size());
 
             return dto;
 
@@ -398,5 +411,140 @@ public class ImportateurServiceImpl implements ImportateurService {
             log.error("Erreur lors de la conversion de l'exportateur en DTO: {}", e.getMessage(), e);
             throw new ImportateurException("Erreur lors de la conversion des données de l'exportateur", e);
         }
+    }
+
+    /**
+     * Récupère les statuts des produits pour un importateur
+     * @param importateurId L'ID de l'importateur
+     * @return ImportateurStatutsDTO contenant les listes d'IDs par statut
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public ImportateurStatutsDTO getProduitsStatuts(Long importateurId) {
+        log.info("Récupération des statuts des produits pour l'importateur ID: {}", importateurId);
+
+        List<Long> acceptedProductIds = new ArrayList<>();
+        List<Long> pendingProductIds = new ArrayList<>();
+        List<Long> submittedProductIds = new ArrayList<>();
+
+        try {
+            // 1. Récupérer les produits pour lesquels l'importateur a déjà soumis une demande
+            List<DemandeEnregistrement> demandesSoumises = demandeRepository.findByImportateurIdAndStatusIn(
+                    importateurId,
+                    List.of(DemandeStatus.SOUMISE, DemandeStatus.EN_COURS_VALIDATION, DemandeStatus.VALIDEE)
+            );
+
+            for (DemandeEnregistrement demande : demandesSoumises) {
+                List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+                for (DemandeProduit dp : demandeProduits) {
+                    Long productId = dp.getProduit().getId();
+                    if (!submittedProductIds.contains(productId)) {
+                        submittedProductIds.add(productId);
+                    }
+                }
+            }
+
+            log.info("Produits déjà soumis: {}", submittedProductIds.size());
+
+            // 2. Récupérer les produits pour lesquels l'exportateur a accepté la notification
+            List<Notification> notificationsAcceptees = notificationRepository.findBySenderIdAndActionAndStatus(
+                    importateurId,
+                    NotificationAction.ACCEPT,
+                    NotificationStatus.LU
+            );
+
+            for (Notification notif : notificationsAcceptees) {
+                if ("PRODUCT".equals(notif.getTargetEntityType())) {
+                    Long productId = notif.getTargetEntityId();
+                    // Ne pas inclure si déjà soumis
+                    if (!submittedProductIds.contains(productId) && !acceptedProductIds.contains(productId)) {
+                        acceptedProductIds.add(productId);
+                    }
+                }
+            }
+
+            log.info("Produits acceptés: {}", acceptedProductIds.size());
+
+            // 3. Récupérer les produits pour lesquels une notification est en attente (PENDING)
+            List<Notification> notificationsEnAttente = notificationRepository.findBySenderIdAndActionAndStatus(
+                    importateurId,
+                    NotificationAction.PENDING,
+                    NotificationStatus.NON_LU
+            );
+
+            for (Notification notif : notificationsEnAttente) {
+                if ("PRODUCT".equals(notif.getTargetEntityType())) {
+                    Long productId = notif.getTargetEntityId();
+                    // Ne pas inclure si déjà soumis ou accepté
+                    if (!submittedProductIds.contains(productId) && !acceptedProductIds.contains(productId) && !pendingProductIds.contains(productId)) {
+                        pendingProductIds.add(productId);
+                    }
+                }
+            }
+
+            log.info("Produits en attente: {}", pendingProductIds.size());
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des statuts des produits: {}", e.getMessage(), e);
+        }
+
+        return ImportateurStatutsDTO.builder()
+                .acceptedProductIds(acceptedProductIds)
+                .pendingProductIds(pendingProductIds)
+                .submittedProductIds(submittedProductIds)
+                .build();
+    }
+
+    /**
+     * Vérifie le statut d'un produit spécifique
+     * @param importateurId L'ID de l'importateur
+     * @param productId L'ID du produit
+     * @return Le statut du produit
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public String getProduitStatut(Long importateurId, Long productId) {
+        log.info("Vérification du statut du produit ID: {} pour importateur ID: {}", productId, importateurId);
+
+        // 1. Vérifier si une demande a déjà été soumise
+        boolean hasDemande = demandeRepository.existsByImportateurIdAndProduitIdAndStatusIn(
+                importateurId,
+                productId,
+                List.of(DemandeStatus.SOUMISE, DemandeStatus.EN_COURS_VALIDATION, DemandeStatus.VALIDEE)
+        );
+
+        if (hasDemande) {
+            log.info("Produit {}: DEMANDE_SOUMISE", productId);
+            return "DEMANDE_SOUMISE";
+        }
+
+        // 2. Vérifier si l'exportateur a accepté la notification
+        boolean isAccepted = notificationRepository.existsBySenderIdAndTargetEntityIdAndActionAndStatus(
+                importateurId,
+                productId,
+                NotificationAction.ACCEPT,
+                NotificationStatus.LU
+        );
+
+        if (isAccepted) {
+            log.info("Produit {}: ACCEPTE", productId);
+            return "ACCEPTE";
+        }
+
+        // 3. Vérifier si une notification est en attente
+        boolean isPending = notificationRepository.existsBySenderIdAndTargetEntityIdAndActionAndStatus(
+                importateurId,
+                productId,
+                NotificationAction.PENDING,
+                NotificationStatus.NON_LU
+        );
+
+        if (isPending) {
+            log.info("Produit {}: EN_ATTENTE", productId);
+            return "EN_ATTENTE";
+        }
+
+        log.info("Produit {}: AUCUNE", productId);
+        return "AUCUNE";
     }
 }

@@ -41,5 +41,18 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
 
     long countByExportateurIdAndStatusIn(Long exportateurId, List<DemandeStatus> statuses);
     List<DemandeEnregistrement> findByImportateurIdAndTypeDemandeur(Long importateurId, TypeDemandeur type);
+
+    List<DemandeEnregistrement> findByImportateurIdAndStatusIn(Long importateurId, List<DemandeStatus> statuses);
+
+    @Query("SELECT COUNT(d) > 0 FROM DemandeEnregistrement d " +
+            "JOIN d.demandeProduits dp " +
+            "WHERE d.importateur.id = :importateurId " +
+            "AND dp.produit.id = :produitId " +
+            "AND d.status IN :statuses")
+    boolean existsByImportateurIdAndProduitIdAndStatusIn(
+            @Param("importateurId") Long importateurId,
+            @Param("produitId") Long produitId,
+            @Param("statuses") List<DemandeStatus> statuses
+    );
 }
 

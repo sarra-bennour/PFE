@@ -1,5 +1,6 @@
 package com.tunisia.commerce.service;
 
+import com.tunisia.commerce.dto.importateur.ImportateurStatutsDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 
 import java.util.List;
@@ -53,4 +54,15 @@ public interface ImportateurService {
      * @return liste de tous les exportateurs validés
      */
     List<UserDTO> getAllExportateursValides();
+
+    /**
+     * Récupère les statuts des produits pour un importateur
+     */
+    ImportateurStatutsDTO getProduitsStatuts(Long importateurId);
+
+    /**
+     * Vérifie le statut d'un produit spécifique
+     */
+    String getProduitStatut(Long importateurId, Long productId);
+
 }

@@ -26,10 +26,7 @@ const CATEGORIES_INDUSTRIELS = [
 ];
 
 const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQuery }) => {
-  console.log('🔵 [ExporterDirectory] Composant monté');
-  
   const { user } = useAuth();
-  console.log('🔵 [ExporterDirectory] user:', user);
   
   const [selectedExporter, setSelectedExporter] = useState<Exporter | null>(null);
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
@@ -40,165 +37,226 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
   const [selectedProductForForm, setSelectedProductForForm] = useState<(Product & { exporter: Exporter }) | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<(Product & { exporter: Exporter }) | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // ÉTAT LOCAL POUR LES PRODUITS ACCEPTÉS
   const [acceptedProductIds, setAcceptedProductIds] = useState<Set<number>>(new Set());
-  console.log('🔵 [ExporterDirectory] acceptedProductIds initial:', Array.from(acceptedProductIds));
+  const [pendingProductIds, setPendingProductIds] = useState<Set<number>>(new Set());
+  const [submittedProductIds, setSubmittedProductIds] = useState<Set<number>>(new Set());
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
 
-  // FONCTION POUR RÉCUPÉRER LES DÉTAILS DU PRODUIT
-  const fetchAndShowProductDetails = async (productId: number) => {
-  console.log('🔍 [ExporterDirectory] fetchAndShowProductDetails appelé avec productId:', productId);
-  setLoading(true);
+  // Charger les statuts des produits depuis le backend
+  // Fonction pour charger les statuts depuis le backend
+const loadProductStatuts = async () => {
+  if (!user) return;
+  
   try {
-    // Chercher d'abord dans les exportateurs déjà chargés
-    let foundProduct: (Product & { exporter: Exporter }) | null = null;
+    const token = getAuthToken();
+    console.log('🔑 Token utilisé:', token ? 'Présent (longueur: ' + token.length + ')' : 'MANQUANT');
     
-    console.log('🔍 [ExporterDirectory] Recherche dans', exporters.length, 'exportateurs déjà chargés');
-    
-    for (const exporter of exporters) {
-      const product = exporter.products.find(p => Number(p.id) === productId);
-      if (product) {
-        foundProduct = { ...product, exporter };
-        console.log('✅ [ExporterDirectory] Produit trouvé dans les données existantes:', foundProduct);
-        break;
+    const response = await fetch('http://localhost:8080/api/importateur/produits/statuts', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       }
-    }
+    });
     
-    if (foundProduct) {
-      // Produit trouvé dans les données existantes
-      console.log('➕ [ExporterDirectory] Ajout du produit aux acceptés:', foundProduct.id);
-      setAcceptedProductIds(prev => {
-        const newSet = new Set(prev);
-        newSet.add(Number(foundProduct.id));
-        console.log('📝 [ExporterDirectory] Nouveau Set acceptedProductIds:', Array.from(newSet));
-        return newSet;
-      });
-      
-      console.log('🖼️ [ExporterDirectory] Ouverture du modal produit');
-      setSelectedProduct(foundProduct);
-      setLoading(false);
+    console.log('📡 Réponse status:', response.status);
+    
+    if (response.status === 403) {
+      console.error('❌ Erreur 403: Token invalide ou expiré');
+      // Ne pas utiliser localStorage comme fallback si le token est invalide
       return;
     }
     
-    // Si non trouvé, récupérer la liste complète des exportateurs
-    console.log('🔍 [ExporterDirectory] Produit non trouvé, chargement de la liste des exportateurs');
-    const token = getAuthToken();
-    const exportersResponse = await fetch('http://localhost:8080/api/importateur/exportateurs', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    
-    if (!exportersResponse.ok) {
-      throw new Error(`Erreur HTTP: ${exportersResponse.status}`);
-    }
-    
-    const exportersData = await exportersResponse.json();
-    console.log('📊 [ExporterDirectory] Exportateurs chargés:', exportersData.length);
-    
-    // Chercher le produit dans les données fraîchement chargées
-    for (const exporterItem of exportersData) {
-      const products = exporterItem.produits || [];
-      const productItem = products.find((p: any) => Number(p.id) === productId);
+    if (response.ok) {
+      const data = await response.json();
+      console.log('📦 Statuts chargés depuis backend:', data);
       
-      if (productItem) {
-        console.log('✅ [ExporterDirectory] Produit trouvé:', productItem);
-        
-        // Construire l'objet exportateur
-        const exporter: Exporter = {
-          id: exporterItem.id?.toString() || '',
-          name: exporterItem.raisonSociale || exporterItem.companyName || '',
-          companyName: exporterItem.raisonSociale || exporterItem.companyName || '',
-          country: exporterItem.paysOrigine || exporterItem.country || '',
-          paysOrigine: exporterItem.paysOrigine || exporterItem.country || '',
-          category: exporterItem.siteType || exporterItem.category || 'Non spécifié',
-          description: exporterItem.description || '',
-          registration: exporterItem.numeroRegistreCommerce || '',
-          numeroRegistreCommerce: exporterItem.numeroRegistreCommerce || '',
-          email: exporterItem.email || '',
-          phone: exporterItem.telephone || exporterItem.phone || '',
-          telephone: exporterItem.telephone || '',
-          coverPhoto: exporterItem.coverPhoto || '',
-          profilePic: exporterItem.profilePic || '',
-          statutAgrement: exporterItem.statutAgrement || '',
-          numeroAgrement: exporterItem.numeroAgrement || '',
-          siteType: exporterItem.siteType || '',
-          ville: exporterItem.ville || '',
-          siteWeb: exporterItem.siteWeb || '',
-          representantLegal: exporterItem.representantLegal || '',
-          products: []
-        };
-        
-        // Construire l'objet produit
-        const product: Product = {
-          id: productItem.id?.toString() || Math.random().toString(),
-          name: productItem.productName || productItem.name || 'Produit sans nom',
-          productName: productItem.productName || '',
-          price: productItem.price || 'Prix sur demande',
-          image: productItem.image || null,
-          ngp: productItem.hsCode || productItem.ngp || '',
-          hsCode: productItem.hsCode || '',
-          annualQuantityValue: productItem.annualQuantityValue,
-          annualQuantityUnit: productItem.annualQuantityUnit,
-          category: productItem.category || exporter.category || 'Non spécifié'
-        };
-        
-        console.log('✅ [ExporterDirectory] Produit transformé:', product);
-        
-        // Ajouter aux produits acceptés
-        setAcceptedProductIds(prev => {
-          const newSet = new Set(prev);
-          newSet.add(Number(product.id));
-          return newSet;
-        });
-        
-        // Ouvrir le modal
-        setSelectedProduct({ ...product, exporter });
-        setLoading(false);
-        return;
+      setAcceptedProductIds(new Set(data.acceptedProductIds || []));
+      setPendingProductIds(new Set(data.pendingProductIds || []));
+      setSubmittedProductIds(new Set(data.submittedProductIds || []));
+      
+      // Sauvegarder aussi dans localStorage
+      if (user) {
+        localStorage.setItem(`accepted_${user.id}`, JSON.stringify(data.acceptedProductIds || []));
+        localStorage.setItem(`pending_${user.id}`, JSON.stringify(data.pendingProductIds || []));
+        localStorage.setItem(`submitted_${user.id}`, JSON.stringify(data.submittedProductIds || []));
       }
+    } else {
+      console.warn('⚠️ Réponse non OK, utilisation localStorage comme fallback');
+      loadStatutsFromLocalStorage();
     }
-    
-    throw new Error(`Produit ${productId} non trouvé dans la liste des exportateurs`);
-    
   } catch (error) {
-    console.error('❌ [ExporterDirectory] Erreur fetchAndShowProductDetails:', error);
-    alert('Erreur lors du chargement des détails du produit. Veuillez rafraîchir la page.');
-  } finally {
-    setLoading(false);
+    console.error('❌ Erreur chargement statuts:', error);
+    // Fallback vers localStorage
+    loadStatutsFromLocalStorage();
   }
 };
 
-  // ÉCOUTE DES NOTIFICATIONS ACCEPTÉES
+  // Sauvegarder les statuts dans localStorage
+  const saveStatutsToLocalStorage = () => {
+    if (user) {
+      localStorage.setItem(`accepted_${user.id}`, JSON.stringify(Array.from(acceptedProductIds)));
+      localStorage.setItem(`pending_${user.id}`, JSON.stringify(Array.from(pendingProductIds)));
+      localStorage.setItem(`submitted_${user.id}`, JSON.stringify(Array.from(submittedProductIds)));
+    }
+  };
+
+  // Charger les statuts depuis localStorage
+  const loadStatutsFromLocalStorage = () => {
+    if (user) {
+      const savedAccepted = localStorage.getItem(`accepted_${user.id}`);
+      const savedPending = localStorage.getItem(`pending_${user.id}`);
+      const savedSubmitted = localStorage.getItem(`submitted_${user.id}`);
+      
+      if (savedAccepted) setAcceptedProductIds(new Set(JSON.parse(savedAccepted)));
+      if (savedPending) setPendingProductIds(new Set(JSON.parse(savedPending)));
+      if (savedSubmitted) setSubmittedProductIds(new Set(JSON.parse(savedSubmitted)));
+    }
+  };
+
+  // Charger les statuts au démarrage
   useEffect(() => {
-    console.log('🔵 [ExporterDirectory] useEffect pour écouter acceptedNotification');
-    
+    if (user) {
+      loadStatutsFromLocalStorage();
+      loadProductStatuts();
+    } else {
+      setAcceptedProductIds(new Set());
+      setPendingProductIds(new Set());
+      setSubmittedProductIds(new Set());
+    }
+  }, [user]);
+
+  // Sauvegarder les statuts quand ils changent
+  useEffect(() => {
+    saveStatutsToLocalStorage();
+  }, [acceptedProductIds, pendingProductIds, submittedProductIds, user]);
+
+  const fetchAndShowProductDetails = async (productId: number) => {
+    console.log('🔍 [fetchAndShowProductDetails] Début - productId:', productId);
+    setLoading(true);
+    try {
+      let foundProduct: (Product & { exporter: Exporter }) | null = null;
+      
+      for (const exporter of exporters) {
+        const product = exporter.products.find(p => Number(p.id) === productId);
+        if (product) {
+          foundProduct = { ...product, exporter };
+          break;
+        }
+      }
+      
+      if (foundProduct) {
+        console.log('✅ [fetchAndShowProductDetails] Produit trouvé:', foundProduct.name);
+        setAcceptedProductIds(prev => {
+          const newSet = new Set(prev);
+          newSet.add(Number(foundProduct.id));
+          return newSet;
+        });
+        setPendingProductIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(Number(foundProduct.id));
+          return newSet;
+        });
+        setSelectedProduct(foundProduct);
+        setLoading(false);
+        return;
+      }
+      
+      const token = getAuthToken();
+      const exportersResponse = await fetch('http://localhost:8080/api/importateur/exportateurs', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!exportersResponse.ok) {
+        throw new Error(`Erreur HTTP: ${exportersResponse.status}`);
+      }
+      
+      const exportersData = await exportersResponse.json();
+      
+      for (const exporterItem of exportersData) {
+        const products = exporterItem.produits || [];
+        const productItem = products.find((p: any) => Number(p.id) === productId);
+        
+        if (productItem) {
+          const exporter: Exporter = {
+            id: exporterItem.id?.toString() || '',
+            name: exporterItem.raisonSociale || exporterItem.companyName || '',
+            companyName: exporterItem.raisonSociale || exporterItem.companyName || '',
+            country: exporterItem.paysOrigine || exporterItem.country || '',
+            paysOrigine: exporterItem.paysOrigine || exporterItem.country || '',
+            category: exporterItem.siteType || exporterItem.category || 'Non spécifié',
+            description: exporterItem.description || '',
+            registration: exporterItem.numeroRegistreCommerce || '',
+            numeroRegistreCommerce: exporterItem.numeroRegistreCommerce || '',
+            email: exporterItem.email || '',
+            phone: exporterItem.telephone || exporterItem.phone || '',
+            telephone: exporterItem.telephone || '',
+            coverPhoto: exporterItem.coverPhoto || '',
+            profilePic: exporterItem.profilePic || '',
+            statutAgrement: exporterItem.statutAgrement || '',
+            numeroAgrement: exporterItem.numeroAgrement || '',
+            siteType: exporterItem.siteType || '',
+            ville: exporterItem.ville || '',
+            siteWeb: exporterItem.siteWeb || '',
+            representantLegal: exporterItem.representantLegal || '',
+            products: []
+          };
+          
+          const product: Product = {
+            id: productItem.id?.toString() || Math.random().toString(),
+            name: productItem.productName || productItem.name || 'Produit sans nom',
+            productName: productItem.productName || '',
+            price: productItem.price || 'Prix sur demande',
+            image: productItem.image || null,
+            ngp: productItem.hsCode || productItem.ngp || '',
+            hsCode: productItem.hsCode || '',
+            annualQuantityValue: productItem.annualQuantityValue,
+            annualQuantityUnit: productItem.annualQuantityUnit,
+            category: productItem.category || exporter.category || 'Non spécifié'
+          };
+          
+          setAcceptedProductIds(prev => {
+            const newSet = new Set(prev);
+            newSet.add(Number(product.id));
+            return newSet;
+          });
+          setPendingProductIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(Number(product.id));
+            return newSet;
+          });
+          setSelectedProduct({ ...product, exporter });
+          setLoading(false);
+          return;
+        }
+      }
+      
+      throw new Error(`Produit ${productId} non trouvé`);
+      
+    } catch (error) {
+      console.error('❌ [fetchAndShowProductDetails] Erreur:', error);
+      alert('Erreur lors du chargement des détails du produit.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     const handleAcceptedNotification = (event: CustomEvent) => {
-      console.log('🎯 [ExporterDirectory] Événement acceptedNotification reçu!');
-      console.log('🎯 [ExporterDirectory] event.detail:', event.detail);
-      
+      console.log('🎯 [acceptedNotification] Notification reçue:', event.detail);
       const notification = event.detail;
-      console.log('🎯 [ExporterDirectory] notification:', notification);
-      
       const productId = notification.targetEntityId;
-      console.log('🎯 [ExporterDirectory] productId extrait:', productId);
-      
       if (productId) {
-        console.log('🔔 [ExporterDirectory] Traitement de la notification pour le produit:', productId);
         fetchAndShowProductDetails(productId);
-      } else {
-        console.warn('⚠️ [ExporterDirectory] Aucun productId trouvé dans la notification');
       }
     };
     
     window.addEventListener('acceptedNotification', handleAcceptedNotification as EventListener);
-    console.log('🔵 [ExporterDirectory] EventListener ajouté pour acceptedNotification');
-    
     return () => {
-      console.log('🔵 [ExporterDirectory] Nettoyage EventListener');
       window.removeEventListener('acceptedNotification', handleAcceptedNotification as EventListener);
     };
-  }, []);
+  }, [exporters]);
 
   const getProductPlaceholder = (category: string, ngp?: string) => {
     if (ngp) {
@@ -274,37 +332,51 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         message: `${importerName} souhaite ajouter votre produit "${product.name}" à sa déclaration d'importation.`
       };
       
-      console.log('📨 [ExporterDirectory] Envoi de la notification:', notificationData);
       const response = await notificationService.createProductAdditionNotification(notificationData);
-      console.log('✅ [ExporterDirectory] Notification envoyée avec succès:', response);
       return response;
     } catch (error) {
-      console.error('❌ [ExporterDirectory] Erreur lors de l\'envoi de la notification:', error);
+      console.error('❌ [sendNotification] Erreur:', error);
       throw error;
     }
   };
 
   const handleAddProduct = async (product: Product & { exporter: Exporter }) => {
-    console.log('➕ [ExporterDirectory] handleAddProduct appelé pour:', product.name);
+    console.log('➕ [handleAddProduct] ===== DEBUT =====');
+    console.log('➕ Produit:', product.name);
     
     if (!user) {
-      console.warn('⚠️ [ExporterDirectory] Pas d\'utilisateur connecté');
       alert('Vous devez être connecté pour ajouter un produit');
       return;
     }
 
+    const productIdNum = Number(product.id);
+    
+    if (acceptedProductIds.has(productIdNum)) {
+      alert(`Vous avez déjà ajouté le produit "${product.name}" à vos déclarations.`);
+      return;
+    }
+    
+    if (pendingProductIds.has(productIdNum)) {
+      alert(`Une demande est déjà en cours pour le produit "${product.name}".`);
+      return;
+    }
+    
+    if (submittedProductIds.has(productIdNum)) {
+      alert(`Vous avez déjà soumis une demande pour le produit "${product.name}".`);
+      return;
+    }
+
     setIsSubmitting(true);
+    
+    setPendingProductIds(prev => {
+      const newSet = new Set(prev);
+      newSet.add(productIdNum);
+      return newSet;
+    });
+    
     try {
       const importerName = `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email;
       const exporterId = Number(product.exporter.id);
-      
-      console.log('📝 [ExporterDirectory] Données ajout:', {
-        importerId: user.id,
-        importerName,
-        exporterId,
-        exporterName: product.exporter.name,
-        product
-      });
       
       await sendProductAdditionNotification(
         user.id,
@@ -315,16 +387,20 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         0
       );
       
-      alert(`Demande d'ajout du produit "${product.name}" envoyée à l'exportateur ${product.exporter.name} avec succès !`);
+      alert(`Demande d'ajout du produit "${product.name}" envoyée avec succès !`);
       
-      // Fermer les modals
       setSelectedProduct(null);
       setSelectedProductForForm(null);
       setShowDeclarationForm(false);
       
     } catch (error) {
-      console.error('❌ [ExporterDirectory] Erreur handleAddProduct:', error);
-      alert('Erreur lors de l\'envoi de la demande. Veuillez réessayer.');
+      console.error('❌ [handleAddProduct] Erreur:', error);
+      alert('Erreur lors de l\'envoi de la demande.');
+      setPendingProductIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(productIdNum);
+        return newSet;
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -336,17 +412,11 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
     
     try {
       const token = getAuthToken();
-      
-      let baseUrl = 'http://localhost:8080';
-      let apiPath = '/api/importateur/exportateurs';
-      
-      let url = baseUrl + apiPath;
+      let url = 'http://localhost:8080/api/importateur/exportateurs';
       
       if (query && query.trim() !== '') {
-        url = `${baseUrl}${apiPath}/recherche?q=${encodeURIComponent(query)}`;
+        url = `http://localhost:8080/api/importateur/exportateurs/recherche?q=${encodeURIComponent(query)}`;
       }
-      
-      console.log('🌐 [ExporterDirectory] Appel API:', url);
       
       const response = await fetch(url, {
         method: 'GET',
@@ -362,7 +432,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
       }
 
       const data = await response.json();
-      console.log('📊 [ExporterDirectory] Données brutes reçues:', data);
       
       const transformedData: Exporter[] = data.map((item: any) => {
         return {
@@ -401,11 +470,10 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         };
       });
       
-      console.log('✨ [ExporterDirectory] Données transformées:', transformedData);
       setExporters(transformedData);
       
     } catch (err: any) {
-      console.error('❌ [ExporterDirectory] Erreur lors du chargement des exportateurs:', err);
+      console.error('❌ [fetchExporters] Erreur:', err);
       setError(err.message || 'Erreur de chargement des données');
       setExporters(mockExporters);
     } finally {
@@ -527,7 +595,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
     }
   ];
 
-  // Add exporter reference to products in mock data
   mockExporters.forEach(exporter => {
     exporter.products.forEach(product => {
       (product as any).exporter = exporter;
@@ -536,19 +603,31 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
   const filteredExporters = exporters.length > 0 ? exporters : mockExporters;
 
-  // FONCTION POUR RENDRE LE BOUTON AVEC LOG
   const renderProductButton = (product: Product & { exporter: Exporter }) => {
     const productIdNum = Number(product.id);
+    const isSubmitted = submittedProductIds.has(productIdNum);
     const isAccepted = acceptedProductIds.has(productIdNum);
+    const isPending = pendingProductIds.has(productIdNum);
     
-    console.log(`🎨 [ExporterDirectory] renderProductButton - produit: ${product.name} (${productIdNum}), isAccepted: ${isAccepted}, acceptedProductIds size: ${acceptedProductIds.size}`);
+    // 1. Déjà soumis (demande en base)
+    if (isSubmitted) {
+      return (
+        <button 
+          disabled
+          className="w-full py-2 bg-gray-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <i className="fas fa-check-circle"></i> 
+          Demande déjà envoyée
+        </button>
+      );
+    }
     
+    // 2. Accepté par l'exportateur
     if (isAccepted) {
       return (
         <button 
           onClick={(e) => {
             e.stopPropagation();
-            console.log('🟢 [ExporterDirectory] Clic sur bouton "Compléter" pour:', product.name);
             setSelectedProductForForm(product);
             setShowDeclarationForm(true);
           }}
@@ -560,11 +639,24 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
       );
     }
     
+    // 3. En attente de validation
+    if (isPending) {
+      return (
+        <button 
+          disabled
+          className="w-full py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <i className="fas fa-hourglass-half fa-spin"></i> 
+          En attente de validation
+        </button>
+      );
+    }
+    
+    // 4. Bouton normal
     return (
       <button 
         onClick={(e) => {
           e.stopPropagation();
-          console.log('🔵 [ExporterDirectory] Clic sur bouton "Ajouter" pour:', product.name);
           handleAddProduct(product);
         }}
         disabled={isSubmitting}
@@ -760,7 +852,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           </div>
         </div>
 
-        {/* Product Detail Modal */}
         {selectedProduct && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
             <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] animate-fade-in-scale">
@@ -829,7 +920,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           </div>
         )}
 
-        {/* Product Declaration Form Modal */}
         {showDeclarationForm && selectedProductForForm && (
           <ProductDeclarationForm
             product={{
@@ -862,18 +952,22 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                     selectedProductForForm,
                     declarationId
                   );
-                  alert('Déclaration soumise avec succès ! Une notification a été envoyée à l\'exportateur.');
+                  alert('Déclaration soumise avec succès !');
                   
-                  // Retirer le produit des produits acceptés
-                  console.log('🗑️ [ExporterDirectory] Retrait du produit des acceptés:', selectedProductForForm.id);
+                  // Passer de ACCEPTÉ à SOUMIS
                   setAcceptedProductIds(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(Number(selectedProductForForm.id));
                     return newSet;
                   });
+                  setSubmittedProductIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(Number(selectedProductForForm.id));
+                    return newSet;
+                  });
                   
                 } catch (error) {
-                  console.error('❌ [ExporterDirectory] Erreur:', error);
+                  console.error('❌ Erreur:', error);
                   alert('Déclaration soumise avec succès, mais l\'envoi de la notification a échoué.');
                 } finally {
                   setIsSubmitting(false);
@@ -915,7 +1009,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           </div>
         )}
 
-        {/* Product Search Results Section */}
         {searchQuery && filteredProducts.length > 0 && (
           <div className="space-y-4">
             <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter px-4">Produits correspondants</h3>
@@ -969,7 +1062,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           </div>
         )}
 
-        {/* Exporters Grid */}
         <div className="space-y-4">
           <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter px-4">Exportateurs correspondants</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1015,7 +1107,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         </div>
       </div>
 
-      {/* Product Detail Modal */}
       {selectedProduct && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] animate-fade-in-scale">
@@ -1084,7 +1175,6 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         </div>
       )}
 
-      {/* Product Declaration Form Modal */}
       {showDeclarationForm && selectedProductForForm && (
         <ProductDeclarationForm
           product={{
@@ -1116,18 +1206,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                   selectedProductForForm,
                   declarationId
                 );
-                alert('Déclaration soumise avec succès ! Une notification a été envoyée à l\'exportateur.');
+                alert('Déclaration soumise avec succès !');
                 
-                // Retirer le produit des produits acceptés
-                console.log('🗑️ [ExporterDirectory] Retrait du produit des acceptés:', selectedProductForForm.id);
                 setAcceptedProductIds(prev => {
                   const newSet = new Set(prev);
                   newSet.delete(Number(selectedProductForForm.id));
                   return newSet;
                 });
+                setSubmittedProductIds(prev => {
+                  const newSet = new Set(prev);
+                  newSet.add(Number(selectedProductForForm.id));
+                  return newSet;
+                });
                 
               } catch (error) {
-                console.error('❌ [ExporterDirectory] Erreur:', error);
+                console.error('❌ Erreur:', error);
                 alert('Déclaration soumise avec succès, mais l\'envoi de la notification a échoué.');
               } finally {
                 setIsSubmitting(false);

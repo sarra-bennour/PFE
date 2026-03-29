@@ -78,6 +78,20 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Transactional
     int deleteByCreatedAtBefore(LocalDateTime date);
 
+    List<Notification> findBySenderIdAndActionAndStatus(Long senderId, NotificationAction action, NotificationStatus status);
+
+    @Query("SELECT COUNT(n) > 0 FROM Notification n " +
+            "WHERE n.sender.id = :senderId " +
+            "AND n.targetEntityId = :targetEntityId " +
+            "AND n.action = :action " +
+            "AND n.status = :status")
+    boolean existsBySenderIdAndTargetEntityIdAndActionAndStatus(
+            @Param("senderId") Long senderId,
+            @Param("targetEntityId") Long targetEntityId,
+            @Param("action") NotificationAction action,
+            @Param("status") NotificationStatus status
+    );
+
     // Récupérer les notifications qui nécessitent l'envoi d'email
     @Query("SELECT n FROM Notification n WHERE n.isEmailSent = false AND n.createdAt >= :since")
     List<Notification> findPendingEmailNotifications(@Param("since") LocalDateTime since);

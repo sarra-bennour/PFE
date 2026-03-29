@@ -1,6 +1,7 @@
 package com.tunisia.commerce.controller;
 
 import com.tunisia.commerce.dto.importateur.DemandeImportationRequestDTO;
+import com.tunisia.commerce.dto.importateur.ImportateurStatutsDTO;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
@@ -630,4 +631,57 @@ public class ImportateurController {
     private HttpServletRequest getCurrentHttpRequest() {
         return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
     }
+
+    // ==================== ENDPOINTS POUR LES STATUTS DES PRODUITS ====================
+
+    @GetMapping("/produits/statuts")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getProduitsStatuts(@RequestHeader("Authorization") String authHeader) {
+        log.info("========== RÉCUPÉRATION DES STATUTS DES PRODUITS ==========");
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            ImportateurStatutsDTO statuts = importateurService.getProduitsStatuts(importateur.getId());
+
+            log.info("Statuts récupérés: acceptés={}, enAttente={}, soumis={}",
+                    statuts.getAcceptedProductIds().size(),
+                    statuts.getPendingProductIds().size(),
+                    statuts.getSubmittedProductIds().size());
+
+            return ResponseEntity.ok(statuts);
+
+        } catch (ImportateurException e) {
+            return handleImportateurException(e);
+        } catch (Exception e) {
+            log.error("ERREUR inattendue: {}", e.getMessage());
+            return handleGenericException(e);
+        }
+    }
+
+    @GetMapping("/produits/{produitId}/statut")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getProduitStatut(
+            @PathVariable Long produitId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== VÉRIFICATION STATUT PRODUIT ID: {} ==========", produitId);
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            String statut = importateurService.getProduitStatut(importateur.getId(), produitId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("statut", statut);
+            response.put("productId", String.valueOf(produitId));
+
+            return ResponseEntity.ok(response);
+
+        } catch (ImportateurException e) {
+            return handleImportateurException(e);
+        } catch (Exception e) {
+            log.error("ERREUR inattendue: {}", e.getMessage());
+            return handleGenericException(e);
+        }
+    }
+
 }
