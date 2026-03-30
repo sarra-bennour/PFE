@@ -16,6 +16,7 @@ import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 import ProductDeclaration from './pages/ProductDeclaration';
 import DeclarationsList from './pages/DeclarationsList';
+import { SessionExpiredHandler } from './components/SessionExpiredHandler';
 
 // Define User types for the simulation
 export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'validator' | 'admin';
@@ -257,6 +258,7 @@ const App: React.FC = () => {
       clearAcceptedProduct // Exposer la fonction pour effacer
     }}>
       <Router>
+        <SessionExpiredHandler />
         <AppLayout>
           <Routes>
             <Route path="/" element={<Home />} />

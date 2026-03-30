@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'; // 👈 AJOUT useLocation
 import { useAuth, UserRole, User } from '../App';
 import ExporterSignUp from './ExporterSignUp';
 import ForgotPassword from './ForgotPassword';
@@ -11,6 +11,7 @@ import FormAlert from '../components/FormAlert';
 const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation(); // 👈 AJOUT pour récupérer l'état de navigation
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
   
@@ -39,6 +40,19 @@ const Login: React.FC = () => {
   const [unverifiedEmail, setUnverifiedEmail] = useState<string>('');
 
   const CARD_HEIGHT = 750;
+
+  // 👈 AJOUT: Vérifier si on vient d'une session expirée
+  useEffect(() => {
+    // Vérifier si on a été redirigé à cause d'une session expirée
+    if (location.state?.sessionExpired) {
+      const message = location.state.message || 'Votre session a expiré. Veuillez vous reconnecter.';
+      setAlertMessage(message);
+      setAlertType('error');
+      
+      // Nettoyer le state pour éviter de réafficher le message après refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   const handleSignupError = (message: string) => {
     setAlertMessage(message);
@@ -313,9 +327,7 @@ const Login: React.FC = () => {
     }
   };
 
-  // Remplacer la fonction handleMobileLogin par celle-ci:
-
-const handleMobileLogin = async (e: React.FormEvent) => {
+  const handleMobileLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (matricule.length !== 10 || pin.length !== 6) {
@@ -341,25 +353,19 @@ const handleMobileLogin = async (e: React.FormEvent) => {
         const data = await response.json();
 
         if (response.ok) {
-            // Stocker le token et l'utilisateur
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
 
-            // Utiliser la fonction login du hook useAuth
             login(data.user, data.token);
             
             showAlert('✅ Authentification mobile réussie !', 'success');
             
-            // Rediriger vers le dashboard importateur
             setTimeout(() => {
                 navigate('/importer');
             }, 1500);
         } else {
-            // Gestion des erreurs
             const errorMessage = data.message || data.error || 'Échec de la connexion mobile';
             showAlert(`❌ ${errorMessage}`, 'error');
-            
-            // Réinitialiser le PIN en cas d'erreur
             setPin('');
         }
     } catch (error) {
@@ -368,8 +374,7 @@ const handleMobileLogin = async (e: React.FormEvent) => {
     } finally {
         setLoading(false);
     }
-};
-
+  };
 
   const handle2FAVerify = async (code: string) => {
     setLoading(true);
@@ -568,23 +573,20 @@ const handleMobileLogin = async (e: React.FormEvent) => {
                   </div>
                   <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900">Espace International</h2>
                   
-                  {/* ALERTE SMOOTH AU-DESSOUS DU TITRE */}
-                  {alertMessage && (
-                    <div className="mt-4 w-full animate-slide-down">
-                      <div className="w-full max-w-sm mx-0 ml-32">
+                  {/* ALERTE - Positionnée correctement dans le flux */}
+                  {alertMessage && view === 'login' && (
+                    <div className="mt-4 w-full">
                       <FormAlert 
                         type={alertType}
                         message={alertMessage}
                         onClose={closeAlert}
                       />
-                      </div>
                     </div>
                   )}
 
                   {/* Bouton de renvoi d'email si nécessaire */}
                   {alertMessage && alertMessage.includes('non vérifié') && unverifiedEmail && (
-                    <div className="mt-2 w-full animate-slide-down">
-                      <div className="w-full max-w-sm mx-0 ml-32">
+                    <div className="mt-2 w-full">
                       <button
                         onClick={handleResendVerificationEmail}
                         disabled={loading}
@@ -593,7 +595,6 @@ const handleMobileLogin = async (e: React.FormEvent) => {
                         <i className="fas fa-paper-plane"></i>
                         {loading ? 'Envoi en cours...' : 'Renvoyer l\'email de vérification'}
                       </button>
-                      </div>
                     </div>
                   )}
                 </div>
