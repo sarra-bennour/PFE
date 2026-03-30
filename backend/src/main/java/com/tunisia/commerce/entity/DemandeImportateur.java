@@ -43,19 +43,4 @@ public class DemandeImportateur extends DemandeEnregistrement {
 
     @Column(name = "arrival_date")
     private LocalDate arrivalDate;
-
-    @Column(name = "product_name")
-    private String productName;
-
-    @Column(name = "hs_code")
-    private String hsCode;
-
-    @Column(name = "category")
-    private String category;
-
-    @Column(name = "exportateur_name")
-    private String exportateurName;
-
-    @Column(name = "exportateur_country")
-    private String exportateurCountry;
 }

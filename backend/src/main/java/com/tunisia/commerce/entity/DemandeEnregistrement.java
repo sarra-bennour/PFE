@@ -27,7 +27,7 @@ public class DemandeEnregistrement {
     private Long id;
 
     @Column(unique = true)
-    private String reference; // EXP-2025-XXXX
+    private String reference;
 
     @Enumerated(EnumType.STRING)
     private DemandeStatus status;
@@ -85,8 +85,4 @@ public class DemandeEnregistrement {
     @ToString.Exclude
     private ImportateurTunisien importateur;
 
-    public void addHistory(DemandeHistory history) {
-        this.history.add(history);
-        history.setDemande(this);
-    }
 }

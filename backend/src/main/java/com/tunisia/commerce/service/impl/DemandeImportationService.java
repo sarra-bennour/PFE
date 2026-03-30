@@ -88,11 +88,6 @@ public class DemandeImportationService {
         if (request.getArrivalDate() != null) {
             demande.setArrivalDate(LocalDate.parse(request.getArrivalDate()));
         }
-        demande.setProductName(request.getProductName());
-        demande.setHsCode(request.getHsCode());
-        demande.setCategory(request.getCategory());
-        demande.setExportateurName(request.getExportateurName());
-        demande.setExportateurCountry(request.getExportateurCountry());
 
         demande = demandeImportateurRepository.save(demande);
 
@@ -489,39 +484,13 @@ public class DemandeImportationService {
 
     // Ajouter cette méthode pour récupérer les demandes formatées pour le tracking
     public List<Map<String, Object>> getDemandesForTracking(Long importateurId) {
-        log.info("Récupération des demandes formatées pour tracking - Importateur ID: {}", importateurId);
+        log.info("Récupération des demandes formatées - Importateur ID: {}", importateurId);
 
-        List<DemandeImportateur> demandes = demandeImportateurRepository.findByImportateurId(importateurId);
+        // Utiliser la version avec projection
+        List<Map<String, Object>> results = demandeImportateurRepository
+                .findTrackingDataProjection(importateurId);
 
-        return demandes.stream().map(demande -> {
-            Map<String, Object> trackingData = new HashMap<>();
-            trackingData.put("id", demande.getId());
-            trackingData.put("reference", demande.getReference());
-            trackingData.put("status", demande.getStatus().name());
-            trackingData.put("submittedAt", demande.getSubmittedAt());
-            trackingData.put("exportateurName", demande.getExportateurName());
-            trackingData.put("exportateurCountry", demande.getExportateurCountry());
-            trackingData.put("productName", demande.getProductName());
-            trackingData.put("amount", demande.getAmount());
-            trackingData.put("currency", demande.getCurrency());
-            trackingData.put("transportMode", demande.getTransportMode());
-
-            // 🔥 CORRECTION : Récupérer le hsCode depuis le produit associé
-            String hsCode = demande.getHsCode(); // D'abord essayer le champ direct
-
-            // Si le champ direct est null, le récupérer depuis le produit associé
-            if (hsCode == null || hsCode.isEmpty()) {
-                List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
-                if (!demandeProduits.isEmpty()) {
-                    Product product = demandeProduits.get(0).getProduit();
-                    hsCode = product.getHsCode();
-                    log.info("hsCode récupéré depuis le produit pour la demande {}: {}", demande.getReference(), hsCode);
-                }
-            }
-
-            trackingData.put("hsCode", hsCode);
-
-            return trackingData;
-        }).collect(Collectors.toList());
+        log.info("Nombre de demandes trouvées: {}", results.size());
+        return results;
     }
 }

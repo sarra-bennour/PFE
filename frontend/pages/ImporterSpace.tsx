@@ -9,6 +9,8 @@ const ImporterSpace: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<'main' | 'track'>('main');
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalContent, setModalContent] = useState<any>(null);
 
   const handleViewChange = (newView: 'main' | 'track') => {
     if (newView === view) return;
@@ -19,10 +21,36 @@ const ImporterSpace: React.FC = () => {
     }, 150);
   };
 
+  const handleModalOpen = (isOpen: boolean, content?: any) => {
+    setIsModalOpen(isOpen);
+    if (content) {
+      setModalContent(content);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
+      {/* Overlay global avec flou */}
+      {isModalOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] animate-fade-in"
+          onClick={() => handleModalOpen(false)}
+        />
+      )}
+      
+      {/* Modal global */}
+      {isModalOpen && modalContent && (
+        <div className="fixed inset-0 z-[101] flex items-center justify-center p-4 pointer-events-none">
+          <div className="pointer-events-auto">
+            {modalContent}
+          </div>
+        </div>
+      )}
+      
       {/* Global Search Header */}
-      <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 space-y-6">
+      <div className={`bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 space-y-6 transition-all duration-300 ${
+        isModalOpen ? 'blur-sm' : ''
+      }`}>
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex-shrink-0">
             <h2 
@@ -60,7 +88,7 @@ const ImporterSpace: React.FC = () => {
           )}
           {view !== 'main' && <div className="flex-grow"></div>}
           
-          {/* Boutons avec le même style que vous avez fourni */}
+          {/* Boutons */}
           <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100 w-full md:w-auto">
             <button 
               onClick={() => handleViewChange('main')}
@@ -86,8 +114,10 @@ const ImporterSpace: React.FC = () => {
         </div>
       </div>
 
-      {/* Content Area avec animations smooth */}
-      <div className="relative min-h-[500px]">
+      {/* Content Area */}
+      <div className={`relative min-h-[500px] transition-all duration-300 ${
+        isModalOpen ? 'blur-sm' : ''
+      }`}>
         <div className={`transition-all duration-300 ease-in-out ${
           isTransitioning ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
         }`}>
@@ -100,7 +130,7 @@ const ImporterSpace: React.FC = () => {
                 <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform duration-300"></i> 
                 Retour au Dashboard
               </button>
-              <ImporterTracking />
+              <ImporterTracking onModalOpen={handleModalOpen} />
             </div>
           ) : (
             <div className="animate-fade-in">
