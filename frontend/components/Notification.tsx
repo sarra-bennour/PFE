@@ -11,10 +11,7 @@ interface NotificationProps {
 }
 
 const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNotificationClick, onNotificationRead }) => {
-  console.log('🔔 [Notification] Composant monté');
-  
   const { user } = useAuth();
-  console.log('🔔 [Notification] user:', user);
   
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationData[]>([]);
@@ -26,23 +23,22 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
     
     try {
       const count = await notificationService.getUnreadCount(user.id);
-      console.log('🔔 [Notification] Unread count:', count);
       setUnreadCount(count);
     } catch (error) {
-      console.error('🔔 [Notification] Erreur lors du chargement du compteur:', error);
+      console.error('Erreur lors du chargement du compteur:', error);
     }
   };
 
+  // 🔥 CORRECTION: Utiliser getUserNotifications au lieu de getNotifications
   const fetchNotifications = async () => {
     if (!user?.id) return;
     
     setLoading(true);
     try {
-      const data = await notificationService.getUnreadNotifications(user.id);
-      console.log('🔔 [Notification] Notifications reçues:', data);
+      const data = await notificationService.getUserNotifications(user.id);
       setNotifications(data);
     } catch (error) {
-      console.error('🔔 [Notification] Erreur lors du chargement des notifications:', error);
+      console.error('Erreur lors du chargement des notifications:', error);
     } finally {
       setLoading(false);
     }
@@ -51,8 +47,12 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
   const markAsRead = async (notificationId: number) => {
     try {
       await notificationService.markAsRead(notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      setUnreadCount(prev => prev - 1);
+      setNotifications(prev => prev.map(notif => 
+        notif.id === notificationId 
+          ? { ...notif, status: 'LU' } 
+          : notif
+      ));
+      setUnreadCount(prev => Math.max(0, prev - 1));
       if (onNotificationRead) {
         onNotificationRead();
       }
@@ -70,7 +70,7 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
       await notificationService.handleNotificationAction(actionData);
       
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      setUnreadCount(prev => prev - 1);
+      setUnreadCount(prev => Math.max(0, prev - 1));
       
       if (onNotificationAction) {
         const notification = notifications.find(n => n.id === notificationId);
@@ -88,25 +88,16 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
   };
 
   const handleNotificationClick = async (notification: NotificationData) => {
-    console.log('🔔 [Notification] Notification cliquée:', notification);
-    console.log('🔔 [Notification] notificationType:', notification.notificationType);
-    console.log('🔔 [Notification] action:', notification.action);
-    
     if (notification.status === 'NON_LU') {
       await markAsRead(notification.id);
     }
     
     setShowNotifications(false);
     
-    // Si c'est une notification acceptée, déclencher l'événement personnalisé
     if (notification.notificationType === 'ACTION' && notification.action === 'ACCEPT') {
-      console.log('✅ [Notification] Notification acceptée détectée, déclenchement de l\'événement acceptedNotification');
-      console.log('✅ [Notification] Détail de l\'événement:', notification);
       window.dispatchEvent(new CustomEvent('acceptedNotification', { 
         detail: notification 
       }));
-    } else {
-      console.log('🔔 [Notification] Notification non acceptée, pas de déclenchement d\'événement');
     }
     
     if (onNotificationClick) {
@@ -172,10 +163,10 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
 
   const getNotificationTitle = (notification: NotificationData) => {
     if (notification.notificationType === 'ACTION' && notification.action === 'ACCEPT') {
-      return "✅ Demande acceptée";
+      return "Demande acceptée";
     }
     if (notification.notificationType === 'ACTION' && notification.action === 'REJECT') {
-      return "❌ Demande refusée";
+      return "Demande refusée";
     }
     return notification.title;
   };
@@ -226,6 +217,7 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
                   const { icon, color } = getIconForType(notif.notificationType, notif.action);
                   const isClickable = notif.notificationType === 'ACTION' && 
                                       (notif.action === 'ACCEPT' || notif.action === 'REJECT');
+                  const isUnread = notif.status === 'NON_LU';
                   
                   return (
                     <div 
@@ -244,18 +236,27 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
                           <i className={`fas ${icon} text-[10px] ${color}`}></i>
                         </div>
                         <div className="flex flex-col gap-1 flex-1">
-                          <span className="text-[10px] font-black text-slate-900 uppercase tracking-tight leading-tight">
+                          <span className={`text-[10px] uppercase tracking-tight leading-tight ${
+                            isUnread ? 'text-slate-900 font-black' : 'text-slate-500 font-bold'
+                          }`}>
                             {getNotificationTitle(notif)}
                           </span>
                           {notif.notificationType !== 'ACTION' && (
-                            <span className="text-[9px] text-slate-500 font-medium">
+                            <span className={`text-[9px] font-medium ${
+                              isUnread ? 'text-slate-600' : 'text-slate-400'
+                            }`}>
                               De: {getSenderName(notif)}
                             </span>
                           )}
-                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                          <span className={`text-[8px] font-bold uppercase tracking-widest ${
+                            isUnread ? 'text-slate-500' : 'text-slate-400'
+                          }`}>
                             {formatTime(notif.createdAt)}
                           </span>
                         </div>
+                        {isUnread && (
+                          <div className="w-2 h-2 bg-tunisia-red rounded-full flex-shrink-0 mt-1"></div>
+                        )}
                       </div>
                       {notif.notificationType === 'ACTION' && notif.action === 'PENDING' && (
                         <div className="flex gap-2 ml-12">
@@ -279,7 +280,7 @@ const Notification: React.FC<NotificationProps> = ({ onNotificationAction, onNot
                           </button>
                         </div>
                       )}
-                      {notif.notificationType !== 'ACTION' && notif.status === 'NON_LU' && (
+                      {notif.status === 'NON_LU' && (
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();

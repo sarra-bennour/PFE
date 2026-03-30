@@ -416,23 +416,19 @@ public class ImportateurController {
             summary = "Mes demandes d'importation",
             description = "Récupère la liste de toutes les demandes d'importation de l'importateur connecté"
     )
+    // Ajouter/modifier cet endpoint pour retourner les données formatées
     @GetMapping("/mes-demandes")
     @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<?> getMyDemandes(
-            @RequestHeader("Authorization") String authHeader) {
-
-        log.info("========== RÉCUPÉRATION MES DEMANDES ==========");
+    public ResponseEntity<?> getMyDemandes(@RequestHeader("Authorization") String authHeader) {
+        log.info("========== RÉCUPÉRATION MES DEMANDES POUR TRACKING ==========");
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            List<DemandeEnregistrementDTO> demandes = demandeImportationService.getDemandesByImportateur(
-                    importateur.getId()
-            );
+            List<Map<String, Object>> demandes = demandeImportationService.getDemandesForTracking(importateur.getId());
 
             log.info("Nombre de demandes trouvées: {}", demandes.size());
-            log.info("========== FIN RÉCUPÉRATION ==========");
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);

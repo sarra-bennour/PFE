@@ -8,6 +8,7 @@ import { ProductAdditionData } from '../types/ProductAdditionData';
 
 interface ExporterDirectoryProps {
   externalSearchQuery?: string;
+  onClearSearch?: () => void;
 }
 
 const CATEGORIES_ALIMENTAIRES = [
@@ -25,7 +26,7 @@ const CATEGORIES_INDUSTRIELS = [
   { name: "Meubles", codes: ["9401", "9403"] },
 ];
 
-const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQuery }) => {
+const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQuery, onClearSearch }) => {
   const { user } = useAuth();
   
   const [selectedExporter, setSelectedExporter] = useState<Exporter | null>(null);
@@ -43,57 +44,44 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
 
-  // Charger les statuts des produits depuis le backend
-  // Fonction pour charger les statuts depuis le backend
-const loadProductStatuts = async () => {
-  if (!user) return;
-  
-  try {
-    const token = getAuthToken();
-    console.log('🔑 Token utilisé:', token ? 'Présent (longueur: ' + token.length + ')' : 'MANQUANT');
+  const loadProductStatuts = async () => {
+    if (!user) return;
     
-    const response = await fetch('http://localhost:8080/api/importateur/produits/statuts', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    console.log('📡 Réponse status:', response.status);
-    
-    if (response.status === 403) {
-      console.error('❌ Erreur 403: Token invalide ou expiré');
-      // Ne pas utiliser localStorage comme fallback si le token est invalide
-      return;
-    }
-    
-    if (response.ok) {
-      const data = await response.json();
-      console.log('📦 Statuts chargés depuis backend:', data);
+    try {
+      const token = getAuthToken();
       
-      setAcceptedProductIds(new Set(data.acceptedProductIds || []));
-      setPendingProductIds(new Set(data.pendingProductIds || []));
-      setSubmittedProductIds(new Set(data.submittedProductIds || []));
+      const response = await fetch('http://localhost:8080/api/importateur/produits/statuts', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
-      // Sauvegarder aussi dans localStorage
-      if (user) {
-        localStorage.setItem(`accepted_${user.id}`, JSON.stringify(data.acceptedProductIds || []));
-        localStorage.setItem(`pending_${user.id}`, JSON.stringify(data.pendingProductIds || []));
-        localStorage.setItem(`submitted_${user.id}`, JSON.stringify(data.submittedProductIds || []));
+      if (response.status === 403) {
+        return;
       }
-    } else {
-      console.warn('⚠️ Réponse non OK, utilisation localStorage comme fallback');
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        setAcceptedProductIds(new Set(data.acceptedProductIds || []));
+        setPendingProductIds(new Set(data.pendingProductIds || []));
+        setSubmittedProductIds(new Set(data.submittedProductIds || []));
+        
+        if (user) {
+          localStorage.setItem(`accepted_${user.id}`, JSON.stringify(data.acceptedProductIds || []));
+          localStorage.setItem(`pending_${user.id}`, JSON.stringify(data.pendingProductIds || []));
+          localStorage.setItem(`submitted_${user.id}`, JSON.stringify(data.submittedProductIds || []));
+        }
+      } else {
+        loadStatutsFromLocalStorage();
+      }
+    } catch (error) {
       loadStatutsFromLocalStorage();
     }
-  } catch (error) {
-    console.error('❌ Erreur chargement statuts:', error);
-    // Fallback vers localStorage
-    loadStatutsFromLocalStorage();
-  }
-};
+  };
 
-  // Sauvegarder les statuts dans localStorage
   const saveStatutsToLocalStorage = () => {
     if (user) {
       localStorage.setItem(`accepted_${user.id}`, JSON.stringify(Array.from(acceptedProductIds)));
@@ -102,7 +90,6 @@ const loadProductStatuts = async () => {
     }
   };
 
-  // Charger les statuts depuis localStorage
   const loadStatutsFromLocalStorage = () => {
     if (user) {
       const savedAccepted = localStorage.getItem(`accepted_${user.id}`);
@@ -115,7 +102,6 @@ const loadProductStatuts = async () => {
     }
   };
 
-  // Charger les statuts au démarrage
   useEffect(() => {
     if (user) {
       loadStatutsFromLocalStorage();
@@ -127,13 +113,11 @@ const loadProductStatuts = async () => {
     }
   }, [user]);
 
-  // Sauvegarder les statuts quand ils changent
   useEffect(() => {
     saveStatutsToLocalStorage();
   }, [acceptedProductIds, pendingProductIds, submittedProductIds, user]);
 
   const fetchAndShowProductDetails = async (productId: number) => {
-    console.log('🔍 [fetchAndShowProductDetails] Début - productId:', productId);
     setLoading(true);
     try {
       let foundProduct: (Product & { exporter: Exporter }) | null = null;
@@ -147,7 +131,6 @@ const loadProductStatuts = async () => {
       }
       
       if (foundProduct) {
-        console.log('✅ [fetchAndShowProductDetails] Produit trouvé:', foundProduct.name);
         setAcceptedProductIds(prev => {
           const newSet = new Set(prev);
           newSet.add(Number(foundProduct.id));
@@ -235,8 +218,7 @@ const loadProductStatuts = async () => {
       throw new Error(`Produit ${productId} non trouvé`);
       
     } catch (error) {
-      console.error('❌ [fetchAndShowProductDetails] Erreur:', error);
-      alert('Erreur lors du chargement des détails du produit.');
+      setLoading(false);
     } finally {
       setLoading(false);
     }
@@ -244,7 +226,6 @@ const loadProductStatuts = async () => {
 
   useEffect(() => {
     const handleAcceptedNotification = (event: CustomEvent) => {
-      console.log('🎯 [acceptedNotification] Notification reçue:', event.detail);
       const notification = event.detail;
       const productId = notification.targetEntityId;
       if (productId) {
@@ -335,34 +316,26 @@ const loadProductStatuts = async () => {
       const response = await notificationService.createProductAdditionNotification(notificationData);
       return response;
     } catch (error) {
-      console.error('❌ [sendNotification] Erreur:', error);
       throw error;
     }
   };
 
   const handleAddProduct = async (product: Product & { exporter: Exporter }) => {
-    console.log('➕ [handleAddProduct] ===== DEBUT =====');
-    console.log('➕ Produit:', product.name);
-    
     if (!user) {
-      alert('Vous devez être connecté pour ajouter un produit');
       return;
     }
 
     const productIdNum = Number(product.id);
     
     if (acceptedProductIds.has(productIdNum)) {
-      alert(`Vous avez déjà ajouté le produit "${product.name}" à vos déclarations.`);
       return;
     }
     
     if (pendingProductIds.has(productIdNum)) {
-      alert(`Une demande est déjà en cours pour le produit "${product.name}".`);
       return;
     }
     
     if (submittedProductIds.has(productIdNum)) {
-      alert(`Vous avez déjà soumis une demande pour le produit "${product.name}".`);
       return;
     }
 
@@ -387,15 +360,11 @@ const loadProductStatuts = async () => {
         0
       );
       
-      alert(`Demande d'ajout du produit "${product.name}" envoyée avec succès !`);
-      
       setSelectedProduct(null);
       setSelectedProductForForm(null);
       setShowDeclarationForm(false);
       
     } catch (error) {
-      console.error('❌ [handleAddProduct] Erreur:', error);
-      alert('Erreur lors de l\'envoi de la demande.');
       setPendingProductIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(productIdNum);
@@ -473,12 +442,19 @@ const loadProductStatuts = async () => {
       setExporters(transformedData);
       
     } catch (err: any) {
-      console.error('❌ [fetchExporters] Erreur:', err);
       setError(err.message || 'Erreur de chargement des données');
-      setExporters(mockExporters);
+      setExporters([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearSearch = () => {
+    setInternalSearchQuery('');
+    if (onClearSearch) {
+      onClearSearch();
+    }
+    fetchExporters('');
   };
 
   useEffect(() => {
@@ -509,99 +485,7 @@ const loadProductStatuts = async () => {
   };
 
   const filteredProducts = getFilteredProducts();
-
-  const mockExporters: Exporter[] = [
-    { 
-      id: '1', 
-      name: 'AgroEuro SA', 
-      companyName: 'AgroEuro SA',
-      country: 'Espagne', 
-      paysOrigine: 'Espagne',
-      category: 'Alimentaire',
-      description: 'Leader européen dans l\'exportation de produits agricoles de haute qualité.',
-      registration: 'ES-12345678',
-      numeroRegistreCommerce: 'ES-12345678',
-      email: 'contact@agroeuro.es',
-      phone: '+34 912 345 678',
-      telephone: '+34 912 345 678',
-      coverPhoto: 'https://picsum.photos/seed/agroeuro_cover/1200/400',
-      profilePic: 'https://picsum.photos/seed/agroeuro_logo/200/200',
-      statutAgrement: 'APPROUVE',
-      numeroAgrement: 'AGR-001',
-      siteType: 'Alimentaire',
-      ville: 'Madrid',
-      siteWeb: 'www.agroeuro.es',
-      representantLegal: 'Juan Martinez',
-      products: [
-        { id: 101, name: 'Fromage Manchego', productName: 'Fromage Manchego', price: '22.00 €/Kg', category: 'Alimentaire', image: 'https://picsum.photos/seed/cheese/400/300', ngp: '04069000', hsCode: '04069000' },
-        { id: 102, name: 'Huile d\'olive Extra Vierge', productName: 'Huile d\'olive Extra Vierge', price: '12.50 €/L', category: 'Alimentaire', image: 'https://picsum.photos/seed/olive_oil/400/300', ngp: '15091020', hsCode: '15091020' },
-        { id: 103, name: 'Vin Rouge Reserva', productName: 'Vin Rouge Reserva', price: '18.00 €/Btl', category: 'Alimentaire', image: null, ngp: '22042100', hsCode: '22042100' },
-        { id: 104, name: 'Amandes Grillées', productName: 'Amandes Grillées', price: '15.00 €/Kg', category: 'Alimentaire', image: null, ngp: '08021200', hsCode: '08021200' },
-      ]
-    },
-    { 
-      id: '2', 
-      name: 'TechChina Ltd', 
-      companyName: 'TechChina Ltd',
-      country: 'Chine', 
-      paysOrigine: 'Chine',
-      category: 'Industriel',
-      description: 'Spécialiste mondial des composants électroniques et solutions semi-conducteurs.',
-      registration: 'CN-88990011',
-      numeroRegistreCommerce: 'CN-88990011',
-      email: 'sales@techchina.cn',
-      phone: '+86 21 6789 0123',
-      telephone: '+86 21 6789 0123',
-      coverPhoto: 'https://picsum.photos/seed/techchina_cover/1200/400',
-      profilePic: 'https://picsum.photos/seed/techchina_logo/200/200',
-      statutAgrement: 'APPROUVE',
-      numeroAgrement: 'AGR-002',
-      siteType: 'Industriel',
-      ville: 'Shanghai',
-      siteWeb: 'www.techchina.cn',
-      representantLegal: 'Wei Zhang',
-      products: [
-        { id: 201, name: 'Microprocesseur A1', productName: 'Microprocesseur A1', price: '45.00 $', category: 'Industriel', image: 'https://picsum.photos/seed/cpu/400/300', ngp: '85423100', hsCode: '85423100' },
-        { id: 202, name: 'Écran OLED 4K', productName: 'Écran OLED 4K', price: '120.00 $', category: 'Industriel', image: null, ngp: '85285900', hsCode: '85285900' },
-        { id: 203, name: 'Module RAM 16GB', productName: 'Module RAM 16GB', price: '35.00 $', category: 'Industriel', image: 'https://picsum.photos/seed/ram/400/300', ngp: '84733000', hsCode: '84733000' },
-      ]
-    },
-    { 
-      id: '3', 
-      name: 'Global Fabrics', 
-      companyName: 'Global Fabrics',
-      country: 'France', 
-      paysOrigine: 'France',
-      category: 'Textile',
-      description: 'Maison de textile traditionnelle proposant des tissus premium pour la haute couture.',
-      registration: 'FR-55443322',
-      numeroRegistreCommerce: 'FR-55443322',
-      email: 'info@globalfabrics.fr',
-      phone: '+33 1 45 67 89 00',
-      telephone: '+33 1 45 67 89 00',
-      coverPhoto: 'https://picsum.photos/seed/fabrics_cover/1200/400',
-      profilePic: 'https://picsum.photos/seed/fabrics_logo/200/200',
-      statutAgrement: 'APPROUVE',
-      numeroAgrement: 'AGR-003',
-      siteType: 'Textile',
-      ville: 'Paris',
-      siteWeb: 'www.globalfabrics.fr',
-      representantLegal: 'Pierre Dubois',
-      products: [
-        { id: 301, name: 'Soie Naturelle', productName: 'Soie Naturelle', price: '40.00 €/m', category: 'Textile', image: 'https://picsum.photos/seed/silk/400/300', ngp: '50072000', hsCode: '50072000' },
-        { id: 302, name: 'Coton Égyptien', productName: 'Coton Égyptien', price: '25.00 €/m', category: 'Textile', image: null, ngp: '52081100', hsCode: '52081100' },
-        { id: 303, name: 'Lin Bio', productName: 'Lin Bio', price: '30.00 €/m', category: 'Textile', image: 'https://picsum.photos/seed/linen/400/300', ngp: '53091100', hsCode: '53091100' },
-      ]
-    }
-  ];
-
-  mockExporters.forEach(exporter => {
-    exporter.products.forEach(product => {
-      (product as any).exporter = exporter;
-    });
-  });
-
-  const filteredExporters = exporters.length > 0 ? exporters : mockExporters;
+  const filteredExporters = exporters;
 
   const renderProductButton = (product: Product & { exporter: Exporter }) => {
     const productIdNum = Number(product.id);
@@ -609,7 +493,6 @@ const loadProductStatuts = async () => {
     const isAccepted = acceptedProductIds.has(productIdNum);
     const isPending = pendingProductIds.has(productIdNum);
     
-    // 1. Déjà soumis (demande en base)
     if (isSubmitted) {
       return (
         <button 
@@ -622,7 +505,6 @@ const loadProductStatuts = async () => {
       );
     }
     
-    // 2. Accepté par l'exportateur
     if (isAccepted) {
       return (
         <button 
@@ -639,7 +521,6 @@ const loadProductStatuts = async () => {
       );
     }
     
-    // 3. En attente de validation
     if (isPending) {
       return (
         <button 
@@ -652,7 +533,6 @@ const loadProductStatuts = async () => {
       );
     }
     
-    // 4. Bouton normal
     return (
       <button 
         onClick={(e) => {
@@ -952,9 +832,7 @@ const loadProductStatuts = async () => {
                     selectedProductForForm,
                     declarationId
                   );
-                  alert('Déclaration soumise avec succès !');
                   
-                  // Passer de ACCEPTÉ à SOUMIS
                   setAcceptedProductIds(prev => {
                     const newSet = new Set(prev);
                     newSet.delete(Number(selectedProductForForm.id));
@@ -967,8 +845,6 @@ const loadProductStatuts = async () => {
                   });
                   
                 } catch (error) {
-                  console.error('❌ Erreur:', error);
-                  alert('Déclaration soumise avec succès, mais l\'envoi de la notification a échoué.');
                 } finally {
                   setIsSubmitting(false);
                   setShowDeclarationForm(false);
@@ -977,7 +853,6 @@ const loadProductStatuts = async () => {
               } else {
                 setShowDeclarationForm(false);
                 setSelectedProductForForm(null);
-                alert('Déclaration soumise avec succès !');
               }
             }}
           />
@@ -1105,6 +980,26 @@ const loadProductStatuts = async () => {
             ))}
           </div>
         </div>
+
+        {/* Message quand aucun résultat trouvé */}
+        {searchQuery && filteredProducts.length === 0 && filteredExporters.length === 0 && (
+          <div className="bg-white p-12 rounded-[2.5rem] shadow-xl border border-slate-100 text-center animate-fade-in">
+            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <i className="fas fa-search-minus text-3xl text-slate-300"></i>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-2">Aucun résultat trouvé</h3>
+            <p className="text-slate-500 font-medium max-w-md mx-auto">
+              Nous n'avons trouvé aucun exportateur ou produit correspondant à "<span className="text-tunisia-red font-bold">{searchQuery}</span>". 
+              Essayez avec d'autres mots-clés ou vérifiez l'orthographe.
+            </p>
+            <button 
+              onClick={clearSearch}
+              className="mt-8 px-8 py-3 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-tunisia-red transition-all"
+            >
+              Effacer la recherche
+            </button>
+          </div>
+        )}
       </div>
 
       {selectedProduct && (
@@ -1206,7 +1101,6 @@ const loadProductStatuts = async () => {
                   selectedProductForForm,
                   declarationId
                 );
-                alert('Déclaration soumise avec succès !');
                 
                 setAcceptedProductIds(prev => {
                   const newSet = new Set(prev);
@@ -1220,8 +1114,6 @@ const loadProductStatuts = async () => {
                 });
                 
               } catch (error) {
-                console.error('❌ Erreur:', error);
-                alert('Déclaration soumise avec succès, mais l\'envoi de la notification a échoué.');
               } finally {
                 setIsSubmitting(false);
                 setShowDeclarationForm(false);
@@ -1230,7 +1122,6 @@ const loadProductStatuts = async () => {
             } else {
               setShowDeclarationForm(false);
               setSelectedProductForForm(null);
-              alert('Déclaration soumise avec succès !');
             }
           }}
         />

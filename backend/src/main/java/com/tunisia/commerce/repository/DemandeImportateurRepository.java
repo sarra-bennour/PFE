@@ -8,4 +8,5 @@ import java.util.List;
 public interface DemandeImportateurRepository extends JpaRepository<DemandeImportateur, Long> {
     List<DemandeImportateur> findByImportateurId(Long importateurId);
     List<DemandeImportateur> findByStatus(DemandeStatus status);
+
 }
