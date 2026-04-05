@@ -28,5 +28,15 @@ public interface UserService {
     boolean disableTwoFactorAuth(String email, String code);
     boolean verifyTwoFactorCode(String email, String code);
     void resendTwoFactorCode(String email);
+    List<UserDTO> getAllUsers();
+    UserDTO getUserById(Long id);
+    List<DeactivationRequestAdminDTO> getAllDeactivationRequests();
+    DeactivationRequestAdminDTO processDeactivationRequest(Long requestId, String action, String adminComment, Long adminId);
+    boolean hasPendingDeactivationRequest(String email);
+
+    DeactivationRequestAdminDTO getDeactivationRequestById(Long requestId);
+    void updateUserStatus(Long userId, String status);
+    void reactivateAccount(Long userId, String adminComment);
+
 
 }

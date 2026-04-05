@@ -3,6 +3,7 @@ package com.tunisia.commerce.controller;
 import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
+import com.tunisia.commerce.enums.DeactivationStatus;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.exception.AuthException;
 import com.tunisia.commerce.exception.MobileAuthException;
@@ -487,6 +488,50 @@ public class AuthController {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/deactivation-request/status")
+    public ResponseEntity<?> getDeactivationRequestStatus(@RequestHeader("Authorization") String authHeader) {
+        try {
+            // Vérifier l'authentification
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token d'authentification manquant"));
+            }
+
+            String token = authHeader.substring(7);
+            if (!jwtUtil.validateToken(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Token invalide ou expiré"));
+            }
+
+            String email = jwtUtil.extractUsername(token);
+            boolean hasPendingRequest = userService.hasPendingDeactivationRequest(email);
+
+            // Récupérer aussi la demande si elle existe
+            List<DeactivationRequest> requests = userService.getUserDeactivationRequests(email);
+            DeactivationRequest pendingRequest = requests.stream()
+                    .filter(r -> r.getStatus() == DeactivationStatus.PENDING || r.getStatus() == DeactivationStatus.IN_REVIEW)
+                    .findFirst()
+                    .orElse(null);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("hasPendingRequest", hasPendingRequest);
+            response.put("success", true);
+
+            if (pendingRequest != null) {
+                response.put("requestId", pendingRequest.getId());
+                response.put("requestDate", pendingRequest.getRequestDate());
+                response.put("isUrgent", pendingRequest.isUrgent());
+                response.put("status", pendingRequest.getStatus().name());
+            }
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }

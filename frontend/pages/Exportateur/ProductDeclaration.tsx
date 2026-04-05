@@ -2,8 +2,8 @@ import React, { useState, useEffect, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
-import PaymentForm from '../components/PaymentForm';
-import FormAlert from '../components/FormAlert';
+import PaymentForm from '../../components/PaymentForm';
+import FormAlert from '../../components/FormAlert';
 
 // ==================== TYPES ====================
 type ProductType = 'alimentaire' | 'industriel';
@@ -66,7 +66,7 @@ interface PaymentResult {
 
 // ==================== CONSTANTS ====================
 const PRODUCT_STATES = [
-  'Brut', 'Transformé', 'Congelé', 'Déshydraté', 'En conserve', 
+  'Brut', 'Transformé', 'Congelé', 'Déshydraté', 'En conserve',
   'Pasteurisé', 'Surgelé', 'Frais', 'En poudre', 'Confit', 'Etuvé', 'Autre'
 ];
 
@@ -156,13 +156,13 @@ api.interceptors.request.use((config) => {
 const ProductDeclaration: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  
+
   // Récupérer l'utilisateur du localStorage
   const [user, setUser] = useState<User | null>(() => {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
-  
+
   const [step, setStep] = useState(1);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [declarationRef, setDeclarationRef] = useState('');
@@ -171,18 +171,18 @@ const ProductDeclaration: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [demandeId, setDemandeId] = useState<number | null>(null);
   const [isPaid, setIsPaid] = useState(false);
-  
+
   // États pour les alertes de paiement
   const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
-  
+
   // État pour les alertes générales
   const [generalAlert, setGeneralAlert] = useState<{
     message: string;
     type: 'success' | 'error';
   } | null>(null);
-  
+
   const [formData, setFormData] = useState<DeclarationFormData>({
     products: [],
     files: {}
@@ -257,18 +257,18 @@ const ProductDeclaration: React.FC = () => {
     console.log('📦 uploadAllDocuments appelé avec demandeId:', demandeIdParam);
     console.log('📦 productMap:', Array.from(productMap.entries()));
     console.log('📦 formData.files:', Object.keys(formData.files));
-    
+
     const uploadPromises = [];
     let successCount = 0;
     let failCount = 0;
-    
+
     for (const [key, file] of Object.entries(formData.files)) {
       if (file instanceof File) {
         const underscoreIndex = key.indexOf('_');
         const frontendProductId = key.substring(0, underscoreIndex);
         const docType = key.substring(underscoreIndex + 1);
         const backendProductId = productMap.get(frontendProductId);
-        
+
         if (backendProductId) {
           console.log(`✅ Préparation upload pour ${docType} (${key}) vers produit ${backendProductId}`);
           uploadPromises.push(
@@ -287,12 +287,12 @@ const ProductDeclaration: React.FC = () => {
         }
       }
     }
-    
+
     if (uploadPromises.length > 0) {
       console.log(`📤 Upload de ${uploadPromises.length} documents...`);
       await Promise.all(uploadPromises);
       console.log(`📊 Résultats: ${successCount} succès, ${failCount} échecs`);
-      
+
       if (failCount === 0) {
         showGeneralAlert('Tous les documents ont été téléchargés avec succès!', 'success');
       } else if (successCount > 0) {
@@ -336,7 +336,7 @@ const ProductDeclaration: React.FC = () => {
           delete updatedFiles[key];
         }
       });
-      
+
       setFormData(prev => ({
         products: prev.products.filter(p => p.id !== id),
         files: updatedFiles
@@ -371,15 +371,15 @@ const ProductDeclaration: React.FC = () => {
 
     try {
       console.log(`🚀 Sending request to: /produits/${demandeIdParam}/documents/upload`);
-      
+
       const response = await api.post(`/produits/${demandeIdParam}/documents/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      
+
       console.log(`✅ Document ${docType} uploaded successfully:`, response.data);
-      
+
       const docKey = `${frontendProductId}_${docType}`;
       setUploadedDocs(prev => {
         const newSet = new Set(prev);
@@ -387,17 +387,17 @@ const ProductDeclaration: React.FC = () => {
         console.log(`📝 uploadedDocs mis à jour:`, Array.from(newSet));
         return newSet;
       });
-      
+
       setUploadErrors(prev => {
         const newMap = new Map(prev);
         newMap.delete(docKey);
         return newMap;
       });
-      
+
       return true;
     } catch (error: any) {
       console.error('❌ Error uploading document:', error);
-      
+
       if (error.response) {
         console.error('Response status:', error.response.status);
         console.error('Response data:', error.response.data);
@@ -407,7 +407,7 @@ const ProductDeclaration: React.FC = () => {
       } else {
         console.error('Error message:', error.message);
       }
-      
+
       if (error.response?.status === 401) {
         showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
         setTimeout(() => {
@@ -419,15 +419,15 @@ const ProductDeclaration: React.FC = () => {
         console.error('Endpoint non trouvé. Vérifiez l\'URL:', `/produits/${demandeIdParam}/documents/upload`);
         showGeneralAlert('L\'URL d\'upload n\'est pas correcte', 'error');
       }
-      
+
       const errorMessage = error.response?.data?.message || 'Erreur lors du téléchargement du document';
-      
+
       setUploadErrors(prev => {
         const newMap = new Map(prev);
         newMap.set(`${frontendProductId}_${docType}`, errorMessage);
         return newMap;
       });
-      
+
       throw new Error(errorMessage);
     }
   };
@@ -456,9 +456,9 @@ const ProductDeclaration: React.FC = () => {
 
     const file = files[0] as File;
     const fileKey = `${frontendProductId}_${docId}`;
-    
+
     console.log(`📎 File selected for ${docId}:`, file.name);
-    
+
     setFormData(prev => ({
       ...prev,
       files: { ...prev.files, [fileKey]: file }
@@ -506,16 +506,16 @@ const ProductDeclaration: React.FC = () => {
 
   const submitDemande = async () => {
     if (!demandeId) throw new Error('Aucune demande trouvée');
-    
+
     console.log('📤 Submitting demande:', demandeId);
-    
+
     try {
       const response = await api.post(`/produits/${demandeId}/soumettre`);
       console.log('✅ Demande submitted successfully:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('❌ Submit error:', error);
-      
+
       if (error.response?.status === 401) {
         showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
         setTimeout(() => {
@@ -524,178 +524,178 @@ const ProductDeclaration: React.FC = () => {
           window.location.href = '/login';
         }, 2000);
       }
-      
+
       throw error;
     }
   };
 
   const checkRequiredDocuments = (): string[] => {
     const missing: string[] = [];
-    
+
     formData.products.forEach(product => {
       console.log(`Checking documents for product: ${product.productName} (${product.id})`);
-      
-      const docs = product.type === 'alimentaire' 
+
+      const docs = product.type === 'alimentaire'
         ? (product.hasBrandLicense ? FOOD_DOCS : FOOD_DOCS.filter(doc => doc.id !== 'BRAND_LICENSE'))
         : INDUSTRIAL_DOCS;
-      
+
       docs.filter(doc => doc.required).forEach(doc => {
         const fileKey = `${product.id}_${doc.id}`;
         const hasFile = !!formData.files[fileKey];
         const isUploaded = uploadedDocs.has(fileKey);
         const hasError = uploadErrors.has(fileKey);
-        
+
         console.log(`  Document ${doc.id}: hasFile=${hasFile}, isUploaded=${isUploaded}, hasError=${hasError}`);
-        
+
         // À l'étape 3, on vérifie seulement hasFile (pas isUploaded)
         if (!hasFile || hasError) {
           missing.push(`${doc.label} (${product.productName || 'Produit'})`);
         }
       });
     });
-    
+
     return missing;
   };
 
   const handleCreatePaymentIntent = async (demandeIdParam: number) => {
-  const token = localStorage.getItem('token');
-  
-  const response = await axios.post(
-    'http://localhost:8080/api/stripe-payment/create-intent',
-    {
-      demandeId: demandeIdParam,
-      successUrl: window.location.origin + '/payment-success',
-      cancelUrl: window.location.origin + '/payment-cancel'
-    },
-    {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-  
-  return response.data; // Retourne l'objet complet avec paymentIntentId et clientSecret
-};
+    const token = localStorage.getItem('token');
 
-const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any, demandeIdParam: number) => {
-  const token = localStorage.getItem('token');
-  
-  // Modification importante: on envoie paymentMethodId au lieu des détails de la carte
-  const paymentRequest = {
-    paymentIntentId: paymentIntentId,
-    demandeId: demandeIdParam,
-    paymentMethodId: paymentDetails.paymentMethodId, // Reçu du PaymentForm
-    cardHolderName: paymentDetails.cardHolder,
-    receiptEmail: paymentDetails.receiptEmail
-  };
-  
-  const response = await axios.post(
-    'http://localhost:8080/api/stripe-payment/confirm-payment',
-    paymentRequest,
-    {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-  
-  return response.data;
-};
-
-
-const handlePaymentSubmit = async (paymentDetails: any) => {
-  setPaymentLoading(true);
-  setPaymentError(null);
-  setPaymentSuccess(null);
-  
-  try {
-    if (!demandeId) {
-      setPaymentError('Aucune demande trouvée. Veuillez créer une demande d\'abord.');
-      setPaymentLoading(false);
-      return;
-    }
-    
-    console.log('💰 Paiement pour la demande ID:', demandeId);
-    
-    // Étape 1: Créer le PaymentIntent
-    const createIntentResponse = await handleCreatePaymentIntent(demandeId);
-    const paymentIntentId = createIntentResponse.paymentIntentId;
-    
-    if (!paymentIntentId) {
-      throw new Error('Impossible de créer le PaymentIntent');
-    }
-    
-    console.log('✅ PaymentIntent créé:', paymentIntentId);
-    
-    // Étape 2: Confirmer le paiement avec le PaymentMethod ID
-    const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeId);
-    
-    if (result.success) {
-      setPaymentSuccess({
-        success: true,
-        message: 'Paiement effectué avec succès!',
-        amount: result.amount
-      });
-
-      setIsPaid(true);
-      
-      // Ne pas rediriger immédiatement, laisser l'utilisateur voir le succès
-      setTimeout(() => {
-        // Optionnel: rediriger après 2 secondes
-        // setStep(step + 1);
-      }, 2000);
-      
-    } else {
-      setPaymentError(result.message || 'Erreur de paiement');
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Erreur:', error);
-    
-    if (error.response?.status === 401) {
-      setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
-      setTimeout(() => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-      }, 2000);
-    } else {
-      // 🔴 CORRECTION ICI 🔴
-      // Votre backend renvoie { "error": "message" } pas { "message": "..." }
-      const errorData = error.response?.data;
-      
-      if (errorData && errorData.error) {
-        // Cas où le backend renvoie { "error": "message technique" }
-        const errorMessage = errorData.error;
-        
-        // Nettoyer le message pour l'utilisateur
-        if (errorMessage.includes('card_declined')) {
-          setPaymentError('Votre carte a été refusée. Veuillez vérifier vos informations ou utiliser une autre carte.');
-        } else if (errorMessage.includes('insufficient_funds')) {
-          setPaymentError('Fonds insuffisants sur cette carte. Veuillez utiliser une autre carte.');
-        } else if (errorMessage.includes('expired_card')) {
-          setPaymentError('Votre carte a expiré. Veuillez utiliser une carte valide.');
-        } else if (errorMessage.includes('incorrect_cvc')) {
-          setPaymentError('Le code de sécurité (CVV) est incorrect. Veuillez vérifier et réessayer.');
-        } else {
-          // Extraire la première partie du message technique
-          const cleanMessage = errorMessage.split(';')[0];
-          setPaymentError(cleanMessage);
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/create-intent',
+      {
+        demandeId: demandeIdParam,
+        successUrl: window.location.origin + '/payment-success',
+        cancelUrl: window.location.origin + '/payment-cancel'
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
-      } else if (errorData && errorData.message) {
-        setPaymentError(errorData.message);
-      } else if (typeof errorData === 'string') {
-        setPaymentError(errorData);
-      } else {
-        setPaymentError(error.message || 'Erreur lors du paiement');
       }
+    );
+
+    return response.data; // Retourne l'objet complet avec paymentIntentId et clientSecret
+  };
+
+  const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any, demandeIdParam: number) => {
+    const token = localStorage.getItem('token');
+
+    // Modification importante: on envoie paymentMethodId au lieu des détails de la carte
+    const paymentRequest = {
+      paymentIntentId: paymentIntentId,
+      demandeId: demandeIdParam,
+      paymentMethodId: paymentDetails.paymentMethodId, // Reçu du PaymentForm
+      cardHolderName: paymentDetails.cardHolder,
+      receiptEmail: paymentDetails.receiptEmail
+    };
+
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      paymentRequest,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return response.data;
+  };
+
+
+  const handlePaymentSubmit = async (paymentDetails: any) => {
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentSuccess(null);
+
+    try {
+      if (!demandeId) {
+        setPaymentError('Aucune demande trouvée. Veuillez créer une demande d\'abord.');
+        setPaymentLoading(false);
+        return;
+      }
+
+      console.log('💰 Paiement pour la demande ID:', demandeId);
+
+      // Étape 1: Créer le PaymentIntent
+      const createIntentResponse = await handleCreatePaymentIntent(demandeId);
+      const paymentIntentId = createIntentResponse.paymentIntentId;
+
+      if (!paymentIntentId) {
+        throw new Error('Impossible de créer le PaymentIntent');
+      }
+
+      console.log('✅ PaymentIntent créé:', paymentIntentId);
+
+      // Étape 2: Confirmer le paiement avec le PaymentMethod ID
+      const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeId);
+
+      if (result.success) {
+        setPaymentSuccess({
+          success: true,
+          message: 'Paiement effectué avec succès!',
+          amount: result.amount
+        });
+
+        setIsPaid(true);
+
+        // Ne pas rediriger immédiatement, laisser l'utilisateur voir le succès
+        setTimeout(() => {
+          // Optionnel: rediriger après 2 secondes
+          // setStep(step + 1);
+        }, 2000);
+
+      } else {
+        setPaymentError(result.message || 'Erreur de paiement');
+      }
+
+    } catch (error: any) {
+      console.error('❌ Erreur:', error);
+
+      if (error.response?.status === 401) {
+        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }, 2000);
+      } else {
+        // 🔴 CORRECTION ICI 🔴
+        // Votre backend renvoie { "error": "message" } pas { "message": "..." }
+        const errorData = error.response?.data;
+
+        if (errorData && errorData.error) {
+          // Cas où le backend renvoie { "error": "message technique" }
+          const errorMessage = errorData.error;
+
+          // Nettoyer le message pour l'utilisateur
+          if (errorMessage.includes('card_declined')) {
+            setPaymentError('Votre carte a été refusée. Veuillez vérifier vos informations ou utiliser une autre carte.');
+          } else if (errorMessage.includes('insufficient_funds')) {
+            setPaymentError('Fonds insuffisants sur cette carte. Veuillez utiliser une autre carte.');
+          } else if (errorMessage.includes('expired_card')) {
+            setPaymentError('Votre carte a expiré. Veuillez utiliser une carte valide.');
+          } else if (errorMessage.includes('incorrect_cvc')) {
+            setPaymentError('Le code de sécurité (CVV) est incorrect. Veuillez vérifier et réessayer.');
+          } else {
+            // Extraire la première partie du message technique
+            const cleanMessage = errorMessage.split(';')[0];
+            setPaymentError(cleanMessage);
+          }
+        } else if (errorData && errorData.message) {
+          setPaymentError(errorData.message);
+        } else if (typeof errorData === 'string') {
+          setPaymentError(errorData);
+        } else {
+          setPaymentError(error.message || 'Erreur lors du paiement');
+        }
+      }
+    } finally {
+      setPaymentLoading(false);
     }
-  } finally {
-    setPaymentLoading(false);
-  }
-};
+  };
 
   // Gérer le clic sur Suivant
   const handleNextStep = async () => {
@@ -710,19 +710,19 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
           setIsLoading(false);
           return;
         }
-        
+
         // Créer la demande (statut BROUILLON)
         console.log('📝 Étape 3: Création de la demande en BROUILLON...');
         const data = await createDemande();
         console.log('✅ Demande créée avec ID:', data.id, 'statut:', data.status);
-        
+
         localStorage.setItem('currentDemandeId', data.id.toString());
         setDemandeId(data.id);
         setDeclarationRef(data.reference);
-        
+
         // Créer le mapping des produits
         const newProductIdMap = new Map<string, number>();
-        
+
         formData.products.forEach((frontendProduct, index) => {
           if (data.products && data.products[index]) {
             console.log(`Mapping product ${frontendProduct.id} to backend ID ${data.products[index].id}`);
@@ -730,19 +730,19 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
             updateProduct(frontendProduct.id, { backendId: data.products[index].id });
           }
         });
-        
+
         setProductIdMap(newProductIdMap);
-        
+
         // Attendre que le state soit mis à jour
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
         // Uploader les documents
         console.log('📤 Début de l\'upload des documents...');
         await uploadAllDocuments(data.id, newProductIdMap);
         console.log('✅ Upload terminé');
-        
+
         showGeneralAlert('Demande créée avec succès!', 'success');
-        
+
         // Passer à l'étape 4 (Validation)
         setStep(step + 1);
       } catch (error: any) {
@@ -751,22 +751,22 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
       } finally {
         setIsLoading(false);
       }
-    } 
+    }
     // Étape 4: Validation - SOUMETTRE LA DEMANDE (SOUMISE)
     else if (step === 4) {
       if (!isAgreed) {
         showGeneralAlert('Vous devez cocher la case pour continuer', 'error');
         return;
       }
-      
+
       setIsLoading(true);
       try {
         console.log('📤 Étape 4: Soumission de la demande...');
         await submitDemande();
         console.log('✅ Demande soumise avec succès (statut: SOUMISE)');
-        
+
         showGeneralAlert('Demande soumise avec succès!', 'success');
-        
+
         // Passer à l'étape 5 (Paiement)
         setStep(step + 1);
       } catch (error: any) {
@@ -794,15 +794,15 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Cette fonction n'est appelée qu'à l'étape 6 (après paiement)
     // pour afficher l'écran de confirmation
-    
+
     setIsLoading(true);
     try {
       // Simuler un délai
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       localStorage.removeItem('productDeclarationDraft');
       localStorage.removeItem('currentDemandeId');
       setIsSubmitted(true);
@@ -828,18 +828,18 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
 
   const fees = calculateFees();
 
-  const SearchableSelect = ({ 
-    label, 
-    value, 
-    options, 
-    onChange, 
+  const SearchableSelect = ({
+    label,
+    value,
+    options,
+    onChange,
     placeholder,
     required = false,
     isCountry = false
-  }: { 
-    label: string; 
-    value: string; 
-    options: any[]; 
+  }: {
+    label: string;
+    value: string;
+    options: any[];
     onChange: (val: string) => void;
     placeholder: string;
     required?: boolean;
@@ -860,7 +860,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
           {label} {required && <span className="text-tunisia-red">*</span>}
         </label>
-        <div 
+        <div
           onClick={() => !isLoading && setIsOpen(!isOpen)}
           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white focus-within:border-tunisia-red transition-all outline-none cursor-pointer flex justify-between items-center"
         >
@@ -872,8 +872,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
         {isOpen && (
           <div className="absolute z-50 top-full left-0 w-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-fade-in">
             <div className="p-3 border-b border-slate-50">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 autoFocus
                 placeholder="Rechercher..."
                 value={search}
@@ -886,7 +886,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                 const name = typeof opt === 'string' ? opt : opt.name;
                 const flag = typeof opt === 'string' ? null : opt.flag;
                 return (
-                  <div 
+                  <div
                     key={name}
                     onClick={() => { onChange(name); setIsOpen(false); setSearch(''); }}
                     className="px-5 py-3 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-tunisia-red cursor-pointer transition-colors flex items-center gap-3"
@@ -914,10 +914,10 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
           </div>
           <h2 className="text-3xl font-black text-slate-900 mb-4 uppercase italic tracking-tighter">Déclaration Transmise</h2>
           <p className="text-slate-500 font-medium leading-relaxed mb-8">
-            Référence : <span className="font-black text-slate-900">{declarationRef}</span><br/>
+            Référence : <span className="font-black text-slate-900">{declarationRef}</span><br />
             Votre dossier multi-produits a été envoyé aux autorités compétentes.
           </p>
-          <button 
+          <button
             onClick={() => navigate('/exporter')}
             className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all"
           >
@@ -934,9 +934,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
         {['Produits', 'Logistique', 'Documents', 'Validation', 'Paiement'].map((label, i) => (
           <div key={label} className="flex items-center flex-1 last:flex-none">
             <div className="flex flex-col items-center gap-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all ${
-                step >= i + 1 ? 'bg-tunisia-red text-white shadow-lg shadow-red-200' : 'bg-slate-100 text-slate-400'
-              }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-xs transition-all ${step >= i + 1 ? 'bg-tunisia-red text-white shadow-lg shadow-red-200' : 'bg-slate-100 text-slate-400'
+                }`}>
                 {i + 1}
               </div>
               <span className={`text-[8px] font-black uppercase tracking-widest ${step >= i + 1 ? 'text-slate-900' : 'text-slate-300'}`}>{label}</span>
@@ -955,11 +954,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 1 : Liste des produits</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Définissez vos articles alimentaires ou industriels</p>
-                
+
                 {generalAlert && (
                   <div className="mt-4 w-full animate-slide-down">
                     <div className="max-w-sm" style={{ marginLeft: '500px' }}>
-                      <FormAlert 
+                      <FormAlert
                         type={generalAlert.type}
                         message={generalAlert.message}
                         onClose={closeGeneralAlert}
@@ -968,7 +967,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                   </div>
                 )}
               </div>
-              
+
               <div className="space-y-16">
                 {formData.products.length === 0 ? (
                   <div className="py-20 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200">
@@ -981,19 +980,17 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                 ) : (
                   formData.products.map((product, index) => (
                     <div key={product.id} className="relative p-10 rounded-[2.5rem] bg-slate-50/30 border-2 border-slate-50">
-                      <div className={`absolute -top-5 -left-5 w-12 h-12 rounded-2xl flex items-center justify-center font-black italic shadow-xl ${
-                        product.type === 'alimentaire' ? 'bg-emerald-500 text-white' : 'bg-blue-500 text-white'
-                      }`}>
+                      <div className={`absolute -top-5 -left-5 w-12 h-12 rounded-2xl flex items-center justify-center font-black italic shadow-xl ${product.type === 'alimentaire' ? 'bg-emerald-500 text-white' : 'bg-blue-500 text-white'
+                        }`}>
                         {index + 1}
                       </div>
-                      
+
                       <div className="absolute top-6 right-6 flex items-center gap-4">
-                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
-                          product.type === 'alimentaire' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'
-                        }`}>
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${product.type === 'alimentaire' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'
+                          }`}>
                           {product.type}
                         </span>
-                        <button 
+                        <button
                           onClick={() => removeProduct(product.id)}
                           className="w-8 h-8 bg-white text-red-500 rounded-lg flex items-center justify-center shadow-md hover:bg-red-50 transition-all border border-red-100"
                           disabled={isLoading}
@@ -1003,7 +1000,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
-                        <SearchableSelect 
+                        <SearchableSelect
                           label="Catégorie"
                           value={product.category}
                           options={(product.type === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).map(c => c.name)}
@@ -1014,10 +1011,10 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                           placeholder="Choisir une catégorie..."
                           required
                         />
-                        
+
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Code NGP *</label>
-                          <select 
+                          <select
                             value={product.ngpCode}
                             onChange={(e) => updateProduct(product.id, { ngpCode: e.target.value })}
                             className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white focus:border-tunisia-red transition-all outline-none"
@@ -1033,8 +1030,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
 
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom du produit *</label>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={product.productName}
                             onChange={(e) => updateProduct(product.id, { productName: e.target.value })}
                             placeholder="ex: Camembert Président 250g"
@@ -1043,7 +1040,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                           />
                         </div>
 
-                        <SearchableSelect 
+                        <SearchableSelect
                           label="Pays d'origine"
                           value={product.originCountry}
                           options={COUNTRIES}
@@ -1062,8 +1059,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                                   <div className="flex gap-6">
                                     {[true, false].map(v => (
                                       <label key={String(v)} className="flex items-center gap-2 cursor-pointer group">
-                                        <input 
-                                          type="radio" 
+                                        <input
+                                          type="radio"
                                           checked={product.isLinkedToBrand === v}
                                           onChange={() => updateProduct(product.id, { isLinkedToBrand: v })}
                                           className="w-4 h-4 text-tunisia-red focus:ring-tunisia-red"
@@ -1077,8 +1074,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                                 {product.isLinkedToBrand && (
                                   <div className="space-y-3 flex-[2] animate-fade-in">
                                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Nom de la marque *</label>
-                                    <input 
-                                      type="text" 
+                                    <input
+                                      type="text"
                                       value={product.brandName}
                                       onChange={(e) => updateProduct(product.id, { brandName: e.target.value })}
                                       className="w-full px-4 py-3 rounded-xl border border-slate-100 font-bold bg-slate-50 focus:border-tunisia-red outline-none"
@@ -1087,7 +1084,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                                   </div>
                                 )}
                               </div>
-                              
+
                               {product.isLinkedToBrand && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-50 animate-fade-in">
                                   <div className="space-y-3">
@@ -1095,8 +1092,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                                     <div className="flex gap-6">
                                       {[true, false].map(v => (
                                         <label key={String(v)} className="flex items-center gap-2 cursor-pointer">
-                                          <input 
-                                            type="radio" 
+                                          <input
+                                            type="radio"
                                             checked={product.isBrandOwner === v}
                                             onChange={() => updateProduct(product.id, { isBrandOwner: v })}
                                             className="w-4 h-4 text-tunisia-red focus:ring-tunisia-red"
@@ -1112,8 +1109,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                                     <div className="flex gap-6">
                                       {[true, false].map(v => (
                                         <label key={String(v)} className="flex items-center gap-2 cursor-pointer">
-                                          <input 
-                                            type="radio" 
+                                          <input
+                                            type="radio"
                                             checked={product.hasBrandLicense === v}
                                             onChange={() => updateProduct(product.id, { hasBrandLicense: v })}
                                             className="w-4 h-4 text-tunisia-red focus:ring-tunisia-red"
@@ -1130,7 +1127,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
 
                             <div className="space-y-2">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">État du produit</label>
-                              <select 
+                              <select
                                 value={product.productState}
                                 onChange={(e) => updateProduct(product.id, { productState: e.target.value })}
                                 className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white focus:border-tunisia-red transition-all outline-none"
@@ -1143,15 +1140,15 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                             <div className="space-y-2">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Quantité annuelle exportée</label>
                               <div className="flex gap-2">
-                                <input 
-                                  type="number" 
+                                <input
+                                  type="number"
                                   value={product.annualQuantityValue}
                                   onChange={(e) => updateProduct(product.id, { annualQuantityValue: e.target.value })}
                                   placeholder="Valeur"
                                   className="flex-1 px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white focus:border-tunisia-red transition-all outline-none"
                                   disabled={isLoading}
                                 />
-                                <select 
+                                <select
                                   value={product.annualQuantityUnit}
                                   onChange={(e) => updateProduct(product.id, { annualQuantityUnit: e.target.value })}
                                   className="w-32 px-2 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white outline-none"
@@ -1165,8 +1162,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                         ) : (
                           <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Marque commerciale</label>
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               value={product.commercialBrandName}
                               onChange={(e) => updateProduct(product.id, { commercialBrandName: e.target.value })}
                               placeholder="ex: Samsung, Bosch..."
@@ -1182,14 +1179,14 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               </div>
 
               <div className="flex justify-center gap-6 pt-10 border-t border-slate-50">
-                <button 
+                <button
                   onClick={() => addProduct('alimentaire')}
                   className="px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-emerald-200 hover:bg-emerald-600 transition-all flex items-center gap-3"
                   disabled={isLoading}
                 >
                   <i className="fas fa-apple-whole"></i> + Ajouter Alimentaire
                 </button>
-                <button 
+                <button
                   onClick={() => addProduct('industriel')}
                   className="px-8 py-4 bg-blue-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl shadow-blue-200 hover:bg-blue-600 transition-all flex items-center gap-3"
                   disabled={isLoading}
@@ -1205,11 +1202,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 2 : Informations Logistiques</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Détails globaux de l'expédition</p>
-                
+
                 {generalAlert && (
                   <div className="mt-4 w-full animate-slide-down">
                     <div className="max-w-sm" style={{ marginLeft: '500px' }}>
-                      <FormAlert 
+                      <FormAlert
                         type={generalAlert.type}
                         message={generalAlert.message}
                         onClose={closeGeneralAlert}
@@ -1218,14 +1215,14 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                   </div>
                 )}
               </div>
-              
+
               <div className="grid grid-cols-1 gap-8">
                 <div className="p-8 bg-slate-50 rounded-[2rem] border border-slate-100">
                   <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">Résumé de la cargaison</h3>
                   <div className="space-y-3">
                     {formData.products.map((p, i) => (
                       <div key={p.id} className="flex justify-between items-center text-xs font-bold p-3 bg-white rounded-xl border border-slate-50">
-                        <span className="text-slate-500">{i+1}. {p.productName || 'Produit sans nom'}</span>
+                        <span className="text-slate-500">{i + 1}. {p.productName || 'Produit sans nom'}</span>
                         <span className={`px-2 py-0.5 rounded-md text-[8px] uppercase ${p.type === 'alimentaire' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
                           {p.type}
                         </span>
@@ -1242,11 +1239,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 3 : Documents Justificatifs</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Téléversement des pièces par produit</p>
-                
+
                 {generalAlert && (
                   <div className="mt-4 w-full animate-slide-down">
                     <div className="max-w-sm" style={{ marginLeft: '500px' }}>
-                      <FormAlert 
+                      <FormAlert
                         type={generalAlert.type}
                         message={generalAlert.message}
                         onClose={closeGeneralAlert}
@@ -1255,7 +1252,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                   </div>
                 )}
               </div>
-              
+
               <div className="space-y-16">
                 {formData.products.map((product, pIdx) => (
                   <div key={product.id} className="space-y-6">
@@ -1270,8 +1267,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {(product.type === 'alimentaire' ? 
-                        (product.hasBrandLicense ? FOOD_DOCS : FOOD_DOCS.filter(doc => doc.id !== 'BRAND_LICENSE')) 
+                      {(product.type === 'alimentaire' ?
+                        (product.hasBrandLicense ? FOOD_DOCS : FOOD_DOCS.filter(doc => doc.id !== 'BRAND_LICENSE'))
                         : INDUSTRIAL_DOCS
                       ).map((doc) => {
                         const fileKey = `${product.id}_${doc.id}`;
@@ -1279,11 +1276,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                         const isUploaded = uploadedDocs.has(fileKey);
                         const hasError = uploadErrors.has(fileKey);
                         const errorMessage = uploadErrors.get(fileKey);
-                        
+
                         let borderColor = 'border-slate-100';
                         let bgColor = 'bg-slate-50/50';
                         let iconColor = 'bg-white text-slate-300';
-                        
+
                         if (hasError) {
                           borderColor = 'border-red-500';
                           bgColor = 'bg-red-50/50';
@@ -1299,12 +1296,12 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                             iconColor = 'bg-amber-500 text-white';
                           }
                         }
-                        
+
                         return (
                           <div key={doc.id} className="relative group">
                             <div className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 text-center min-h-[120px] ${borderColor} ${bgColor}`}>
-                              <input 
-                                type="file" 
+                              <input
+                                type="file"
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 onChange={handleFileChange(product.id, doc.id)}
                                 className="absolute inset-0 opacity-0 cursor-pointer z-10"
@@ -1342,11 +1339,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 4 : Validation Finale</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Vérification et signature électronique</p>
-                
+
                 {generalAlert && (
                   <div className="mt-4 w-full animate-slide-down">
                     <div className="max-w-sm" style={{ marginLeft: '500px' }}>
-                      <FormAlert 
+                      <FormAlert
                         type={generalAlert.type}
                         message={generalAlert.message}
                         onClose={closeGeneralAlert}
@@ -1355,28 +1352,28 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                   </div>
                 )}
               </div>
-              
+
               {/* Récapitulatif sur toute la largeur */}
-                  <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6 shadow-sm w-full">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-4">
-                      <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Récapitulatif du lot</h4>
-                      <span className="text-xs font-black italic text-tunisia-red">{formData.products.length} Produit(s)</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-8 max-w-md">
-                      <div className="space-y-4">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Alimentaires</p>
-                        <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
-                          {formData.products.filter(p => p.type === 'alimentaire').length}
-                        </p>
-                      </div>
-                      <div className="space-y-4">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Industriels</p>
-                        <p className="text-2xl font-black italic tracking-tighter text-blue-600">
-                          {formData.products.filter(p => p.type === 'industriel').length}
-                        </p>
-                      </div>
-                    </div>
+              <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6 shadow-sm w-full">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Récapitulatif du lot</h4>
+                  <span className="text-xs font-black italic text-tunisia-red">{formData.products.length} Produit(s)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-8 max-w-md">
+                  <div className="space-y-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Alimentaires</p>
+                    <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
+                      {formData.products.filter(p => p.type === 'alimentaire').length}
+                    </p>
                   </div>
+                  <div className="space-y-4">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Industriels</p>
+                    <p className="text-2xl font-black italic tracking-tighter text-blue-600">
+                      {formData.products.filter(p => p.type === 'industriel').length}
+                    </p>
+                  </div>
+                </div>
+              </div>
               {/* BOX D'ENGAGEMENT EN BAS - DÉPLACÉE ICI */}
               <div className="bg-amber-50 p-8 rounded-[2.5rem] border border-amber-100 space-y-6 shadow-sm mt-4">
                 <div className="flex justify-between items-center border-b border-amber-200 pb-4">
@@ -1385,8 +1382,8 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                 </div>
                 <div className="space-y-4">
                   <div className="flex items-start gap-4">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       id="certify"
                       checked={isAgreed}
                       onChange={(e) => setIsAgreed(e.target.checked)}
@@ -1407,11 +1404,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               <div className="border-b border-slate-50 pb-6">
                 <h2 className="text-2xl font-black text-slate-900 uppercase italic tracking-tighter">Étape 5 : Paiement des frais</h2>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-1">Règlement des frais de dossier multi-produits</p>
-                
+
                 {generalAlert && (
                   <div className="mt-4 w-full animate-slide-down">
                     <div className="max-w-sm" style={{ marginLeft: '500px' }}>
-                      <FormAlert 
+                      <FormAlert
                         type={generalAlert.type}
                         message={generalAlert.message}
                         onClose={closeGeneralAlert}
@@ -1427,7 +1424,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                     <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Détails de la Facture</h3>
                     <i className="fas fa-file-invoice text-slate-300"></i>
                   </div>
-                  
+
                   <div className="space-y-4">
                     <div className="flex justify-between items-center text-xs font-bold">
                       <span className="text-slate-500">Frais de dossier de base</span>
@@ -1467,7 +1464,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
                       <PaymentForm
                         amount={fees.total}
                         onSubmit={handlePaymentSubmit}
-                        onBack={() => {}}
+                        onBack={() => { }}
                         isLoading={paymentLoading}
                         error={paymentError}
                         success={paymentSuccess ? {
@@ -1497,7 +1494,7 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
 
         <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-between gap-4">
           {step > 1 && (
-            <button 
+            <button
               onClick={() => setStep(step - 1)}
               className="px-8 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 transition-all"
               disabled={isLoading}
@@ -1507,20 +1504,19 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
           )}
           <div className="flex-grow"></div>
           {step < 5 ? (
-            <button 
+            <button
               onClick={handleNextStep}
               disabled={
-                isLoading || 
+                isLoading ||
                 (step === 1 && formData.products.length === 0) ||
                 (step === 4 && !isAgreed)
               }
-              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
-                isLoading || 
-                (step === 1 && formData.products.length === 0) ||
-                (step === 4 && !isAgreed)
+              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${isLoading ||
+                  (step === 1 && formData.products.length === 0) ||
+                  (step === 4 && !isAgreed)
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   : 'bg-slate-900 text-white hover:bg-black'
-              }`}
+                }`}
             >
               {isLoading ? (
                 <><i className="fas fa-spinner fa-spin mr-2"></i> Chargement...</>
@@ -1529,12 +1525,11 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
               )}
             </button>
           ) : (
-            <button 
+            <button
               onClick={handleSubmit}
               disabled={!isAgreed || isLoading || !isPaid}
-              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
-                isAgreed && !isLoading && isPaid ? 'bg-tunisia-red text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              }`}
+              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${isAgreed && !isLoading && isPaid ? 'bg-tunisia-red text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
             >
               {isLoading ? (
                 <><i className="fas fa-spinner fa-spin mr-2"></i> Envoi...</>

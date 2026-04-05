@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Upload, FileText, Ship, Plane, Truck, Info, Check, Loader2 } from 'lucide-react';
-import { ProductDeclarationFormProps } from '../types/ProductDeclarationFormProps';
+import { ProductDeclarationFormProps } from '../../types/ProductDeclarationFormProps';
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';

@@ -2,13 +2,21 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useAuth } from '../App';
-import Sidebar from '../components/Sidebar';
+import { useAuth } from '../../App';
+import Sidebar from '../../components/Sidebar';
+import CreateUserForm from './CreateUserForm';
+import ResetPasswordForm from '../../components/ResetPasswordForm';
+import UserManagement from './UserManagement';
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'traffic' | 'security'>('overview');
+  
+  // Modals state
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
 
   const sidebarItems = [
     { id: 'overview', label: 'Surveillance', icon: 'fa-chart-line' },
@@ -43,15 +51,9 @@ const AdminPanel: React.FC = () => {
     { name: '20:00', in: 280, out: 340 },
   ];
 
-  const mockUsers = [
-    { id: 'EXP-902', name: 'Global Tech TR', role: 'Exportateur', status: 'Active', country: 'Turquie' },
-    { id: 'IMP-112', name: 'Sousse Textile', role: 'Importateur', status: 'Active', country: 'Tunisie' },
-    { id: 'EXP-881', name: 'EuroFood FR', role: 'Exportateur', status: 'Suspended', country: 'France' },
-    { id: 'IMP-445', name: 'Tunis Market', role: 'Importateur', status: 'Active', country: 'Tunisie' },
-  ];
-
-  const toggleUserStatus = (id: string) => {
-    console.log(`Toggle status for ${id}`);
+  const handleResetPassword = (u: any) => {
+    setSelectedUser(u);
+    setShowResetPassword(true);
   };
 
   return (
@@ -66,7 +68,57 @@ const AdminPanel: React.FC = () => {
       />
 
       {/* Main Content */}
-      <main className="flex-1 p-10 space-y-10 overflow-y-auto">
+      <main className="flex-1 p-10 space-y-10 overflow-y-auto relative">
+        
+        {/* Modals / Overlays */}
+        {showCreateUser && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100">
+              <div className="p-10 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">Nouvel Utilisateur</h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Enregistrement Officiel</p>
+                </div>
+                <button onClick={() => setShowCreateUser(false)} className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm">
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="p-10">
+                <CreateUserForm 
+                  onSuccess={() => {
+                    setShowCreateUser(false);
+                    // Refresh logic here
+                  }}
+                  onCancel={() => setShowCreateUser(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showResetPassword && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100">
+              <div className="p-10 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">Réinitialisation</h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Utilisateur: {selectedUser?.name}</p>
+                </div>
+                <button onClick={() => setShowResetPassword(false)} className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm">
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+              <div className="p-10">
+                <ResetPasswordForm 
+                  requireCurrentPassword={false}
+                  onSuccess={() => setShowResetPassword(false)}
+                  onCancel={() => setShowResetPassword(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header Content */}
         <div className="flex justify-between items-end">
           <div>
@@ -89,24 +141,29 @@ const AdminPanel: React.FC = () => {
             <button className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
               <i className="fas fa-download mr-2"></i> Rapport
             </button>
-            <button className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all">
-              <i className="fas fa-plus mr-2"></i> Action
+            <button 
+              onClick={() => setShowCreateUser(true)}
+              className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
+            >
+              <i className="fas fa-user-plus mr-2"></i> Créer Utilisateur
             </button>
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-          {stats.map((stat, i) => (
-            <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 group hover:shadow-md transition-all">
-              <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4`}>
-                <i className={`fas ${stat.icon}`}></i>
+        {/* Stats Grid or Deactivation Requests Carousel */}
+        {activeTab !== 'users' ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+            {stats.map((stat, i) => (
+              <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 group hover:shadow-md transition-all">
+                <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4`}>
+                  <i className={`fas ${stat.icon}`}></i>
+                </div>
+                <div className="text-2xl font-black text-slate-900 tracking-tighter italic">{stat.value}</div>
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mt-1">{stat.label}</div>
               </div>
-              <div className="text-2xl font-black text-slate-900 tracking-tighter italic">{stat.value}</div>
-              <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mt-1">{stat.label}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : null}
 
         {/* Tab Content */}
         <div className="animate-fade-in">
@@ -169,50 +226,7 @@ const AdminPanel: React.FC = () => {
           )}
 
           {activeTab === 'users' && (
-            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
-                <h3 className="text-lg font-black italic text-slate-900 uppercase tracking-tighter">Comptes Opérateurs</h3>
-                <div className="relative">
-                  <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
-                  <input type="text" placeholder="Rechercher..." className="pl-10 pr-6 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all" />
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-slate-50/50">
-                      <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">ID</th>
-                      <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Entité</th>
-                      <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Rôle</th>
-                      <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Statut</th>
-                      <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {mockUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-8 py-5 font-black text-slate-900 italic tracking-tighter">{u.id}</td>
-                        <td className="px-8 py-5 text-xs font-black text-slate-800 uppercase tracking-tight">{u.name}</td>
-                        <td className="px-8 py-5 text-[9px] font-black text-slate-400 uppercase tracking-widest">{u.role}</td>
-                        <td className="px-8 py-5">
-                          <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${u.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                            {u.status}
-                          </span>
-                        </td>
-                        <td className="px-8 py-5 text-right">
-                          <button 
-                            onClick={() => toggleUserStatus(u.id)}
-                            className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-tunisia-red transition-all"
-                          >
-                            {u.status === 'Active' ? 'Suspendre' : 'Activer'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <UserManagement onResetPassword={handleResetPassword} />
           )}
 
           {activeTab === 'traffic' && (

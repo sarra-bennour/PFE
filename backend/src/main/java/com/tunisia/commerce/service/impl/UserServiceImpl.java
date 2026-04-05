@@ -41,6 +41,7 @@ public class UserServiceImpl implements UserService {
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
     private final TwoFactorAuthService twoFactorAuthService;
+    private final AdministrateurRepository administrateurRepository;
 
 
     @Value("${app.verification.expiry-hours}")
@@ -295,7 +296,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional(noRollbackFor = AuthException.class)  // ← 1. AJOUTER ICI
+    @Transactional(noRollbackFor = AuthException.class)
     public LoginResponse login(LoginRequest request) {
         try {
             // 1. Vérifier si l'utilisateur existe
@@ -312,7 +313,7 @@ public class UserServiceImpl implements UserService {
                     LocalDateTime unlockTime = lastAttempt.plusMinutes(30);
                     if (LocalDateTime.now().isAfter(unlockTime)) {
                         userRepository.lockAccount(request.getEmail(), UserStatus.ACTIF.name());
-                        logger.info("Compte automatiquement débloqué pour: {}"+ request.getEmail());
+                        logger.info("Compte automatiquement débloqué pour: "+ request.getEmail());
                     } else {
                         long minutesRemaining = Duration.between(LocalDateTime.now(), unlockTime).toMinutes();
                         throw AuthException.accountLocked((int) minutesRemaining);
@@ -322,14 +323,28 @@ public class UserServiceImpl implements UserService {
                 }
             }
 
-            // 3. Vérifier le mot de passe
+            // 3. Vérifier le mot de passe selon le rôle
             boolean passwordMatches = false;
-            ExportateurEtranger exportateur = null;
 
-            if (user.getRole() == UserRole.EXPORTATEUR || user.getRole() == UserRole.ADMIN) {
-                exportateur = exportateurRepository.findByEmail(request.getEmail())
+            // Pour les ADMIN
+            if (user.getRole() == UserRole.ADMIN) {
+                Administrateur admin = administrateurRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                passwordMatches = passwordEncoder.matches(request.getPassword(), admin.getPasswordHash());
+            }
+            // Pour les EXPORTATEUR
+            else if (user.getRole() == UserRole.EXPORTATEUR) {
+                ExportateurEtranger exportateur = exportateurRepository.findByEmail(request.getEmail())
                         .orElseThrow(AuthException::userNotFound);
                 passwordMatches = passwordEncoder.matches(request.getPassword(), exportateur.getPasswordHash());
+            }
+            // Pour les autres rôles (si nécessaire)
+            else {
+                // Fallback - essayer de trouver dans exportateur
+                Optional<ExportateurEtranger> exportateurOpt = exportateurRepository.findByEmail(request.getEmail());
+                if (exportateurOpt.isPresent()) {
+                    passwordMatches = passwordEncoder.matches(request.getPassword(), exportateurOpt.get().getPasswordHash());
+                }
             }
 
             if (!passwordMatches) {
@@ -337,36 +352,36 @@ public class UserServiceImpl implements UserService {
                 userRepository.incrementFailedAttempts(request.getEmail());
 
                 // 5. FORCER L'ÉCRITURE IMMÉDIATE EN BASE
-                userRepository.flush();  // ← 2. AJOUTER CETTE LIGNE
+                userRepository.flush();
 
-                logger.info("=== Tentative échouée pour {} ==="+ request.getEmail());
+                logger.info("=== Tentative échouée pour "+ request.getEmail()+" ===\"");
 
                 // 6. Lire la valeur depuis la base
                 int currentAttempts = userRepository.getFailedAttempts(request.getEmail());
-                logger.info("Tentatives actuelles en base: {}"+ currentAttempts);
+                logger.info("Tentatives actuelles en base: "+ currentAttempts);
 
                 if (currentAttempts >= 5) {
                     userRepository.lockAccount(request.getEmail(), UserStatus.INACTIF.name());
-                    userRepository.flush();  // ← AJOUTER ICI AUSSI
-                    logger.info("⚠️ Compte désactivé après {} tentatives"+ currentAttempts);
+                    userRepository.flush();
+                    logger.info("⚠️ Compte désactivé après "+ currentAttempts+" tentatives");
                     throw AuthException.maxAttemptsExceeded(30);
                 }
 
                 int remainingAttempts = 5 - currentAttempts;
-                logger.info("Tentatives restantes: {}"+ remainingAttempts);
+                logger.info("Tentatives restantes: "+ remainingAttempts);
                 throw AuthException.invalidCredentials(remainingAttempts);
             }
 
-            // 7. Succès
+            // 7. Succès - Réinitialiser les tentatives
             userRepository.resetFailedAttempts(request.getEmail());
-            userRepository.flush();  // ← AJOUTER ICI
-            logger.info("✅ Connexion réussie pour {}"+ request.getEmail());
+            userRepository.flush();
+            logger.info("✅ Connexion réussie pour "+ request.getEmail());
 
             // 8. Recharger l'utilisateur
             User refreshedUser = userRepository.findByEmail(request.getEmail())
                     .orElseThrow(AuthException::userNotFound);
 
-            // 9. Vérifier l'email
+            // 9. Vérifier l'email (seulement pour les exportateurs)
             if (refreshedUser.getRole() == UserRole.EXPORTATEUR) {
                 ExportateurEtranger freshExportateur = exportateurRepository.findByEmail(request.getEmail())
                         .orElseThrow(AuthException::userNotFound);
@@ -375,10 +390,19 @@ public class UserServiceImpl implements UserService {
                 }
             }
 
+            // Pour les admins, pas besoin de vérification d'email
+            if (refreshedUser.getRole() == UserRole.ADMIN) {
+                logger.info("✅ Connexion admin réussie pour: "+ request.getEmail());
+            }
+
             // 10. Générer le token
             String token = jwtUtil.generateToken(refreshedUser.getEmail(), refreshedUser.getRole().name());
 
-            boolean requiresTwoFactor = isTwoFactorEnabled(refreshedUser);
+            // Vérifier si le 2FA est activé (les admins n'ont pas de 2FA par défaut)
+            boolean requiresTwoFactor = false;
+            if (refreshedUser.getRole() == UserRole.EXPORTATEUR) {
+                requiresTwoFactor = isTwoFactorEnabled(refreshedUser);
+            }
 
             // Si le 2FA est activé, on ne renvoie pas encore le token d'accès complet
             // Mais on renvoie un token temporaire pour la phase 2FA
@@ -395,14 +419,14 @@ public class UserServiceImpl implements UserService {
 
             return LoginResponse.builder()
                     .token(token)
-                    .requiresTwoFactor(isTwoFactorEnabled(refreshedUser))
+                    .requiresTwoFactor(false)
                     .user(mapToUserDTO(refreshedUser))
                     .build();
 
         } catch (AuthException e) {
             throw e;
         } catch (Exception e) {
-            logger.warning("Erreur inattendue"+ e);
+            logger.severe("Erreur inattendue: {}"+ e.getMessage());
             throw new RuntimeException("Erreur lors de la connexion: " + e.getMessage());
         }
     }
@@ -1215,5 +1239,308 @@ public class UserServiceImpl implements UserService {
         // À implémenter avec votre bibliothèque TOTP
         return twoFactorAuthService.generateCurrentCode(secret);
     }
+
+
+    @Override
+    public List<UserDTO> getAllUsers() {
+        logger.info("=== RÉCUPÉRATION DE TOUS LES UTILISATEURS (SAUF ADMIN) ===");
+
+        List<User> users = userRepository.findAll();
+        List<UserDTO> result = new ArrayList<>();
+
+        for (User user : users) {
+            // Exclure les utilisateurs avec le rôle ADMIN
+            if (user.getRole() != UserRole.ADMIN) {
+                UserDTO dto = mapToUserDTO(user);
+                result.add(dto);
+            }
+        }
+
+        // Trier par date de création décroissante
+        result.sort((a, b) -> b.getDateCreation().compareTo(a.getDateCreation()));
+
+        logger.info("Nombre total d'utilisateurs (sauf admin): "+ result.size());
+        return result;
+    }
+
+    @Override
+    public UserDTO getUserById(Long id) {
+        logger.info("=== RÉCUPÉRATION UTILISATEUR PAR ID:  "+ id+"===");
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'id: " + id));
+
+        // Vérifier que ce n'est pas un admin
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new RuntimeException("Accès non autorisé à ce compte");
+        }
+
+        return mapToUserDTO(user);
+    }
+
+    @Override
+    public List<DeactivationRequestAdminDTO> getAllDeactivationRequests() {
+        logger.info("=== RÉCUPÉRATION DE TOUTES LES DEMANDES DE DÉSACTIVATION ===");
+
+        List<DeactivationRequest> requests = deactivationRequestRepository.findAll();
+        List<DeactivationRequestAdminDTO> result = new ArrayList<>();
+
+        for (DeactivationRequest request : requests) {
+            // Ne montrer que les demandes en attente
+            if (request.getStatus() == DeactivationStatus.PENDING ||
+                    request.getStatus() == DeactivationStatus.IN_REVIEW) {
+                DeactivationRequestAdminDTO dto = mapToDeactivationRequestAdminDTO(request);
+                result.add(dto);
+            }
+        }
+
+        // Trier par date décroissante (les plus récentes d'abord)
+        result.sort((a, b) -> b.getRequestDate().compareTo(a.getRequestDate()));
+
+        logger.info("Nombre total de demandes en attente: "+ result.size());
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public DeactivationRequestAdminDTO processDeactivationRequest(Long requestId, String action, String adminComment, Long adminId) {
+        logger.info("=== TRAITEMENT DEMANDE DE DÉSACTIVATION ID: "+ requestId+" ===");
+        logger.info("Action: "+ action);
+
+        DeactivationRequest request = deactivationRequestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec l'id: " + requestId));
+
+        User admin = userRepository.findById(adminId)
+                .orElseThrow(() -> new RuntimeException("Administrateur non trouvé avec l'id: " + adminId));
+
+        request.setProcessedBy(admin);
+        request.setProcessedDate(LocalDateTime.now());
+        request.setAdminComment(adminComment);
+
+        ExportateurEtranger exportateur = request.getUser();
+
+        if ("ACCEPT".equalsIgnoreCase(action)) {
+            request.setStatus(DeactivationStatus.APPROVED);
+
+            // Désactiver le compte utilisateur
+            exportateur.setUserStatut(UserStatus.INACTIF);
+            exportateurRepository.save(exportateur);
+
+            logger.info("✅ Demande approuvée et compte désactivé pour: "+ exportateur.getEmail());
+
+            // Envoyer email de confirmation à l'utilisateur
+            try {
+                Map<String, Object> params = new HashMap<>();
+                params.put("companyName", exportateur.getRaisonSociale());
+                params.put("requestId", "DEM-" + String.format("%06d", request.getId()));
+                params.put("adminComment", adminComment != null ? adminComment : "Aucun commentaire");
+
+                emailService.sendValidationNotification(
+                        exportateur.getEmail(),
+                        exportateur.getRaisonSociale(),
+                        ValidationNotificationType.DEACTIVATION_CONFIRMATION,
+                        params
+                );
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de l'email de confirmation: " + e.getMessage());
+            }
+
+        } else if ("REJECT".equalsIgnoreCase(action)) {
+            request.setStatus(DeactivationStatus.REJECTED);
+            logger.info("❌ Demande rejetée pour: "+ exportateur.getEmail());
+
+            // Envoyer email de rejet à l'utilisateur
+            try {
+                Map<String, Object> params = new HashMap<>();
+                params.put("companyName", exportateur.getRaisonSociale());
+                params.put("requestId", "DEM-" + String.format("%06d", request.getId()));
+                params.put("reason", adminComment != null ? adminComment : "Non spécifiée");
+
+                emailService.sendValidationNotification(
+                        exportateur.getEmail(),
+                        exportateur.getRaisonSociale(),
+                        ValidationNotificationType.DEACTIVATION_REJECTION,
+                        params
+                );
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de l'email de rejet: " + e.getMessage());
+            }
+        } else {
+            throw new RuntimeException("Action invalide: " + action + ". Utilisez 'ACCEPT' ou 'REJECT'");
+        }
+
+        deactivationRequestRepository.save(request);
+
+        return mapToDeactivationRequestAdminDTO(request);
+    }
+
+    // Méthode pour mapper DeactivationRequest vers DeactivationRequestAdminDTO
+    private DeactivationRequestAdminDTO mapToDeactivationRequestAdminDTO(DeactivationRequest request) {
+        ExportateurEtranger exportateur = request.getUser();
+
+        return DeactivationRequestAdminDTO.builder()
+                .id(request.getId())
+                .userId(exportateur.getId())
+                .userName(exportateur.getNom() + " " + exportateur.getPrenom())
+                .userEmail(exportateur.getEmail())
+                .companyName(exportateur.getRaisonSociale())
+                .reason(request.getReason())
+                .requestType(request.getRequestType())
+                .status(request.getStatus())
+                .requestDate(request.getRequestDate())
+                .isUrgent(request.isUrgent())
+                .notificationSent(request.isNotificationSent())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public boolean hasPendingDeactivationRequest(String email) {
+        logger.info("=== VÉRIFICATION DEMANDE DE DÉSACTIVATION EN COURS ===");
+        logger.info("Email: "+ email);
+
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+        boolean hasPending = deactivationRequestRepository.existsByUserIdAndStatusIn(
+                exportateur.getId(),
+                List.of(DeactivationStatus.PENDING, DeactivationStatus.IN_REVIEW)
+        );
+
+        logger.info("Demande en cours: "+ hasPending);
+        return hasPending;
+    }
+
+    @Override
+    public DeactivationRequestAdminDTO getDeactivationRequestById(Long requestId) {
+        logger.info("=== RÉCUPÉRATION DEMANDE DE DÉSACTIVATION ID: "+ requestId+" ===");
+
+        DeactivationRequest request = deactivationRequestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Demande de désactivation non trouvée avec l'id: " + requestId));
+
+        return mapToDeactivationRequestAdminDTO(request);
+    }
+
+    @Override
+    @Transactional
+    public void updateUserStatus(Long userId, String status) {
+        logger.info("=== MISE À JOUR STATUT UTILISATEUR ===");
+        logger.info("User ID: "+ userId);
+        logger.info("Nouveau statut: "+ status);
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'id: " + userId));
+
+        try {
+            UserStatus newStatus = UserStatus.valueOf(status);
+            user.setUserStatut(newStatus);
+            userRepository.save(user);
+            logger.info("✅ Statut utilisateur mis à jour: "+ userId+" -> "+ newStatus);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Statut invalide: " + status);
+        }
+    }
+
+    // Méthodes privées pour l'envoi d'emails
+    private void sendDeactivationApprovedEmail(ExportateurEtranger exportateur, DeactivationRequest request, String adminComment) {
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("companyName", exportateur.getRaisonSociale());
+            params.put("requestId", "DEM-" + String.format("%06d", request.getId()));
+            params.put("requestDate", request.getRequestDate().toString());
+            params.put("adminComment", adminComment != null ? adminComment : "Aucun commentaire");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    exportateur.getEmail(),
+                    exportateur.getRaisonSociale(),
+                    ValidationNotificationType.DEACTIVATION_CONFIRMATION,
+                    params
+            );
+            logger.info("Email de confirmation de désactivation envoyé à: "+ exportateur.getEmail());
+        } catch (Exception e) {
+            logger.warning("Erreur lors de l'envoi de l'email de désactivation: " + e.getMessage());
+        }
+    }
+
+    private void sendDeactivationRejectedEmail(ExportateurEtranger exportateur, DeactivationRequest request, String adminComment) {
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("companyName", exportateur.getRaisonSociale());
+            params.put("requestId", "DEM-" + String.format("%06d", request.getId()));
+            params.put("requestDate", request.getRequestDate().toString());
+            params.put("reason", adminComment != null ? adminComment : "Non spécifiée");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    exportateur.getEmail(),
+                    exportateur.getRaisonSociale(),
+                    ValidationNotificationType.DEACTIVATION_REJECTION,
+                    params
+            );
+            logger.info("Email de rejet de désactivation envoyé à: "+ exportateur.getEmail());
+        } catch (Exception e) {
+            logger.warning("Erreur lors de l'envoi de l'email de rejet: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void reactivateAccount(Long userId, String adminComment) {
+        logger.info("=== RÉACTIVATION DE COMPTE ===");
+        logger.info("User ID: "+ userId);
+        logger.info("Comment: "+ adminComment);
+
+        // 1. Récupérer l'utilisateur
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'id: " + userId));
+
+        // 2. Vérifier que l'utilisateur est un exportateur
+        if (!(user instanceof ExportateurEtranger)) {
+            throw new RuntimeException("Seuls les comptes exportateurs peuvent être réactivés");
+        }
+
+        ExportateurEtranger exportateur = (ExportateurEtranger) user;
+
+        // 3. Vérifier que le compte est inactif
+        if (exportateur.getUserStatut() == UserStatus.ACTIF) {
+            throw new RuntimeException("Le compte est déjà actif");
+        }
+
+        // 4. Réactiver le compte
+        exportateur.setUserStatut(UserStatus.ACTIF);
+        exportateur.setFailedLoginAttempts(0);
+        exportateur.setLastFailedLoginAttempt(null);
+
+        // 5. Sauvegarder
+        exportateurRepository.save(exportateur);
+
+        logger.info("✅ Compte réactivé pour: "+ exportateur.getEmail());
+
+        // 6. Envoyer email de notification
+        sendAccountReactivatedEmail(exportateur, adminComment);
+    }
+
+    private void sendAccountReactivatedEmail(ExportateurEtranger exportateur, String adminComment) {
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("companyName", exportateur.getRaisonSociale());
+            params.put("email", exportateur.getEmail());
+            params.put("adminComment", adminComment != null ? adminComment : "Aucun commentaire");
+            params.put("loginUrl", frontendUrl + "/login");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    exportateur.getEmail(),
+                    exportateur.getRaisonSociale(),
+                    ValidationNotificationType.ACCOUNT_REACTIVATED,
+                    params
+            );
+            logger.info("Email de réactivation envoyé à: "+ exportateur.getEmail());
+        } catch (Exception e) {
+            logger.warning("Erreur lors de l'envoi de l'email de réactivation: " + e.getMessage());
+        }
+    }
+
 
 }

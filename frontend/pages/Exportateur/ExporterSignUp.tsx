@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link } from 'react-router-dom';
-import FormAlert from '../components/FormAlert';
+import FormAlert from '../../components/FormAlert';
 
 interface ExporterSignUpProps {
   onBack?: () => void;
@@ -10,11 +10,11 @@ interface ExporterSignUpProps {
   onSuccess?: () => void;
 }
 
-const ExporterSignUp: React.FC<ExporterSignUpProps> = ({ 
-  onBack, 
+const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
+  onBack,
   embedded = false,
   onError,
-  onSuccess 
+  onSuccess
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -72,7 +72,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
   const showAlert = (message: string, type: 'success' | 'error' = 'error') => {
     setAlertMessage(message);
     setAlertType(type);
-    
+
     // Auto-fermeture après 5 secondes
     setTimeout(() => {
       setAlertMessage(null);
@@ -107,11 +107,11 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
   const getPasswordStyles = (pwd: string) => {
     if (pwd.length === 0) return { score: 0, color: 'border-slate-100 focus:ring-slate-200 focus:border-slate-300', text: '', textColor: 'text-slate-400' };
     if (pwd.length < 8) return { score: 1, color: 'border-red-500 focus:ring-red-200 focus:border-red-500', text: 'Trop court (min 8)', textColor: 'text-red-500' };
-    
+
     const hasNumbers = /\d/.test(pwd);
     const hasUpper = /[A-Z]/.test(pwd);
     const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(pwd);
-    
+
     if (hasNumbers && hasUpper && hasSpecial) return { score: 3, color: 'border-emerald-500 focus:ring-emerald-200 focus:border-emerald-500', text: 'Fort', textColor: 'text-emerald-500' };
     if (hasNumbers || hasUpper || hasSpecial) return { score: 2, color: 'border-amber-500 focus:ring-amber-200 focus:border-amber-500', text: 'Moyen', textColor: 'text-amber-500' };
     return { score: 1, color: 'border-red-500 focus:ring-red-200 focus:border-red-500', text: 'Faible', textColor: 'text-red-500' };
@@ -121,10 +121,10 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
   const isMatch = formData.confirmPassword.length > 0 && formData.password === formData.confirmPassword;
   const isMismatch = formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
 
-  const confirmClasses = isMatch 
-    ? 'border-emerald-500 focus:ring-emerald-200 focus:border-emerald-500' 
-    : isMismatch 
-      ? 'border-red-500 focus:ring-red-200 focus:border-red-500' 
+  const confirmClasses = isMatch
+    ? 'border-emerald-500 focus:ring-emerald-200 focus:border-emerald-500'
+    : isMismatch
+      ? 'border-red-500 focus:ring-red-200 focus:border-red-500'
       : 'border-slate-100 focus:ring-slate-200 focus:border-slate-300';
 
   const currentDialCode = countries.find(c => c.code === formData.country)?.dial || '';
@@ -132,7 +132,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+
     // Réinitialiser l'affichage de l'erreur email quand l'utilisateur tape
     if (name === 'email') {
       setShowEmailError(false);
@@ -141,7 +141,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
 
   const handleResendEmail = async () => {
     setResentLoading(true);
-    
+
     try {
       const response = await fetch('http://localhost:8080/api/auth/resend-verification', {
         method: 'POST',
@@ -175,17 +175,17 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Valider l'email avant soumission
     setEmailTouched(true);
     const isEmailValid = validateAndSetEmailError(formData.email);
     setShowEmailError(true);
-    
+
     if (strength.score < 2 || !isMatch || !isEmailValid) return;
-    
+
     setLoading(true);
     const fullPhoneNumber = `${currentDialCode}${formData.phone}`;
-    
+
     try {
       const response = await fetch('http://localhost:8080/api/auth/signup/exporter', {
         method: 'POST',
@@ -226,8 +226,8 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
     }
   };
 
-  const containerClasses = embedded 
-    ? "h-full w-full flex flex-col md:flex-row overflow-hidden" 
+  const containerClasses = embedded
+    ? "h-full w-full flex flex-col md:flex-row overflow-hidden"
     : "max-w-6xl mx-auto py-12 px-4 animate-fade-in-scale";
 
   return (
@@ -243,12 +243,12 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
               )}
               <h2 className="text-2xl font-black italic tracking-tighter uppercase text-slate-900">Enregistrement International</h2>
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Formulaire Officiel de Conformité</p>
-              
+
               {/* ALERTE SMOOTH DANS SIGNUP SOUS LE TITRE */}
               {alertMessage && !success && (
                 <div className="mt-4 w-full animate-slide-down">
                   <div className="w-full max-w-sm mx-0 ml-72">
-                    <FormAlert 
+                    <FormAlert
                       type={alertType}
                       message={alertMessage}
                       onClose={closeAlert}
@@ -265,7 +265,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                 <i className="fas fa-envelope-circle-check text-3xl"></i>
               </div>
               <h3 className="text-2xl font-black text-slate-900 mb-4">{t('signup_success')}</h3>
-              
+
               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8 max-w-sm mx-auto">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em] mb-2">Destinataire</p>
                 <p className="text-slate-900 font-black text-base break-all tracking-tight italic">{formData.email}</p>
@@ -287,14 +287,14 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
               )}
 
               <div className="flex flex-col gap-4 max-w-xs mx-auto">
-                <button 
-                  onClick={() => onBack ? onBack() : navigate('/login')} 
+                <button
+                  onClick={() => onBack ? onBack() : navigate('/login')}
                   className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all active:scale-95"
                 >
                   {t('back_to_login')}
                 </button>
-                
-                <button 
+
+                <button
                   onClick={handleResendEmail}
                   disabled={resentLoading}
                   className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 hover:text-tunisia-red transition-all flex items-center justify-center gap-2"
@@ -338,7 +338,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('legal_rep')}</label>
                   <input required name="legalRep" value={formData.legalRep} onChange={handleChange} type="text" className="w-full px-4 py-2.5 rounded-xl border border-slate-100 bg-slate-50 focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs" placeholder="Nom et Prénom" />
                 </div>
-                
+
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('phone_number')}</label>
                   <div className="relative flex items-center">
@@ -353,21 +353,21 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('website')}</label>
                   <input name="website" value={formData.website} onChange={handleChange} type="url" className="w-full px-4 py-2.5 rounded-xl border border-slate-100 bg-slate-50 focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs" placeholder="https://www.company.com" />
                 </div>
-                
+
                 <div className="md:col-span-2 space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('email_pro')}</label>
-                  <input 
+                  <input
                     type="text"
                     name="email"
-                    value={formData.email} 
-                    onChange={handleChange} 
+                    value={formData.email}
+                    onChange={handleChange}
                     onBlur={() => {
                       setEmailTouched(true);
                       validateAndSetEmailError(formData.email);
                       setShowEmailError(true);
                     }}
-                    className={`w-full px-4 py-2.5 rounded-xl border-2 ${emailError && showEmailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-100 bg-slate-50'} focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs`} 
-                    placeholder="contact@company.com" 
+                    className={`w-full px-4 py-2.5 rounded-xl border-2 ${emailError && showEmailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-100 bg-slate-50'} focus:ring-2 focus:ring-slate-100 outline-none transition-all font-bold text-xs`}
+                    placeholder="contact@company.com"
                   />
                   {emailError && showEmailError && (
                     <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
@@ -379,16 +379,16 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('password')}</label>
                   <div className="relative">
-                    <input 
-                      required 
-                      name="password" 
-                      value={formData.password} 
-                      onChange={handleChange} 
-                      type={showPassword ? "text" : "password"} 
-                      className={`w-full pl-4 pr-10 py-2.5 rounded-xl border-2 ${strength.color} bg-slate-50 focus:ring-4 outline-none transition-all font-bold text-xs`} 
-                      placeholder="••••••••" 
+                    <input
+                      required
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      type={showPassword ? "text" : "password"}
+                      className={`w-full pl-4 pr-10 py-2.5 rounded-xl border-2 ${strength.color} bg-slate-50 focus:ring-4 outline-none transition-all font-bold text-xs`}
+                      placeholder="••••••••"
                     />
-                    <button 
+                    <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 transition-colors"
@@ -402,16 +402,16 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('confirm_password')}</label>
                   <div className="relative">
-                    <input 
-                      required 
-                      name="confirmPassword" 
-                      value={formData.confirmPassword} 
-                      onChange={handleChange} 
-                      type={showConfirmPassword ? "text" : "password"} 
-                      className={`w-full pl-4 pr-10 py-2.5 rounded-xl border-2 ${confirmClasses} bg-slate-50 focus:ring-4 outline-none transition-all font-bold text-xs`} 
-                      placeholder="••••••••" 
+                    <input
+                      required
+                      name="confirmPassword"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      type={showConfirmPassword ? "text" : "password"}
+                      className={`w-full pl-4 pr-10 py-2.5 rounded-xl border-2 ${confirmClasses} bg-slate-50 focus:ring-4 outline-none transition-all font-bold text-xs`}
+                      placeholder="••••••••"
                     />
-                    <button 
+                    <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 transition-colors"
@@ -423,18 +423,18 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                   {isMatch && <p className="text-[8px] font-black uppercase tracking-widest text-emerald-500 mt-1">Conforme</p>}
                 </div>
               </div>
-              
+
               <button type="submit" disabled={loading || strength.score < 2 || !isMatch || (emailError && showEmailError)} className={`w-full py-4 ${loading || strength.score < 2 || !isMatch || (emailError && showEmailError) ? 'bg-slate-300' : 'bg-tunisia-red hover:bg-red-700'} text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 mt-2`}>
                 {loading ? 'Traitement...' : t('register_btn')}
               </button>
             </form>
           )}
-          
+
           {!embedded && (
             <div className="mt-12 pt-8 border-t border-slate-100 text-center flex flex-col items-center gap-4">
-               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 leading-relaxed max-w-sm">Portail sécurisé de la République Tunisienne. Protection des données garantie par la loi.</p>
-               <Link 
-                to="/" 
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 leading-relaxed max-w-sm">Portail sécurisé de la République Tunisienne. Protection des données garantie par la loi.</p>
+              <Link
+                to="/"
                 className="text-slate-900 text-[10px] font-black uppercase tracking-widest hover:text-tunisia-red transition-all flex items-center gap-2"
               >
                 <i className="fas fa-book-open text-[8px]"></i>
@@ -473,12 +473,12 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
             </div>
             <div className="mt-12 pt-8 border-t border-white/5 text-center flex flex-col items-center gap-4">
               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 leading-relaxed">Portail sécurisé de la République Tunisienne. Protection des données garantie par la loi.</p>
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className="text-white text-[10px] font-black uppercase tracking-widest hover:text-tunisia-red transition-all flex items-center gap-2"
               >
                 <i className="fas fa-book-open text-[8px]"></i>
-                  {t('help_needs_home_button')}              
+                {t('help_needs_home_button')}
               </Link>
             </div>
           </div>

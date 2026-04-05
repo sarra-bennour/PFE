@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'; // 👈 AJOUT useLocation
 import { useAuth, UserRole, User } from '../App';
-import ExporterSignUp from './ExporterSignUp';
+import ExporterSignUp from './Exportateur/ExporterSignUp';
 import ForgotPassword from './ForgotPassword';
 import TwoFactorAuth from './TwoFactorAuth';
 import ResetPasswordForm from '../components/ResetPasswordForm';
@@ -11,10 +11,10 @@ import FormAlert from '../components/FormAlert';
 const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const location = useLocation(); // 👈 AJOUT pour récupérer l'état de navigation
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
-  
+
   const [view, setView] = useState<'login' | 'signup' | 'forgot_password' | 'two_factor' | 'reset_password'>('login');
   const [loading, setLoading] = useState(false);
   const [mobileStep, setMobileStep] = useState(1);
@@ -30,11 +30,11 @@ const Login: React.FC = () => {
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [showEmailError, setShowEmailError] = useState(false);
   const [showPasswordError, setShowPasswordError] = useState(false);
-  
+
   // État simplifié pour l'alerte
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [alertType, setAlertType] = useState<'success' | 'error'>('error');
-  
+
   const [showPin, setShowPin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string>('');
@@ -48,7 +48,7 @@ const Login: React.FC = () => {
       const message = location.state.message || 'Votre session a expiré. Veuillez vous reconnecter.';
       setAlertMessage(message);
       setAlertType('error');
-      
+
       // Nettoyer le state pour éviter de réafficher le message après refresh
       window.history.replaceState({}, document.title);
     }
@@ -116,11 +116,11 @@ const Login: React.FC = () => {
   useEffect(() => {
     const emailToken = searchParams.get('token');
     const resetTokenParam = searchParams.get('reset-token');
-    
+
     if (emailToken) {
       handleEmailVerification(emailToken);
     }
-    
+
     if (resetTokenParam) {
       handleResetPasswordToken(resetTokenParam);
     }
@@ -143,7 +143,7 @@ const Login: React.FC = () => {
       });
 
       const data = await response.json();
-      
+
       if (response.ok && data.valid) {
         showAlert('✅ Lien de réinitialisation valide. Vous pouvez maintenant définir votre nouveau mot de passe.', 'success');
       } else {
@@ -168,7 +168,7 @@ const Login: React.FC = () => {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         showAlert('✅ Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.', 'success');
         navigate('/login', { replace: true });
@@ -200,7 +200,7 @@ const Login: React.FC = () => {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         showAlert('📧 Email de vérification renvoyé ! Vérifiez votre boîte de réception.', 'success');
       } else {
@@ -221,46 +221,55 @@ const Login: React.FC = () => {
   const executeLogin = (userEmail: string, userData?: any) => {
     if (userData) {
       login(userData, localStorage.getItem('token'));
-      navigate(`/${userData.role.toLowerCase()}`);
+      const role = userData.role;
+      if (role === 'ADMIN') {
+        navigate('/admin');
+      } else {
+        navigate(`/${role.toLowerCase()}`);
+      }
       return;
     }
 
     let role: UserRole = 'EXPORTATEUR';
-    // let status: ExporterStatus | undefined = 'PROFILE_INCOMPLETE';
+    if (userEmail.includes('admin')) {
+      role = 'ADMIN';
+    }
     
-    if (userEmail.includes('admin')) role = 'admin';
-    if (userEmail.includes('validator')) role = 'validator';
 
     const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
 
-    login({ 
-      email: userEmail, 
-      role, 
-      status, 
+    login({
+      email: userEmail,
+      role,
+      status,
       companyName: 'Opérateur International',
       isTwoFactorEnabled: is2FA
     }, localStorage.getItem('token'));
-      
+
+    if (role === 'ADMIN') {
+    navigate('/admin');
+  } else {
     navigate(`/${role}`);
+  }
   };
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     setEmailTouched(true);
     setPasswordTouched(true);
-    
+
     const isEmailValid = validateAndSetEmailError(email);
     const isPasswordValid = validateAndSetPasswordError(password);
-    
+
     setShowEmailError(true);
     setShowPasswordError(true);
-    
+
     if (!isEmailValid || !isPasswordValid) {
       return;
     }
 
-    setLoading(true);  
+    setLoading(true);
     closeAlert();
 
     try {
@@ -282,13 +291,17 @@ const Login: React.FC = () => {
         localStorage.setItem('user', JSON.stringify(data.user));
 
         login(data.user, data.token);
-        
+
         if (data.requiresTwoFactor) {
           setView('two_factor');
         } else {
           showAlert('✅ Connexion réussie ! Redirection en cours...', 'success');
           setTimeout(() => {
+          if (data.user?.role === 'ADMIN') {
+            navigate('/admin');
+          } else {
             executeLogin(email, data.user);
+          }
           }, 1500);
         }
       } else {
@@ -329,50 +342,50 @@ const Login: React.FC = () => {
 
   const handleMobileLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (matricule.length !== 10 || pin.length !== 6) {
-        showAlert('Le matricule doit faire 10 chiffres et le PIN 6 chiffres', 'error');
-        return;
+      showAlert('Le matricule doit faire 10 chiffres et le PIN 6 chiffres', 'error');
+      return;
     }
 
     setLoading(true);
     closeAlert();
-    
+
     try {
-        const response = await fetch('http://localhost:8080/api/auth/login/mobile', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                matricule: matricule,
-                pin: pin
-            }),
-        });
+      const response = await fetch('http://localhost:8080/api/auth/login/mobile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          matricule: matricule,
+          pin: pin
+        }),
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (response.ok) {
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+      if (response.ok) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
 
-            login(data.user, data.token);
-            
-            showAlert('✅ Authentification mobile réussie !', 'success');
-            
-            setTimeout(() => {
-                navigate('/importer');
-            }, 1500);
-        } else {
-            const errorMessage = data.message || data.error || 'Échec de la connexion mobile';
-            showAlert(`❌ ${errorMessage}`, 'error');
-            setPin('');
-        }
+        login(data.user, data.token);
+
+        showAlert('✅ Authentification mobile réussie !', 'success');
+
+        setTimeout(() => {
+          navigate('/importer');
+        }, 1500);
+      } else {
+        const errorMessage = data.message || data.error || 'Échec de la connexion mobile';
+        showAlert(`❌ ${errorMessage}`, 'error');
+        setPin('');
+      }
     } catch (error) {
-        console.error('Erreur lors de la connexion mobile:', error);
-        showAlert('❌ Erreur de connexion au serveur', 'error');
+      console.error('Erreur lors de la connexion mobile:', error);
+      showAlert('❌ Erreur de connexion au serveur', 'error');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -381,9 +394,9 @@ const Login: React.FC = () => {
     closeAlert();
 
     try {
-      const requestBody = { 
-        email: email, 
-        code: code 
+      const requestBody = {
+        email: email,
+        code: code
       };
 
       const response = await fetch('http://localhost:8080/api/auth/2fa/verify', {
@@ -401,14 +414,14 @@ const Login: React.FC = () => {
           email: data.email,
           role: data.role,
         };
-        
+
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(userData));
 
         login(userData, data.token);
-        
+
         showAlert('✅ Code 2FA validé avec succès ! Redirection...', 'success');
-        
+
         setTimeout(() => {
           const role = data.role.toLowerCase();
           navigate(`/${role}`);
@@ -432,7 +445,7 @@ const Login: React.FC = () => {
 
   const handleResetPasswordSuccess = () => {
     showAlert('✅ Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.', 'success');
-    
+
     setTimeout(() => {
       setView('login');
       setResetToken(null);
@@ -452,26 +465,26 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
-      <div 
+      <div
         className="w-full max-w-5xl rounded-[3.5rem] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.2)] overflow-hidden relative border border-slate-200"
         style={{ height: `${CARD_HEIGHT}px` }}
       >
-        
+
         {/* Language Switcher */}
         <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[100] flex bg-white/90 backdrop-blur-md px-1.5 py-1.5 rounded-2xl shadow-xl border border-slate-100 ring-4 ring-black/5">
-          <button 
+          <button
             onClick={() => changeLanguage('fr')}
             className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${i18n.language === 'fr' ? 'bg-tunisia-red text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
           >
             FR
           </button>
-          <button 
+          <button
             onClick={() => changeLanguage('ar')}
             className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${i18n.language === 'ar' ? 'bg-tunisia-red text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
           >
             AR
           </button>
-          <button 
+          <button
             onClick={() => changeLanguage('en')}
             className={`px-4 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all ${i18n.language === 'en' ? 'bg-tunisia-red text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}
           >
@@ -479,17 +492,17 @@ const Login: React.FC = () => {
           </button>
         </div>
 
-        <div 
+        <div
           className="w-full transition-transform duration-1000 cubic-bezier(0.85, 0, 0.15, 1) flex flex-col"
-          style={{ 
+          style={{
             transform: getShutterTransform(),
             height: `${CARD_HEIGHT * 5}px`
           }}
         >
-          
+
           {/* LAYER 1: LOGIN */}
           <div className="w-full flex flex-col md:flex-row" style={{ height: `${CARD_HEIGHT}px` }}>
-            
+
             {/* Espace National - côté gauche */}
             <div className="flex-1 bg-emerald-600 text-white p-12 flex flex-col justify-center items-center text-center md:text-left relative overflow-hidden">
               <div className="absolute -top-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
@@ -499,23 +512,23 @@ const Login: React.FC = () => {
                 </div>
                 <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-4">Espace National</h2>
                 <p className="text-sm text-emerald-100 font-medium mb-10 leading-relaxed">{t('mobile_id_desc')}</p>
-                
+
                 {mobileStep === 1 ? (
                   <form onSubmit={handleMobileLogin} className="space-y-4">
                     <div className="space-y-1.5 text-left">
                       <label className="text-[10px] font-black text-emerald-100/60 uppercase tracking-widest ml-1">{t('mobile_id_matricule')}</label>
                       <div className="relative group">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40"><i className="fas fa-user-circle"></i></span>
-                        <input 
-                          required 
-                          type="text" 
+                        <input
+                          required
+                          type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
                           maxLength={10}
-                          value={matricule} 
-                          onChange={(e) => setMatricule(e.target.value.replace(/\D/g, ''))} 
-                          className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/10 border-2 border-white/10 focus:border-white outline-none transition-all font-bold text-sm" 
-                          placeholder="1234567890" 
+                          value={matricule}
+                          onChange={(e) => setMatricule(e.target.value.replace(/\D/g, ''))}
+                          className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white/10 border-2 border-white/10 focus:border-white outline-none transition-all font-bold text-sm"
+                          placeholder="1234567890"
                         />
                       </div>
                     </div>
@@ -523,18 +536,18 @@ const Login: React.FC = () => {
                       <label className="text-[10px] font-black text-emerald-100/60 uppercase tracking-widest ml-1">{t('mobile_id_pin')}</label>
                       <div className="relative group">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40"><i className="fas fa-key"></i></span>
-                        <input 
-                          required 
+                        <input
+                          required
                           type={showPin ? "text" : "password"}
                           inputMode="numeric"
                           pattern="[0-9]*"
                           maxLength={6}
-                          value={pin} 
-                          onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} 
-                          className="w-full pl-12 pr-12 py-4 rounded-2xl bg-white/10 border-2 border-white/10 focus:border-white outline-none transition-all font-bold text-sm" 
-                          placeholder="••••••" 
+                          value={pin}
+                          onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                          className="w-full pl-12 pr-12 py-4 rounded-2xl bg-white/10 border-2 border-white/10 focus:border-white outline-none transition-all font-bold text-sm"
+                          placeholder="••••••"
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowPin(!showPin)}
                           className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
@@ -543,7 +556,7 @@ const Login: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                    <button 
+                    <button
                       type="submit"
                       disabled={loading || matricule.length !== 10 || pin.length !== 6}
                       className={`w-full py-4 bg-white text-emerald-600 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all mt-4 ${loading || matricule.length !== 10 || pin.length !== 6 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-emerald-50'}`}
@@ -572,11 +585,11 @@ const Login: React.FC = () => {
                     <i className="fas fa-globe-africa text-3xl"></i>
                   </div>
                   <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900">Espace International</h2>
-                  
+
                   {/* ALERTE - Positionnée correctement dans le flux */}
                   {alertMessage && view === 'login' && (
                     <div className="mt-4 w-full">
-                      <FormAlert 
+                      <FormAlert
                         type={alertType}
                         message={alertMessage}
                         onClose={closeAlert}
@@ -603,20 +616,20 @@ const Login: React.FC = () => {
                   <div className="space-y-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail</label>
-                      <input 
+                      <input
                         type="text"
-                        value={email} 
+                        value={email}
                         onChange={(e) => {
                           setEmail(e.target.value);
                           setShowEmailError(false);
-                        }} 
+                        }}
                         onBlur={() => {
                           setEmailTouched(true);
                           validateAndSetEmailError(email);
                           setShowEmailError(true);
                         }}
-                        className={`w-full px-5 py-4 rounded-2xl border-2 ${emailError && showEmailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50 bg-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
-                        placeholder="export@company.com" 
+                        className={`w-full px-5 py-4 rounded-2xl border-2 ${emailError && showEmailError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50 bg-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`}
+                        placeholder="export@company.com"
                       />
                       {emailError && showEmailError && (
                         <p className="text-[10px] font-bold text-tunisia-red mt-1 ml-1 animate-fade-in-scale">
@@ -632,9 +645,9 @@ const Login: React.FC = () => {
                         </button>
                       </div>
                       <div className="relative">
-                        <input 
-                          type={showPassword ? "text" : "password"} 
-                          value={password} 
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={password}
                           onChange={(e) => {
                             setPassword(e.target.value);
                             setShowPasswordError(false);
@@ -644,10 +657,10 @@ const Login: React.FC = () => {
                             validateAndSetPasswordError(password);
                             setShowPasswordError(true);
                           }}
-                          className={`w-full pl-5 pr-12 py-4 rounded-2xl border-2 ${passwordError && showPasswordError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50 bg-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`} 
-                          placeholder="••••••••" 
+                          className={`w-full pl-5 pr-12 py-4 rounded-2xl border-2 ${passwordError && showPasswordError ? 'border-tunisia-red bg-red-50/30' : 'border-slate-50 bg-slate-50'} focus:border-tunisia-red outline-none transition-all font-bold text-sm`}
+                          placeholder="••••••••"
                         />
-                        <button 
+                        <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-600 transition-colors"
@@ -662,7 +675,7 @@ const Login: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  <button 
+                  <button
                     type="submit"
                     disabled={!isFormValid}
                     className={`w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all ${!isFormValid ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -681,8 +694,8 @@ const Login: React.FC = () => {
 
           {/* LAYER 2: SIGNUP */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
-            <ExporterSignUp 
-              embedded={true} 
+            <ExporterSignUp
+              embedded={true}
               onBack={() => setView('login')}
               onError={handleSignupError}
               onSuccess={handleSignupSuccess}
@@ -691,14 +704,14 @@ const Login: React.FC = () => {
 
           {/* LAYER 3: FORGOT PASSWORD */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
-            <ForgotPassword 
-              onBack={() => setView('login')} 
+            <ForgotPassword
+              onBack={() => setView('login')}
             />
           </div>
 
           {/* LAYER 4: 2FA */}
           <div className="w-full" style={{ height: `${CARD_HEIGHT}px` }}>
-            <TwoFactorAuth 
+            <TwoFactorAuth
               loading={loading}
               onVerify={handle2FAVerify}
               onBack={() => setView('login')}
@@ -726,7 +739,7 @@ const Login: React.FC = () => {
               </div>
 
               <div className="flex-1 bg-white p-12 flex flex-col justify-center items-center relative">
-                <button 
+                <button
                   onClick={handleResetPasswordBack}
                   className="absolute top-8 right-8 text-slate-400 hover:text-tunisia-red transition-colors text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
                 >
@@ -741,10 +754,10 @@ const Login: React.FC = () => {
                         Veuillez définir votre nouveau mot de passe sécurisé.
                       </p>
                     </div>
-                    
-                    <ResetPasswordForm 
+
+                    <ResetPasswordForm
                       token={resetToken}
-                      requireCurrentPassword={false} 
+                      requireCurrentPassword={false}
                       onSuccess={handleResetPasswordSuccess}
                       onCancel={handleResetPasswordBack}
                     />
@@ -756,7 +769,7 @@ const Login: React.FC = () => {
 
         </div>
       </div>
-      
+
       <div className="fixed bottom-6 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 pointer-events-none select-none">
         {t('gov_name')} &bull; PORTAIL NATIONAL 2025
       </div>

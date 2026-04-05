@@ -5,6 +5,5 @@ public enum DeactivationStatus {
     IN_REVIEW,       // En cours d'examen
     APPROVED,        // Approuvée (compte sera désactivé)
     REJECTED,        // Rejetée
-    COMPLETED,       // Désactivation effectuée
     CANCELLED        // Annulée par l'utilisateur
 }

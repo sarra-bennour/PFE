@@ -4,6 +4,7 @@ import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.enums.DeactivationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -46,4 +47,11 @@ public interface DeactivationRequestRepository extends JpaRepository<Deactivatio
     @Query("SELECT FUNCTION('MONTH', d.requestDate), COUNT(d) FROM DeactivationRequest d " +
             "WHERE FUNCTION('YEAR', d.requestDate) = :year GROUP BY FUNCTION('MONTH', d.requestDate)")
     List<Object[]> getMonthlyStats(@Param("year") int year);
+
+    @Modifying
+    @Query("UPDATE DeactivationRequest d SET d.status = :status, d.processedDate = CURRENT_TIMESTAMP, d.processedBy = :adminId, d.adminComment = :comment WHERE d.id = :requestId")
+    int updateRequestStatus(@Param("requestId") Long requestId,
+                            @Param("status") DeactivationStatus status,
+                            @Param("adminId") Long adminId,
+                            @Param("comment") String comment);
 }

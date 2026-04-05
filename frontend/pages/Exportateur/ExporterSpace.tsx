@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GoogleGenAI } from '@google/genai';
-import { useAuth } from '../App';
+import { useAuth } from '../../App';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import FormAlert from '../components/FormAlert';
-import PaymentForm from '../components/PaymentForm';
+import FormAlert from '../../components/FormAlert';
+import PaymentForm from '../../components/PaymentForm';
 
 // Définition de l'interface pour les données KYC
 interface KycData {
@@ -69,8 +69,8 @@ interface PaymentResult {
 }
 
 // Composant de nœud de pipeline style Jenkins
-const PipelineNode = ({ label, status, isLast = false }: { 
-  label: string, 
+const PipelineNode = ({ label, status, isLast = false }: {
+  label: string,
   status: 'pending' | 'processing' | 'success' | 'failure',
   isLast?: boolean
 }) => {
@@ -100,36 +100,34 @@ const PipelineNode = ({ label, status, isLast = false }: {
 };
 
 // Composant de téléchargement (Style Neo-Gov)
-const FileUploadBox = ({ 
-  label, 
-  field, 
+const FileUploadBox = ({
+  label,
+  field,
   value,
   onChange,
-  required = true, 
-  icon = "fa-file-upload" 
-}: { 
-  label: string, 
-  field: keyof KycData, 
+  required = true,
+  icon = "fa-file-upload"
+}: {
+  label: string,
+  field: keyof KycData,
   value: File | null,
   onChange: (field: keyof KycData, file: File | null) => void,
-  required?: boolean, 
-  icon?: string 
+  required?: boolean,
+  icon?: string
 }) => (
   <div className="relative group">
-    <div className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 text-center min-h-[130px] ${
-      value 
-        ? 'border-emerald-500 bg-emerald-50/50' 
+    <div className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-2 text-center min-h-[130px] ${value
+        ? 'border-emerald-500 bg-emerald-50/50'
         : 'border-slate-200 bg-slate-50 hover:border-tunisia-red hover:bg-white'
-    }`}>
-      <input 
-        type="file" 
+      }`}>
+      <input
+        type="file"
         required={required && !value}
         onChange={(e) => onChange(field, e.target.files?.[0] || null)}
         className="absolute inset-0 opacity-0 cursor-pointer z-10"
       />
-      <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 transition-transform group-hover:scale-110 ${
-        value ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 group-hover:text-tunisia-red group-hover:bg-red-50'
-      }`}>
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-1 transition-transform group-hover:scale-110 ${value ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 group-hover:text-tunisia-red group-hover:bg-red-50'
+        }`}>
         <i className={`fas ${value ? 'fa-check' : icon}`}></i>
       </div>
       <span className={`text-[9px] font-black uppercase tracking-tight leading-none px-2 ${value ? 'text-emerald-700' : 'text-slate-600'}`}>
@@ -140,7 +138,7 @@ const FileUploadBox = ({
           <span className="text-[8px] font-bold text-emerald-600 truncate italic">
             {value.name}
           </span>
-          <button 
+          <button
             type="button"
             onClick={(e) => { e.preventDefault(); onChange(field, null); }}
             className="text-emerald-800 hover:text-red-500 z-20"
@@ -157,19 +155,19 @@ const ExporterSpace: React.FC = () => {
   const { t } = useTranslation();
   const { user, updateUser, dossierStatus, updateDossierStatus } = useAuth();
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(false);
   const [dossierInfo, setDossierInfo] = useState<DossierResponse | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [userQuestion, setUserQuestion] = useState('');
-  
+
   const [showInvoice, setShowInvoice] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
-  
+
   // États pour les alertes de paiement
   const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -211,7 +209,7 @@ const ExporterSpace: React.FC = () => {
   // Au début du composant
   useEffect(() => {
     const token = localStorage.getItem('token');
-    
+
     if (token) {
       // Décoder le token pour voir son contenu
       const base64Url = token.split('.')[1];
@@ -221,10 +219,10 @@ const ExporterSpace: React.FC = () => {
   }, []);
 
   const productDeclarations = [
-    { 
-      id: 'DEC-2026-0215', 
-      product: 'Camembert Président 250g', 
-      status: 'En cours de validation par les autorités', 
+    {
+      id: 'DEC-2026-0215',
+      product: 'Camembert Président 250g',
+      status: 'En cours de validation par les autorités',
       date: '24/02/2026',
       ngp: '0406',
       category: 'Produits laitiers',
@@ -235,59 +233,59 @@ const ExporterSpace: React.FC = () => {
   ];
 
   // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
-const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
-  const token = localStorage.getItem('token');
-  if (!token) return;
+  const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
 
-  try {
-    // Utiliser d'abord le cache si disponible et pas de rafraîchissement forcé
-    if (!forceRefresh && dossierStatus) {
-      console.log('📋 Utilisation des statuts en cache:', dossierStatus);
-      setDossierInfo({
-        hasDossier: true,
-        status: dossierStatus.demandeStatus,
-        paymentStatus: dossierStatus.paymentStatus,
-        demandeId: dossierStatus.demandeId,
-        reference: dossierStatus.reference,
-        success: true,
-        message: '',
-        timestamp: dossierStatus.lastUpdated
-      } as DossierResponse);
-      return;
-    }
+    try {
+      // Utiliser d'abord le cache si disponible et pas de rafraîchissement forcé
+      if (!forceRefresh && dossierStatus) {
+        console.log('📋 Utilisation des statuts en cache:', dossierStatus);
+        setDossierInfo({
+          hasDossier: true,
+          status: dossierStatus.demandeStatus,
+          paymentStatus: dossierStatus.paymentStatus,
+          demandeId: dossierStatus.demandeId,
+          reference: dossierStatus.reference,
+          success: true,
+          message: '',
+          timestamp: dossierStatus.lastUpdated
+        } as DossierResponse);
+        return;
+      }
 
-    // Sinon, appel API
-    console.log('🌐 Appel API pour rafraîchir les statuts');
-    const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    console.log('🔍🔍🔍🔍🔍 Réponse API brute:', response.data); 
-    
-    setDossierInfo(response.data);
-    
-    // Mettre à jour le cache dans useAuth
-    if (response.data.hasDossier) {
-      updateDossierStatus(
-        response.data.status || '',
-        response.data.paymentStatus || '',
-        {
-          demandeId: response.data.demandeId,
-          reference: response.data.reference
-        }
-      );
-      
-      // Mettre à jour l'utilisateur avec des informations pertinentes
-      // mais sans statut statique
-      updateUser({
-        dossierStatut: response.data.status,
-        dossierId: response.data.demandeId,
-        dossierReference: response.data.reference
+      // Sinon, appel API
+      console.log('🌐 Appel API pour rafraîchir les statuts');
+      const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
+        headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('🔍🔍🔍🔍🔍 Réponse API brute:', response.data);
+
+      setDossierInfo(response.data);
+
+      // Mettre à jour le cache dans useAuth
+      if (response.data.hasDossier) {
+        updateDossierStatus(
+          response.data.status || '',
+          response.data.paymentStatus || '',
+          {
+            demandeId: response.data.demandeId,
+            reference: response.data.reference
+          }
+        );
+
+        // Mettre à jour l'utilisateur avec des informations pertinentes
+        // mais sans statut statique
+        updateUser({
+          dossierStatut: response.data.status,
+          dossierId: response.data.demandeId,
+          dossierReference: response.data.reference
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération du dossier:', error);
     }
-  } catch (error) {
-    console.error('Erreur lors de la récupération du dossier:', error);
-  }
-}, [dossierStatus, updateDossierStatus, updateUser]);
+  }, [dossierStatus, updateDossierStatus, updateUser]);
 
 
   // Chargement initial - ne s'exécute qu'une fois
@@ -312,7 +310,7 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
         console.error('Erreur lors de la récupération des suggestions:', error);
       }
     };
-    
+
     fetchUsernameSuggestions();
   }, []);
 
@@ -323,7 +321,7 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
         checkUsernameAvailability(preKycData.username);
       }
     }, 500);
-    
+
     return () => clearTimeout(timer);
   }, [preKycData.username]);
 
@@ -334,7 +332,7 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
       setUsernameMessage('');
       return;
     }
-    
+
     setCheckingUsername(true);
     try {
       const token = localStorage.getItem('token');
@@ -366,16 +364,16 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
   const handleKycSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       const token = localStorage.getItem('token');
       const requestData = {
         produits: []
       };
-      
+
       // 1. Créer le dossier
       const createResponse = await axios.post('http://localhost:8080/api/exportateur/dossier/creer', requestData, {
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
@@ -413,21 +411,21 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
       for (const [field, file] of Object.entries(kycData)) {
         if (file) {
           const documentType = documentTypeMapping[field];
-          
+
           if (!documentType) {
             console.warn(`⚠️ Type de document non mappé pour ${field}`);
             continue;
           }
-          
+
           const formData = new FormData();
           formData.append('file', file as File);
           formData.append('documentType', documentType);
-          
+
           await axios.post(
-            `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`, 
+            `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`,
             formData,
             {
-              headers: { 
+              headers: {
                 Authorization: `Bearer ${token}`,
                 'Content-Type': 'multipart/form-data'
               }
@@ -451,7 +449,7 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
       updateDossierStatus('SOUMISE', 'EN_ATTENTE', { demandeId });
 
       setShowInvoice(true);
-      
+
     } catch (error: any) {
       console.error('❌ Erreur globale:', error);
       setPaymentError(error.message || 'Une erreur est survenue lors de la soumission du dossier');
@@ -470,176 +468,176 @@ const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
 
   // Fonction pour créer le PaymentIntent via le backend
   const handleCreatePaymentIntent = async () => {
-  // Vérifier que demandeId existe
-  if (!dossierInfo?.demandeId) {
-    throw new Error('ID de demande non trouvé');
-  }
-  
-  const token = localStorage.getItem('token');
-  
-  const response = await axios.post(
-    'http://localhost:8080/api/stripe-payment/create-intent',
-    {
-      demandeId: dossierInfo.demandeId,
-      successUrl: window.location.origin + '/payment-success',
-      cancelUrl: window.location.origin + '/payment-cancel'
-    },
-    {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
+    // Vérifier que demandeId existe
+    if (!dossierInfo?.demandeId) {
+      throw new Error('ID de demande non trouvé');
     }
-  );
-  
-  setPaymentIntentId(response.data.paymentIntentId);
-  
-  // Retourner l'objet complet avec paymentIntentId et clientSecret
-  return response.data;
-};
+
+    const token = localStorage.getItem('token');
+
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/create-intent',
+      {
+        demandeId: dossierInfo.demandeId,
+        successUrl: window.location.origin + '/payment-success',
+        cancelUrl: window.location.origin + '/payment-cancel'
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    setPaymentIntentId(response.data.paymentIntentId);
+
+    // Retourner l'objet complet avec paymentIntentId et clientSecret
+    return response.data;
+  };
 
   // Fonction pour traiter le paiement via le backend
   const handleProcessPayment = async (paymentIntentId: string, paymentDetails: any) => {
-  const token = localStorage.getItem('token');
-  
-  // IMPORTANT: On envoie paymentMethodId (reçu du PaymentForm) au lieu des détails de la carte
-  const paymentRequest = {
-    paymentIntentId: paymentIntentId,
-    demandeId: dossierInfo?.demandeId,
-    paymentMethodId: paymentDetails.paymentMethodId, // Reçu du PaymentForm
-    cardHolderName: paymentDetails.cardHolder,
-    receiptEmail: paymentDetails.receiptEmail
-  };
-  
-  console.log('💰 Envoi de la requête de paiement:', paymentRequest);
-  
-  // Appeler le backend pour confirmer le paiement
-  const response = await axios.post(
-    'http://localhost:8080/api/stripe-payment/confirm-payment',
-    paymentRequest,
-    {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
+    const token = localStorage.getItem('token');
+
+    // IMPORTANT: On envoie paymentMethodId (reçu du PaymentForm) au lieu des détails de la carte
+    const paymentRequest = {
+      paymentIntentId: paymentIntentId,
+      demandeId: dossierInfo?.demandeId,
+      paymentMethodId: paymentDetails.paymentMethodId, // Reçu du PaymentForm
+      cardHolderName: paymentDetails.cardHolder,
+      receiptEmail: paymentDetails.receiptEmail
+    };
+
+    console.log('💰 Envoi de la requête de paiement:', paymentRequest);
+
+    // Appeler le backend pour confirmer le paiement
+    const response = await axios.post(
+      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      paymentRequest,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       }
-    }
-  );
-  
-  return response.data;
-};
+    );
+
+    return response.data;
+  };
 
   // Fonction principale de paiement - maintenant utilisée par PaymentForm
 
-const handlePaymentSubmit = async (paymentDetails: any) => {
-  setLoading(true);
-  setPaymentError(null);
-  setPaymentSuccess(null);
-  
-  try {
-    // Vérifier que demandeId existe
-    if (!dossierInfo?.demandeId) {
-      setPaymentError('ID de demande non trouvé. Veuillez réessayer.');
-      setLoading(false);
-      return;
-    }
-    
-    console.log('💰 Début du processus de paiement pour la demande:', dossierInfo.demandeId);
-    
-    // Étape 1: Créer le PaymentIntent
-    const createIntentResponse = await handleCreatePaymentIntent();
-    const paymentIntentId = createIntentResponse.paymentIntentId;
-    
-    if (!paymentIntentId) {
-      throw new Error('Impossible de créer le PaymentIntent');
-    }
-    
-    console.log('✅ PaymentIntent créé:', paymentIntentId);
-    
-    // Étape 2: Traiter le paiement avec le PaymentMethod ID
-    const result = await handleProcessPayment(paymentIntentId, paymentDetails);
-    
-    if (result.success) {
-      // Afficher l'alerte de succès
-      setPaymentSuccess({
-        success: true,
-        message: 'Paiement effectué avec succès!',
-        paymentReference: result.paymentReference || result.transactionId,
-        amount: result.amount,
-        status: result.status
-      });
+  const handlePaymentSubmit = async (paymentDetails: any) => {
+    setLoading(true);
+    setPaymentError(null);
+    setPaymentSuccess(null);
 
-      // Remplacer updateUserStatus par updateUser
-      updateUser({
-        dossierStatut: 'EN_COURS_VALIDATION',
-        paymentStatus: 'REUSSI'
-      });
-      
-      setDossierInfo(prev => ({
-        ...prev,
-        status: 'EN_COURS_VALIDATION',
-        paymentStatus: 'REUSSI'
-      } as DossierResponse));
-
-      updateDossierStatus('EN_COURS_VALIDATION', 'REUSSI', { 
-        demandeId: dossierInfo?.demandeId 
-      });
-      
-      await refreshDossierData();
-      
-      setTimeout(() => {
-        setShowTerminal(false);
-        setShowInvoice(false);
-        setPaymentSuccess(null);
-      }, 3000);
-      
-    } else {
-      setPaymentError(result.message || 'Erreur de paiement');
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Erreur détaillée:', error);
-    
-    if (error.response?.status === 401) {
-      setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
-      setTimeout(() => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-      }, 2000);
-    } else if (error.response?.data) {
-      // 🔴 CORRECTION IMPORTANTE ICI 🔴
-      // Le backend renvoie { "error": "message" }
-      const errorData = error.response.data;
-      
-      if (typeof errorData === 'string') {
-        setPaymentError(errorData);
-      } else if (errorData.error) {
-        // Cas où le backend renvoie { "error": "message" }
-        setPaymentError(errorData.error);
-      } else if (errorData.message) {
-        setPaymentError(errorData.message);
-      } else if (errorData.userMessage) {
-        // Si vous utilisez PaymentException avec userMessage
-        setPaymentError(errorData.userMessage);
-      } else {
-        setPaymentError('Erreur de paiement. Veuillez réessayer.');
+    try {
+      // Vérifier que demandeId existe
+      if (!dossierInfo?.demandeId) {
+        setPaymentError('ID de demande non trouvé. Veuillez réessayer.');
+        setLoading(false);
+        return;
       }
-      
-      console.log('Détails de l\'erreur:', errorData);
-    } else {
-      setPaymentError(error.message || 'Erreur lors du paiement');
+
+      console.log('💰 Début du processus de paiement pour la demande:', dossierInfo.demandeId);
+
+      // Étape 1: Créer le PaymentIntent
+      const createIntentResponse = await handleCreatePaymentIntent();
+      const paymentIntentId = createIntentResponse.paymentIntentId;
+
+      if (!paymentIntentId) {
+        throw new Error('Impossible de créer le PaymentIntent');
+      }
+
+      console.log('✅ PaymentIntent créé:', paymentIntentId);
+
+      // Étape 2: Traiter le paiement avec le PaymentMethod ID
+      const result = await handleProcessPayment(paymentIntentId, paymentDetails);
+
+      if (result.success) {
+        // Afficher l'alerte de succès
+        setPaymentSuccess({
+          success: true,
+          message: 'Paiement effectué avec succès!',
+          paymentReference: result.paymentReference || result.transactionId,
+          amount: result.amount,
+          status: result.status
+        });
+
+        // Remplacer updateUserStatus par updateUser
+        updateUser({
+          dossierStatut: 'EN_COURS_VALIDATION',
+          paymentStatus: 'REUSSI'
+        });
+
+        setDossierInfo(prev => ({
+          ...prev,
+          status: 'EN_COURS_VALIDATION',
+          paymentStatus: 'REUSSI'
+        } as DossierResponse));
+
+        updateDossierStatus('EN_COURS_VALIDATION', 'REUSSI', {
+          demandeId: dossierInfo?.demandeId
+        });
+
+        await refreshDossierData();
+
+        setTimeout(() => {
+          setShowTerminal(false);
+          setShowInvoice(false);
+          setPaymentSuccess(null);
+        }, 3000);
+
+      } else {
+        setPaymentError(result.message || 'Erreur de paiement');
+      }
+
+    } catch (error: any) {
+      console.error('❌ Erreur détaillée:', error);
+
+      if (error.response?.status === 401) {
+        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+        setTimeout(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          window.location.href = '/login';
+        }, 2000);
+      } else if (error.response?.data) {
+        // 🔴 CORRECTION IMPORTANTE ICI 🔴
+        // Le backend renvoie { "error": "message" }
+        const errorData = error.response.data;
+
+        if (typeof errorData === 'string') {
+          setPaymentError(errorData);
+        } else if (errorData.error) {
+          // Cas où le backend renvoie { "error": "message" }
+          setPaymentError(errorData.error);
+        } else if (errorData.message) {
+          setPaymentError(errorData.message);
+        } else if (errorData.userMessage) {
+          // Si vous utilisez PaymentException avec userMessage
+          setPaymentError(errorData.userMessage);
+        } else {
+          setPaymentError('Erreur de paiement. Veuillez réessayer.');
+        }
+
+        console.log('Détails de l\'erreur:', errorData);
+      } else {
+        setPaymentError(error.message || 'Erreur lors du paiement');
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // MODIFICATION: Simplification de handlePayLater
   const handlePayLater = () => {
     // Fermer la facture
     setShowInvoice(false);
     setShowTerminal(false);
-    
+
     // Pas besoin de rafraîchir, le cache est déjà à jour
   };
 
@@ -690,15 +688,15 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
         <div className="bg-white rounded-[2.5rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden">
           <div className="p-8 bg-slate-50/50 border-b border-dashed border-slate-200 flex justify-between items-center">
             <div className="flex items-center gap-3">
-               <img src="https://upload.wikimedia.org/wikipedia/commons/c/ce/Coat_of_arms_of_Tunisia.svg" alt="Coat of Arms" className="w-8 h-8 grayscale opacity-60" />
-               <div className="flex flex-col">
-                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Ministère du Commerce</span>
-                 <span className="text-[10px] font-black text-slate-800 uppercase tracking-tighter">République Tunisienne</span>
-               </div>
+              <img src="https://upload.wikimedia.org/wikipedia/commons/c/ce/Coat_of_arms_of_Tunisia.svg" alt="Coat of Arms" className="w-8 h-8 grayscale opacity-60" />
+              <div className="flex flex-col">
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Ministère du Commerce</span>
+                <span className="text-[10px] font-black text-slate-800 uppercase tracking-tighter">République Tunisienne</span>
+              </div>
             </div>
             <div className="text-right">
-               <h2 className="text-sm font-black italic uppercase text-slate-900 tracking-tighter">Note Pro-Forma</h2>
-               <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">N° {dossierInfo?.reference || 'TN-' + Math.floor(1000 + Math.random() * 9000)}</p>
+              <h2 className="text-sm font-black italic uppercase text-slate-900 tracking-tighter">Note Pro-Forma</h2>
+              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">N° {dossierInfo?.reference || 'TN-' + Math.floor(1000 + Math.random() * 9000)}</p>
             </div>
           </div>
 
@@ -721,21 +719,21 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
             </div>
 
             <div className="py-6 px-8 bg-slate-50 rounded-[1.5rem] flex justify-between items-center border border-slate-100">
-               <div className="flex flex-col">
-                  <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Net à payer</span>
-                  <span className="text-[10px] font-bold text-slate-500">Total Global</span>
-               </div>
-               <span className="text-4xl font-black italic text-slate-900 tracking-tighter">500,000 <span className="text-lg">DT</span></span>
+              <div className="flex flex-col">
+                <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Net à payer</span>
+                <span className="text-[10px] font-bold text-slate-500">Total Global</span>
+              </div>
+              <span className="text-4xl font-black italic text-slate-900 tracking-tighter">500,000 <span className="text-lg">DT</span></span>
             </div>
 
             <div className="space-y-3 pt-4">
-              <button 
+              <button
                 onClick={handleGoToTerminal}
                 className="w-full py-4 bg-tunisia-red text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-red-500/10 hover:bg-red-700 transition-all active:scale-[0.98] text-[10px]"
               >
                 Procéder au paiement
               </button>
-              <button 
+              <button
                 onClick={handlePayLater}
                 className="w-full py-3 text-slate-400 font-black uppercase tracking-widest text-[9px] hover:text-slate-900 transition-colors"
               >
@@ -770,214 +768,211 @@ const handlePaymentSubmit = async (paymentDetails: any) => {
   }
 
   // --- RENDU : FORMULAIRE PRÉ-KYC ---
-if ((!dossierStatus || !dossierInfo?.hasDossier) && !isPreKycDone) {
+  if ((!dossierStatus || !dossierInfo?.hasDossier) && !isPreKycDone) {
     return (
-        <div className="max-w-4xl mx-auto py-12 px-4 animate-fade-in-scale">
-            <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
-                <div className="p-10 bg-slate-900 text-white relative overflow-hidden">
-                    <div className="absolute -right-10 -top-10 opacity-10">
-                        <i className="fas fa-id-card text-[10rem]"></i>
-                    </div>
-                    <div className="relative z-10">
-                        <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-none">Informations Préalables</h2>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Étape 1 sur 2 : Configuration du profil exportateur</p>
-                    </div>
+      <div className="max-w-4xl mx-auto py-12 px-4 animate-fade-in-scale">
+        <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+          <div className="p-10 bg-slate-900 text-white relative overflow-hidden">
+            <div className="absolute -right-10 -top-10 opacity-10">
+              <i className="fas fa-id-card text-[10rem]"></i>
+            </div>
+            <div className="relative z-10">
+              <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-none">Informations Préalables</h2>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Étape 1 sur 2 : Configuration du profil exportateur</p>
+            </div>
+          </div>
+
+          <form
+            onSubmit={(e) => { e.preventDefault(); setIsPreKycDone(true); }}
+            className="p-10 space-y-10"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Section 1: Identifiants */}
+              <div className="space-y-6">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Identifiants Système</h3>
+
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Nom d'utilisateur (Identifiant)
+                    {checkingUsername && <i className="fas fa-spinner fa-spin ml-2"></i>}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={preKycData.username}
+                      onChange={(e) => {
+                        setPreKycData({ ...preKycData, username: e.target.value });
+                      }}
+                      className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 transition-all font-bold text-sm ${usernameAvailable === true
+                          ? 'border-emerald-500 focus:border-emerald-500'
+                          : usernameAvailable === false
+                            ? 'border-red-500 focus:border-red-500'
+                            : 'border-transparent focus:border-tunisia-red'
+                        }`}
+                      placeholder="ex: company_export_tn"
+                    />
+                    <i className="fas fa-at absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                  </div>
+
+                  {/* Message de disponibilité */}
+                  {usernameMessage && (
+                    <p className={`text-[8px] font-black uppercase tracking-widest mt-1 ${usernameAvailable ? 'text-emerald-600' : 'text-red-600'
+                      }`}>
+                      <i className={`fas ${usernameAvailable ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-1`}></i>
+                      {usernameMessage}
+                    </p>
+                  )}
+
+                  {/* Suggestions de username */}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {usernameSuggestions.map(suggestion => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => {
+                          setPreKycData({ ...preKycData, username: suggestion });
+                          checkUsernameAvailability(suggestion);
+                        }}
+                        className="text-[8px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-tunisia-red hover:text-white transition-all"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <form 
-                    onSubmit={(e) => { e.preventDefault(); setIsPreKycDone(true); }}
-                    className="p-10 space-y-10"
-                >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Section 1: Identifiants */}
-                        <div className="space-y-6">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Identifiants Système</h3>
-                            
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    Nom d'utilisateur (Identifiant)
-                                    {checkingUsername && <i className="fas fa-spinner fa-spin ml-2"></i>}
-                                </label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        required
-                                        value={preKycData.username}
-                                        onChange={(e) => {
-                                            setPreKycData({...preKycData, username: e.target.value});
-                                        }}
-                                        className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 transition-all font-bold text-sm ${
-                                            usernameAvailable === true 
-                                                ? 'border-emerald-500 focus:border-emerald-500' 
-                                                : usernameAvailable === false 
-                                                    ? 'border-red-500 focus:border-red-500'
-                                                    : 'border-transparent focus:border-tunisia-red'
-                                        }`}
-                                        placeholder="ex: company_export_tn"
-                                    />
-                                    <i className="fas fa-at absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                                </div>
-                                
-                                {/* Message de disponibilité */}
-                                {usernameMessage && (
-                                    <p className={`text-[8px] font-black uppercase tracking-widest mt-1 ${
-                                        usernameAvailable ? 'text-emerald-600' : 'text-red-600'
-                                    }`}>
-                                        <i className={`fas ${usernameAvailable ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-1`}></i>
-                                        {usernameMessage}
-                                    </p>
-                                )}
-                                
-                                {/* Suggestions de username */}
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {usernameSuggestions.map(suggestion => (
-                                        <button
-                                            key={suggestion}
-                                            type="button"
-                                            onClick={() => {
-                                                setPreKycData({...preKycData, username: suggestion});
-                                                checkUsernameAvailability(suggestion);
-                                            }}
-                                            className="text-[8px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-tunisia-red hover:text-white transition-all"
-                                        >
-                                            {suggestion}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro Officiel d'Enregistrement</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={preKycData.officialRegistrationNumber}
+                      onChange={(e) => setPreKycData({ ...preKycData, officialRegistrationNumber: e.target.value })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                      placeholder="ex: RC-TN-2024-XXXX"
+                    />
+                    <i className="fas fa-hashtag absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                  </div>
+                </div>
+              </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro Officiel d'Enregistrement</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        required
-                                        value={preKycData.officialRegistrationNumber}
-                                        onChange={(e) => setPreKycData({...preKycData, officialRegistrationNumber: e.target.value})}
-                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                                        placeholder="ex: RC-TN-2024-XXXX"
-                                    />
-                                    <i className="fas fa-hashtag absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                                </div>
-                            </div>
-                        </div>
+              {/* Section 2: Détails du Site */}
+              <div className="space-y-6">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Localisation & Type</h3>
 
-                        {/* Section 2: Détails du Site */}
-                        <div className="space-y-6">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Localisation & Type</h3>
-                            
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Type de site de l'entreprise</label>
-                                <div className="relative">
-                                    <select 
-                                        required
-                                        value={preKycData.siteType}
-                                        onChange={(e) => setPreKycData({...preKycData, siteType: e.target.value as any})}
-                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer"
-                                    >
-                                        <option value="">Sélectionner un type...</option>
-                                        <option value="Siège">Siège Social</option>
-                                        <option value="Usine">Usine de Production</option>
-                                        <option value="entrepôt">Entrepôt Logistique</option>
-                                        <option value="distributeur">Centre de Distribution</option>
-                                    </select>
-                                    <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
-                                </div>
-                            </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Type de site de l'entreprise</label>
+                  <div className="relative">
+                    <select
+                      required
+                      value={preKycData.siteType}
+                      onChange={(e) => setPreKycData({ ...preKycData, siteType: e.target.value as any })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer"
+                    >
+                      <option value="">Sélectionner un type...</option>
+                      <option value="Siège">Siège Social</option>
+                      <option value="Usine">Usine de Production</option>
+                      <option value="entrepôt">Entrepôt Logistique</option>
+                      <option value="distributeur">Centre de Distribution</option>
+                    </select>
+                    <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                  </div>
+                </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Capacité / Volume annuel estimé</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        required
-                                        value={preKycData.annualCapacity}
-                                        onChange={(e) => setPreKycData({...preKycData, annualCapacity: e.target.value})}
-                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                                        placeholder="ex: 500 Tonnes / an"
-                                    />
-                                    <i className="fas fa-chart-line absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Section 3: Représentant Légal */}
-                    <div className="space-y-6 pt-4 border-t border-slate-100">
-                        <div className="flex items-center gap-3">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Représentant Légal</h3>
-                            {user?.legalRep && (
-                                <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-widest">
-                                    Identifié : {user.legalRep}
-                                </span>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    Fonction {user?.legalRep ? `de ${user.legalRep}` : ''}
-                                </label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        required
-                                        value={preKycData.representativeRole}
-                                        onChange={(e) => setPreKycData({...preKycData, representativeRole: e.target.value})}
-                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                                        placeholder="ex: Gérant, Directeur Général..."
-                                    />
-                                    <i className="fas fa-user-tie absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email de contact direct</label>
-                                <div className="relative">
-                                    <input 
-                                        type="email" 
-                                        required
-                                        value={preKycData.representativeEmail}
-                                        onChange={(e) => setPreKycData({...preKycData, representativeEmail: e.target.value})}
-                                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                                        placeholder="directeur@entreprise.tn"
-                                    />
-                                    <i className="fas fa-envelope absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-6">
-                        <button 
-                            type="submit"
-                            disabled={usernameAvailable !== true}
-                            className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 ${
-                                usernameAvailable === true
-                                    ? 'bg-tunisia-red text-white hover:scale-[1.02] active:scale-[0.98] shadow-red-500/20'
-                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                            }`}
-                        >
-                            <span>Continuer vers le dossier de conformité</span>
-                            <i className="fas fa-arrow-right"></i>
-                        </button>
-                        
-                        {usernameAvailable === false && (
-                            <p className="text-center text-[8px] font-black text-red-500 uppercase tracking-widest mt-3">
-                                Veuillez choisir un nom d'utilisateur disponible
-                            </p>
-                        )}
-                    </div>
-                </form>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Capacité / Volume annuel estimé</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={preKycData.annualCapacity}
+                      onChange={(e) => setPreKycData({ ...preKycData, annualCapacity: e.target.value })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                      placeholder="ex: 500 Tonnes / an"
+                    />
+                    <i className="fas fa-chart-line absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* Section 3: Représentant Légal */}
+            <div className="space-y-6 pt-4 border-t border-slate-100">
+              <div className="flex items-center gap-3">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Représentant Légal</h3>
+                {user?.legalRep && (
+                  <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-widest">
+                    Identifié : {user.legalRep}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Fonction {user?.legalRep ? `de ${user.legalRep}` : ''}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      value={preKycData.representativeRole}
+                      onChange={(e) => setPreKycData({ ...preKycData, representativeRole: e.target.value })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                      placeholder="ex: Gérant, Directeur Général..."
+                    />
+                    <i className="fas fa-user-tie absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email de contact direct</label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      value={preKycData.representativeEmail}
+                      onChange={(e) => setPreKycData({ ...preKycData, representativeEmail: e.target.value })}
+                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                      placeholder="directeur@entreprise.tn"
+                    />
+                    <i className="fas fa-envelope absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-6">
+              <button
+                type="submit"
+                disabled={usernameAvailable !== true}
+                className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 ${usernameAvailable === true
+                    ? 'bg-tunisia-red text-white hover:scale-[1.02] active:scale-[0.98] shadow-red-500/20'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+              >
+                <span>Continuer vers le dossier de conformité</span>
+                <i className="fas fa-arrow-right"></i>
+              </button>
+
+              {usernameAvailable === false && (
+                <p className="text-center text-[8px] font-black text-red-500 uppercase tracking-widest mt-3">
+                  Veuillez choisir un nom d'utilisateur disponible
+                </p>
+              )}
+            </div>
+          </form>
         </div>
+      </div>
     );
-}
+  }
   // --- RENDU : PREMIÈRE CONNEXION / DOSSIER INCOMPLET ---
-if (!dossierStatus || !dossierInfo?.hasDossier) {
+  if (!dossierStatus || !dossierInfo?.hasDossier) {
     const requiredFields: (keyof KycData)[] = [
-      'rcCert', 'rcTranslation', 'rcLegalization', 
-      'statutes', 'statutesTranslation', 'tinCert', 
-      'passport', 'designationPV', 
+      'rcCert', 'rcTranslation', 'rcLegalization',
+      'statutes', 'statutesTranslation', 'tinCert',
+      'passport', 'designationPV',
       'solvencyCert', 'annualAccounts'
     ];
     const filledFields = requiredFields.filter(f => kycData[f] !== null).length;
@@ -988,7 +983,7 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
         {/* ALERTE D'ERREUR POUR LA SOUMISSION DU DOSSIER */}
         {paymentError && (
           <div className="mb-6">
-            <FormAlert 
+            <FormAlert
               type="error"
               message={paymentError}
               onClose={() => setPaymentError(null)}
@@ -1027,7 +1022,7 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Documents d'immatriculation et statuts</p>
               </div>
             </div>
-            
+
             <div className="space-y-10">
               <div>
                 <div className="flex items-center gap-3 mb-4">
@@ -1091,14 +1086,13 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            disabled={loading || progress < 100} 
-            className={`w-full py-6 rounded-3xl font-black uppercase tracking-widest shadow-2xl transition-all flex items-center justify-center gap-3 ${
-              progress < 100 
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed' 
+          <button
+            type="submit"
+            disabled={loading || progress < 100}
+            className={`w-full py-6 rounded-3xl font-black uppercase tracking-widest shadow-2xl transition-all flex items-center justify-center gap-3 ${progress < 100
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : 'bg-tunisia-red text-white hover:bg-red-700 active:scale-[0.98]'
-            }`}
+              }`}
           >
             {loading ? <i className="fas fa-circle-notch animate-spin text-xl"></i> : <><i className="fas fa-paper-plane"></i> Finaliser et soumettre le dossier</>}
           </button>
@@ -1110,22 +1104,22 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
 
   // --- RENDU : DASHBOARD PRINCIPAL (DOCUMENTS VALIDÉS OU DOSSIER SOUMIS EN ATTENTE DE PAIEMENT) ---
   const daysRemaining = getRemainingDays();
-  
+
   // MODIFICATION: Nouvelle logique simplifiée pour la bannière
   // La bannière s'affiche si le dossier est soumis (SOUMISE) et que le paiement n'est pas encore fait
-  const shouldShowPaymentBanner = 
-    dossierInfo?.hasDossier && 
+  const shouldShowPaymentBanner =
+    dossierInfo?.hasDossier &&
     dossierInfo?.status === 'SOUMISE';
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-scale">
-      <br/>
-      
+      <br />
+
       {/* Bannière de paiement - Ne s'affiche que si nécessaire */}
       {shouldShowPaymentBanner && (
         <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 border-4 border-tunisia-red/30 animate-fade-in-scale relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-             <i className="fas fa-clock text-[8rem] transform -rotate-12"></i>
+            <i className="fas fa-clock text-[8rem] transform -rotate-12"></i>
           </div>
           <div className="flex items-center gap-8 relative z-10">
             <div className="flex flex-col items-center">
@@ -1148,31 +1142,31 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight italic uppercase">Dashboard Exportateur</h2>
           <div className="mt-1">
-             {dossierInfo?.status === 'VALIDEE' ? (
-                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
-                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                   Profil Vérifié & Agréé
-                </p>
-             ) : (
-                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
-                   <i className="fas fa-exclamation-triangle"></i>
-                   {dossierInfo?.status || "Profil Non Vérifié"}
-                </p>
-             )}
+            {dossierInfo?.status === 'VALIDEE' ? (
+              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                Profil Vérifié & Agréé
+              </p>
+            ) : (
+              <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                <i className="fas fa-exclamation-triangle"></i>
+                {dossierInfo?.status || "Profil Non Vérifié"}
+              </p>
+            )}
           </div>
         </div>
         <button onClick={() => setIsAiModalOpen(true)} className="mt-4 md:mt-0 bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all">
           <i className="fas fa-robot mr-2"></i> Support Expert IA
         </button>
       </div>
-      
+
       {/* HERO SECTION : DÉCLARATIONS DE PRODUITS - Ne s'affiche que si le dossier est validé */}
       {dossierInfo?.status === 'VALIDEE' ? (
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 relative overflow-hidden">
           <div className="absolute -right-20 -top-20 opacity-[0.03] pointer-events-none">
             <i className="fas fa-box-open text-[25rem] transform rotate-12"></i>
           </div>
-          
+
           <div className="relative z-10">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
               <div>
@@ -1180,7 +1174,7 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Gestion des lots de marchandises en cours</p>
               </div>
               <div className="flex items-center gap-4 w-full md:w-auto">
-                <button 
+                <button
                   onClick={() => navigate('/declare-product')}
                   className="bg-tunisia-red text-white px-8 py-4 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group whitespace-nowrap"
                 >
@@ -1206,21 +1200,21 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
             </div>
 
             <div className="space-y-4">
-              <div 
+              <div
                 onClick={() => navigate('/declarations')}
                 className="p-6 bg-slate-900 rounded-[2rem] flex items-center justify-between group cursor-pointer overflow-hidden relative"
               >
-                 <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
-                 <div className="flex items-center gap-4 relative z-10">
-                    <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
-                      <i className="fas fa-list-check text-white"></i>
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au Registre Complet</p>
-                      <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Consultez, filtrez et suivez l'état de toutes vos déclarations</p>
-                    </div>
-                 </div>
-                 <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
+                <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
+                    <i className="fas fa-list-check text-white"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au Registre Complet</p>
+                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Consultez, filtrez et suivez l'état de toutes vos déclarations</p>
+                  </div>
+                </div>
+                <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
               </div>
             </div>
           </div>
@@ -1247,25 +1241,25 @@ if (!dossierStatus || !dossierInfo?.hasDossier) {
       <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-12 text-center">Pipeline de Conformité : {selectedDoc?.name || "Dossier Global"}</h3>
         <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <PipelineNode 
-            label="Soumission" 
-            status={selectedDoc ? 'success' : (dossierInfo?.hasDossier ? 'success' : 'processing')} 
+          <PipelineNode
+            label="Soumission"
+            status={selectedDoc ? 'success' : (dossierInfo?.hasDossier ? 'success' : 'processing')}
           />
-          <PipelineNode 
-            label="Analyse IA" 
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'processing') : (dossierInfo?.status === 'SOUMISE' ? 'processing' : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending'))} 
+          <PipelineNode
+            label="Analyse IA"
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'processing') : (dossierInfo?.status === 'SOUMISE' ? 'processing' : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending'))}
           />
-          <PipelineNode 
-            label="Validation" 
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')} 
+          <PipelineNode
+            label="Validation"
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
           />
-          <PipelineNode 
-            label="Décision" 
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')} 
-            isLast={true} 
+          <PipelineNode
+            label="Décision"
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
+            isLast={true}
           />
         </div>
-        <br/>
+        <br />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

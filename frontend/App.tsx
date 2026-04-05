@@ -5,21 +5,21 @@ import { useAuth as useAuthHook } from './hooks/useAuth';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Home from './pages/Home';
-import ExporterSpace from './pages/ExporterSpace';
-import ImporterSpace from './pages/ImporterSpace';
+import ExporterSpace from './pages/Exportateur/ExporterSpace';
+import ImporterSpace from './pages/Importateur/ImporterSpace';
 import ValidatorSpace from './pages/ValidatorSpace';
 import DecisionAid from './pages/DecisionAid';
-import AdminPanel from './pages/AdminPanel';
-import ExporterSignUp from './pages/ExporterSignUp';
+import AdminPanel from './pages/Admin/AdminPanel';
+import ExporterSignUp from './pages/Exportateur/ExporterSignUp';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
-import ProductDeclaration from './pages/ProductDeclaration';
+import ProductDeclaration from './pages/Exportateur/ProductDeclaration';
 import DeclarationsList from './pages/DeclarationsList';
 import { SessionExpiredHandler } from './components/SessionExpiredHandler';
 
 // Define User types for the simulation
-export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'validator' | 'admin';
+export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'validator' | 'ADMIN';
 
 export interface User {
   email: string;
@@ -91,35 +91,41 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode, roles?: UserRole[] }
     );
   }
   // ✅ Une fois le chargement terminé, vérifier l'utilisateur
-    if (!user) {
-      console.log('🚫 Pas d\'utilisateur, redirection vers login');
-      return <Navigate to="/login" replace />;
-    }
+  if (!user) {
+    console.log('🚫 Pas d\'utilisateur, redirection vers login');
+    return <Navigate to="/login" replace />;
+  }
 
-    if (roles && !roles.includes(user.role)) {
-      console.log('🚫 Rôle non autorisé, redirection vers accueil');
-      return <Navigate to="/" replace />;
-    }
-    
-    console.log('✅ Accès autorisé');
-    return <>{children}</>;
+  if (roles && !roles.includes(user.role)) {
+    console.log('🚫 Rôle non autorisé, redirection vers accueil');
+    return <Navigate to="/" replace />;
+  }
+
+  console.log('✅ Accès autorisé');
+  return <>{children}</>;
 };
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const { user } = useAuth();
-  const isLoginPage = location.pathname === '/login';
-  const isForgotPasswordPage = location.pathname === '/forgot-password';
-  const isResetPasswordPage = location.pathname === '/reset-password';
-  const isAdminBackOffice = location.pathname === '/admin' && user?.role === 'admin';
+  // Liste des routes qui ne doivent pas avoir Navbar/Footer
+  const noNavbarRoutes = [
+    '/login',
+    '/forgot-password', 
+    '/reset-password',
+    '/admin',
+    '/validator'
+  ];
+  
+  const shouldHideNavbar = noNavbarRoutes.includes(location.pathname);
 
   return (
     <div className="flex flex-col min-h-screen">
-      {!isLoginPage && !isForgotPasswordPage && !isResetPasswordPage && !isAdminBackOffice && <Navbar />}
-      <main className={`flex-grow ${isLoginPage || isForgotPasswordPage || isResetPasswordPage || isAdminBackOffice ? '' : 'container mx-auto px-4 py-8'}`}>
+      {!shouldHideNavbar && <Navbar />}
+      <main className={`flex-grow ${shouldHideNavbar ? '' : 'container mx-auto px-4 py-8'}`}>
         {children}
       </main>
-      {!isLoginPage && !isForgotPasswordPage && !isResetPasswordPage && !isAdminBackOffice && <Footer />}
+      {!shouldHideNavbar && <Footer />}
     </div>
   );
 };
@@ -134,11 +140,11 @@ const ForgotPasswordWrapper: React.FC = () => {
 const ResetPasswordWrapper: React.FC = () => {
   const navigate = useNavigate();
   const { search } = useLocation();
-  
+
   // Extraire le token de l'URL
   const searchParams = new URLSearchParams(search);
   const resetToken = searchParams.get('token');
-  
+
   // Rediriger vers login avec le token dans l'URL
   useEffect(() => {
     if (resetToken) {
@@ -147,7 +153,7 @@ const ResetPasswordWrapper: React.FC = () => {
       navigate('/login', { replace: true });
     }
   }, [resetToken, navigate]);
-  
+
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
@@ -161,7 +167,7 @@ const ResetPasswordWrapper: React.FC = () => {
 const App: React.FC = () => {
   const { i18n } = useTranslation();
   const authHook = useAuthHook(); // Utiliser le hook personnalisé
-  
+
   // État pour les produits acceptés
   const [acceptedProducts, setAcceptedProducts] = useState<Set<number>>(new Set());
 
@@ -192,18 +198,18 @@ const App: React.FC = () => {
     const handleAcceptedNotification = (event: CustomEvent) => {
       console.log('Événement notification acceptée reçu dans App:', event.detail);
       const notification = event.detail;
-      
+
       // Extraire l'ID du produit de la notification
       const productId = notification.targetEntityId;
-      
+
       if (productId) {
         console.log('Ajout du produit accepté:', productId);
         addAcceptedProduct(productId);
       }
     };
-    
+
     window.addEventListener('acceptedNotification', handleAcceptedNotification as EventListener);
-    
+
     return () => {
       window.removeEventListener('acceptedNotification', handleAcceptedNotification as EventListener);
     };
@@ -245,11 +251,11 @@ const App: React.FC = () => {
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user: authHook.user, 
+    <AuthContext.Provider value={{
+      user: authHook.user,
       isLoading: authHook.isLoading,
-      login, 
-      logout, 
+      login,
+      logout,
       updateUser,
       dossierStatus: authHook.dossierStatus,
       updateDossierStatus: authHook.updateDossierStatus,
@@ -265,10 +271,10 @@ const App: React.FC = () => {
             <Route path="/signup/exporter" element={<ExporterSignUp />} />
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPasswordWrapper />} />
-            
+
             {/* Route de réinitialisation de mot de passe */}
             <Route path="/reset-password" element={<ResetPasswordWrapper />} />
-            
+
             <Route path="/profile" element={
               <ProtectedRoute>
                 <Profile />
@@ -300,12 +306,12 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/dashboard" element={
-              <ProtectedRoute roles={['admin', 'validator']}>
+              <ProtectedRoute roles={['ADMIN', 'validator']}>
                 <DecisionAid />
               </ProtectedRoute>
             } />
             <Route path="/admin" element={
-              <ProtectedRoute roles={['admin']}>
+              <ProtectedRoute roles={['ADMIN']}>
                 <AdminPanel />
               </ProtectedRoute>
             } />

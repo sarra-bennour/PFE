@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RequestStatus } from '../types';
+import { RequestStatus } from '../../types';
 import axios from 'axios';
 
 interface Declaration {

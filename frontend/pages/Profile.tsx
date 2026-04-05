@@ -57,6 +57,15 @@ const Profile: React.FC = () => {
 
   // État pour le chargement du profil
   const [loadingProfile, setLoadingProfile] = useState(false);
+  
+  // NOUVEAUX ÉTATS POUR LA DEMANDE DE DÉSACTIVATION PERSISTANTE
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const [pendingRequestInfo, setPendingRequestInfo] = useState<{
+    requestId: number;
+    requestDate: string;
+    isUrgent: boolean;
+    status: string;
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     companyName: user?.companyName || user?.raisonSociale || '',
@@ -162,6 +171,47 @@ const Profile: React.FC = () => {
     
     check2FAStatus();
   }, [user?.email]);
+
+  // ========== VÉRIFICATION DE L'ÉTAT DE LA DEMANDE DE DÉSACTIVATION ==========
+  const checkDeactivationRequestStatus = async () => {
+    if (!user || (user.role !== 'EXPORTATEUR' && user.role !== 'exporter')) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8080/api/auth/deactivation-request/status', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setHasPendingRequest(data.hasPendingRequest);
+        if (data.hasPendingRequest && data.requestId) {
+          setPendingRequestInfo({
+            requestId: data.requestId,
+            requestDate: data.requestDate,
+            isUrgent: data.isUrgent,
+            status: data.status
+          });
+          setDeactivationRequested(true);
+        } else {
+          setDeactivationRequested(false);
+          setPendingRequestInfo(null);
+        }
+      }
+    } catch (err) {
+      console.error('Erreur lors de la vérification de la demande:', err);
+    }
+  };
+
+  // Appeler la vérification au chargement du composant
+  useEffect(() => {
+    if (user && (user.role === 'EXPORTATEUR' || user.role === 'exporter')) {
+      checkDeactivationRequestStatus();
+    }
+  }, [user]);
 
   const fetchAllDocuments = async () => {
     try {
@@ -270,38 +320,28 @@ const Profile: React.FC = () => {
   // Fonction pour obtenir le nom d'affichage d'un document selon son type
   const getDocumentDisplayName = (docType: string, defaultName: string): string => {
     switch(docType) {
-      // Documents registre de commerce
       case 'RC_CERT':
         return 'Registre du commerce';
       case 'RC_TRANSLATION':
         return 'Traduction du registre de commerce';
       case 'RC_LEGALIZATION':
         return 'Légalisation du registre de commerce';
-      
-      // Documents statuts
       case 'STATUTES':
         return 'Statuts de la société';
       case 'STATUTES_TRANSLATION':
         return 'Traduction des statuts';
-      
-      // Documents fiscaux
       case 'TIN_CERT':
         return 'Attestation fiscale';
-      
-      // Documents représentant
       case 'PASSPORT':
         return 'Passeport du gérant';
       case 'DESIGNATION_PV':
         return 'PV de désignation du gérant';
-      
-      // Documents financiers
       case 'SOLVENCY_CERT':
         return 'Certificat de solvabilité';
       case 'ANNUAL_ACCOUNTS':
         return 'Comptes annuels';
       case 'EXTERNAL_AUDIT':
         return 'Rapport d\'audit externe';
-      
       default:
         return defaultName;
     }
@@ -314,29 +354,21 @@ const Profile: React.FC = () => {
       case 'RC_TRANSLATION':
       case 'RC_LEGALIZATION':
         return 'fa-building';
-      
       case 'STATUTES':
       case 'STATUTES_TRANSLATION':
         return 'fa-file-contract';
-      
       case 'TIN_CERT':
         return 'fa-file-invoice-dollar';
-      
       case 'PASSPORT':
         return 'fa-passport';
-      
       case 'DESIGNATION_PV':
         return 'fa-file-signature';
-      
       case 'SOLVENCY_CERT':
         return 'fa-university';
-      
       case 'ANNUAL_ACCOUNTS':
         return 'fa-chart-pie';
-      
       case 'EXTERNAL_AUDIT':
         return 'fa-chart-line';
-      
       default:
         return 'fa-file';
     }
@@ -345,13 +377,8 @@ const Profile: React.FC = () => {
   // ========== MAPPER LES DOCUMENTS RÉELS VERS LE FORMAT AFFICHAGE ==========
   const getDisplayDocuments = () => {
     if (documents.length > 0) {
-      // Liste des 4 documents principaux à afficher
       const mainDocTypes = ['RC_CERT', 'STATUTES', 'TIN_CERT', 'PASSPORT'];
-      
-      // Filtrer pour n'avoir que les 4 types principaux
       const mainDocs = documents.filter(doc => mainDocTypes.includes(doc.documentType));
-      
-      // Si on a moins de 4 documents, on prend les premiers disponibles
       const docsToShow = mainDocs.length > 0 ? mainDocs : documents.slice(0, 4);
       
       return docsToShow.map(doc => ({
@@ -366,7 +393,6 @@ const Profile: React.FC = () => {
       }));
     }
     
-    // Sinon, données mock basées sur le statut de la demande
     if (dossierStatusLocal?.status === 'VALIDEE') {
       return [
         { id: 1, name: "Statuts de la société", status: "Validé", date: "12/01/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
@@ -382,7 +408,6 @@ const Profile: React.FC = () => {
         { id: 4, name: "Passeport du gérant", status: "Validé", date: "12/01/2024", icon: "fa-passport", fileType: "jpg", fileName: "passeport.jpg" }
       ];
     } else {
-      // Données par défaut
       return [
         { id: 1, name: "Statuts de la société", status: "En cours", date: "15/02/2024", icon: "fa-file-contract", fileType: "pdf", fileName: "statuts.pdf" },
         { id: 2, name: "Registre du commerce", status: "En cours", date: "15/02/2024", icon: "fa-building", fileType: "pdf", fileName: "registre.pdf" },
@@ -395,12 +420,10 @@ const Profile: React.FC = () => {
   // ========== MAPPER POUR LE DOSSIER COMPLET ==========
   const getFullDossierData = () => {
     if (documents.length > 0) {
-      // Catégorie Identité
       const identiteDocs = documents.filter(doc => 
         ['RC_CERT', 'RC_TRANSLATION', 'RC_LEGALIZATION', 'STATUTES', 'STATUTES_TRANSLATION', 'PASSPORT', 'DESIGNATION_PV'].includes(doc.documentType)
       );
       
-      // Catégorie Fiscalité & Finance
       const fiscaliteDocs = documents.filter(doc => 
         ['TIN_CERT', 'SOLVENCY_CERT', 'ANNUAL_ACCOUNTS', 'EXTERNAL_AUDIT'].includes(doc.documentType)
       );
@@ -498,7 +521,6 @@ const Profile: React.FC = () => {
         throw new Error(data.error || 'Erreur lors de la mise à jour');
       }
 
-      // Mettre à jour le contexte utilisateur
       updateUser({
         ...user,
         companyName: formData.companyName,
@@ -531,7 +553,7 @@ const Profile: React.FC = () => {
     }
   };
 
-  // ========== FONCTIONS 2FA (UNIQUEMENT POUR EXPORTATEUR) ==========
+  // ========== FONCTIONS 2FA ==========
   const toggle2FA = async () => {
     if (isLoading) return;
     
@@ -543,7 +565,6 @@ const Profile: React.FC = () => {
       const token = localStorage.getItem('token');
       
       if (!user.twoFactorEnabled) {
-        // Activation du 2FA
         const setupResponse = await fetch('http://localhost:8080/api/auth/2fa/setup', {
           method: 'POST',
           headers: {
@@ -569,7 +590,6 @@ const Profile: React.FC = () => {
         setShow2FASetup(true);
 
       } else {
-        // Désactivation du 2FA
         setShow2FADisable(true);
       }
     } catch (err: any) {
@@ -585,8 +605,6 @@ const Profile: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      
-      // Nettoyer le code (enlever les espaces)
       const cleanCode = code.replace(/\s/g, '');
       
       const response = await fetch('http://localhost:8080/api/auth/2fa/enable', {
@@ -664,7 +682,7 @@ const Profile: React.FC = () => {
     setTwoFactorCode(['', '', '', '', '', '']);
   };
 
-  // ========== DEMANDE DE DÉSACTIVATION ==========
+  // ========== DEMANDE DE DÉSACTIVATION MODIFIÉE ==========
   const handleDeactivationRequest = async () => {
     if (!deactivationReason.trim()) {
       setError('Veuillez indiquer une raison pour la désactivation');
@@ -701,6 +719,9 @@ const Profile: React.FC = () => {
       setDeactivationReason('');
       setIsUrgent(false);
       
+      // Re-vérifier l'état de la demande
+      await checkDeactivationRequestStatus();
+      
       setTimeout(() => setSuccessMessage(''), 5000);
       
     } catch (err: any) {
@@ -710,7 +731,6 @@ const Profile: React.FC = () => {
     }
   };
 
-  // ========== ANNULATION DE LA DEMANDE ==========
   const cancelDeactivation = () => {
     setIsDeactivating(false);
     setDeactivationReason('');
@@ -737,14 +757,11 @@ const Profile: React.FC = () => {
     admin: 'bg-slate-900'
   };
 
-  // ========== FONCTION POUR LE BADGE DE STATUT (MODIFIÉE) ==========
   const userStatusBadge = () => {
     if (user.role === 'EXPORTATEUR' || user.role === 'exporter') {
-      // Récupérer les statuts depuis le localStorage ou dossierStatus
       const demandeStatus = dossierStatus?.demandeStatus || dossierStatusLocal?.status;
       const paymentStatus = dossierStatus?.paymentStatus || dossierStatusLocal?.paymentStatus;
       
-      // CAS 1: SOUMISE + EN_ATTENTE = Attente de paiement
       if (demandeStatus === 'SOUMISE' && paymentStatus === 'EN_ATTENTE') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 border border-amber-200 shadow-sm">
@@ -753,7 +770,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // CAS 2: EN_COURS_VALIDATION + REUSSI = En cours de validation
       if (demandeStatus === 'EN_COURS_VALIDATION' && paymentStatus === 'REUSSI') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
@@ -762,7 +778,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // CAS 3: VALIDEE + REUSSI = Vérifié
       if (demandeStatus === 'VALIDEE' && paymentStatus === 'REUSSI') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm">
@@ -771,7 +786,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // CAS 4: REJETEE
       if (demandeStatus === 'REJETEE') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-100 text-red-700 border border-red-200 shadow-sm">
@@ -780,7 +794,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // CAS 5: SUSPENDUE
       if (demandeStatus === 'SUSPENDUE') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-700 border border-slate-200 shadow-sm">
@@ -789,7 +802,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // CAS 6: EN_ATTENTE_INFO
       if (demandeStatus === 'EN_ATTENTE_INFO') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-orange-100 text-orange-700 border border-orange-200 shadow-sm">
@@ -798,7 +810,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // CAS 7: BROUILLON (pas encore soumis) ou autres cas
       const status = user.statut || user.status;
       if (status === 'INACTIF' || status === 'PENDING_VERIFICATION') {
         return (
@@ -808,7 +819,6 @@ const Profile: React.FC = () => {
         );
       }
       
-      // Fallback: statut utilisateur par défaut
       return (
         <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
           status === 'ACTIF' || status === 'VERIFIED' ? 'bg-green-50 text-green-600 border-green-200' : 
@@ -833,7 +843,6 @@ const Profile: React.FC = () => {
     );
   };
 
-  // Déterminer si la bannière de paiement doit s'afficher (uniquement pour exportateur)
   const shouldShowPaymentBanner = 
     (user.role === 'EXPORTATEUR' || user.role === 'exporter') &&
     (dossierStatus?.demandeStatus === 'SOUMISE' || dossierStatusLocal?.status === 'SOUMISE') && 
@@ -843,7 +852,6 @@ const Profile: React.FC = () => {
                             (user.statut === 'ACTIF' || user.emailVerified === true);
   const remainingDays = getRemainingDays();
 
-  // Mock Data pour le certificat (à remplacer par les vraies données)
   const certData = {
     enTete: "RÉPUBLIQUE TUNISIENNE - MINISTÈRE DU COMMERCE",
     titre: "CERTIFICAT D'ENREGISTREMENT D'EXPORTATEUR ÉTRANGER",
@@ -909,7 +917,6 @@ const Profile: React.FC = () => {
           pdf.save(fileName);
           
         } catch (pdfError) {
-          // Fallback PNG
           try {
             const link = document.createElement('a');
             link.download = `certificat_nee_${user?.id || 'exportateur'}_${Date.now()}.png`;
@@ -931,7 +938,6 @@ const Profile: React.FC = () => {
     return roleColors[role] || roleColors['EXPORTATEUR'];
   };
 
-  // Obtenir les documents à afficher (uniquement pour exportateur)
   const displayDocuments = getDisplayDocuments();
   const fullDossierData = getFullDossierData();
 
@@ -1080,7 +1086,7 @@ const Profile: React.FC = () => {
         </div>
       )}
 
-      {/* ALERTE PAIEMENT PERSISTANTE - basée sur les statuts du cache (uniquement pour exportateur) */}
+      {/* ALERTE PAIEMENT PERSISTANTE */}
       {shouldShowPaymentBanner && (
         <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-2xl mb-10 flex items-center justify-between border-4 border-tunisia-red/20 animate-fade-in-scale">
            <div className="flex items-center gap-6">
@@ -1120,11 +1126,9 @@ const Profile: React.FC = () => {
                 <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">
                   {user.companyName || user.raisonSociale || user.email.split('@')[0]}
                 </h1>
-                {/* BADGE DE STATUT - C'EST ICI QUE ÇA CHANGE */}
                 {userStatusBadge()}
               </div>
               <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">{user.email}</p>
-              {/* Afficher le matricule Mobile ID pour les importateurs */}
               {(user.role === 'IMPORTATEUR' || user.role === 'importer') && user.mobileIdMatricule && (
                 <p className="text-emerald-600 font-bold text-xs tracking-widest mt-1">
                   <i className="fas fa-mobile-alt mr-2"></i>
@@ -1147,7 +1151,6 @@ const Profile: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-8">
-           {/* Certificat NEE - UNIQUEMENT POUR EXPORTATEUR */}
            {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && isVerifiedExporter && (
               <div className="bg-emerald-600 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
                  <div className="absolute -top-10 -right-10 opacity-10 group-hover:scale-110 transition-transform">
@@ -1167,7 +1170,6 @@ const Profile: React.FC = () => {
               </div>
            )}
 
-           {/* Carte d'information Mobile ID - POUR IMPORTATEUR */}
            {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
              <div className="bg-emerald-600 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
                <div className="absolute -top-10 -right-10 opacity-10">
@@ -1193,7 +1195,6 @@ const Profile: React.FC = () => {
               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Sécurité & Compte</h3>
               <div className="space-y-4">
                  
-                 {/* MODIFICATION MOT DE PASSE - UNIQUEMENT POUR EXPORTATEUR ET ADMIN */}
                  {(user.role === 'EXPORTATEUR' || user.role === 'exporter' || user.role === 'admin') && (
                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
                      <div className="flex items-center gap-3">
@@ -1209,7 +1210,6 @@ const Profile: React.FC = () => {
                    </div>
                  )}
                  
-                 {/* 2FA - UNIQUEMENT POUR EXPORTATEUR */}
                  {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
                      <div className="flex items-center gap-3">
@@ -1239,7 +1239,6 @@ const Profile: React.FC = () => {
                    </div>
                  )}
 
-                 {/* MESSAGE POUR IMPORTATEUR - INDISPONIBILITÉ DE CERTAINES FONCTIONS */}
                  {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                      <div className="flex items-center gap-3">
@@ -1255,7 +1254,7 @@ const Profile: React.FC = () => {
                  )}
 
                  <div className="pt-4 border-t border-slate-50">
-                    {deactivationRequested ? (
+                    {deactivationRequested || hasPendingRequest ? (
                       <div className="text-center py-4 bg-green-50 rounded-xl border border-green-100">
                         <div className="flex items-center justify-center gap-2 text-green-600 mb-1">
                           <i className="fas fa-check-circle"></i>
@@ -1266,6 +1265,12 @@ const Profile: React.FC = () => {
                         <p className="text-[8px] text-green-500">
                           En attente de traitement par l'administrateur
                         </p>
+                        {pendingRequestInfo && (
+                          <p className="text-[7px] text-green-400 mt-1">
+                            Demande du {new Date(pendingRequestInfo.requestDate).toLocaleDateString('fr-FR')}
+                            {pendingRequestInfo.isUrgent && " (Urgent)"}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       !isDeactivating ? (
@@ -1383,7 +1388,6 @@ const Profile: React.FC = () => {
                   />
                 </div>
 
-                {/* AFFICHER CES CHAMPS UNIQUEMENT POUR EXPORTATEUR */}
                 {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1479,7 +1483,6 @@ const Profile: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
                   
-                  {/* COMPANY NAME - UNIQUEMENT POUR EXPORTATEUR */}
                   {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                     <div>
                       <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
@@ -1491,7 +1494,6 @@ const Profile: React.FC = () => {
                     </div>
                   )}
                   
-                  {/* TELEPHONE - POUR TOUS LES RÔLES */}
                   <div>
                     <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                       {t('phone_number')}
@@ -1501,7 +1503,6 @@ const Profile: React.FC = () => {
                     </span>
                   </div>
                   
-                  {/* EMAIL - POUR TOUS LES RÔLES */}
                   <div className="md:col-span-2">
                     <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                       Email
@@ -1511,7 +1512,6 @@ const Profile: React.FC = () => {
                     </span>
                   </div>
                   
-                  {/* CHAMPS SPÉCIFIQUES EXPORTATEUR */}
                   {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
                     <>
                       <div>
@@ -1555,7 +1555,6 @@ const Profile: React.FC = () => {
                         </span>
                       </div>
                       
-                      {/* ADRESSE DU SIÈGE - UNIQUEMENT POUR EXPORTATEUR */}
                       <div className="md:col-span-2 pt-6 border-t border-slate-50">
                         <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                           Adresse du siège
@@ -1567,10 +1566,8 @@ const Profile: React.FC = () => {
                     </>
                   )}
 
-                  {/* POUR IMPORTATEUR - AFFICHER UNIQUEMENT LES INFOS DE BASE */}
                   {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
                     <>
-                      {/* INFORMATIONS SUPPLÉMENTAIRES POUR IMPORTATEUR (OPTIONNEL) */}
                       <div className="md:col-span-2 pt-4">
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                           <p className="text-xs font-bold text-slate-600">
@@ -1586,7 +1583,6 @@ const Profile: React.FC = () => {
             )}
           </div>
 
-          {/* DOSSIER DE CONFORMITÉ - UNIQUEMENT POUR EXPORTATEUR */}
           {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
             <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
               <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
@@ -1675,7 +1671,6 @@ const Profile: React.FC = () => {
             </div>
           )}
 
-          {/* MESSAGE POUR IMPORTATEUR - PAS DE DOSSIER DE CONFORMITÉ */}
           {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
             <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
               <div className="flex items-center gap-4">
@@ -1900,14 +1895,12 @@ const Profile: React.FC = () => {
               </div>
 
               <div className="space-y-6">
-                {/* Instructions */}
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                   <p className="text-xs font-bold text-blue-800">
                     1. Scannez ce QR code avec Google Authenticator ou une application compatible
                   </p>
                 </div>
 
-                {/* QR Code */}
                 {twoFactorQrCode && (
                   <div className="flex justify-center p-6 bg-white rounded-2xl border-2 border-dashed border-slate-200">
                     <img 
@@ -1918,7 +1911,6 @@ const Profile: React.FC = () => {
                   </div>
                 )}
 
-                {/* Secret (au cas où) */}
                 {twoFactorSecret && (
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
@@ -1943,7 +1935,6 @@ const Profile: React.FC = () => {
                   </div>
                 )}
 
-                {/* Saisie du code */}
                 <div className="space-y-4">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Entrez le code à 6 chiffres
@@ -1962,7 +1953,6 @@ const Profile: React.FC = () => {
                           newCode[idx] = e.target.value.replace(/\D/g, '');
                           setTwoFactorCode(newCode);
                           
-                          // Auto-focus suivant
                           if (e.target.value && idx < 5) {
                             const nextInput = document.getElementById(`2fa-input-${idx + 1}`);
                             nextInput?.focus();
@@ -1982,7 +1972,6 @@ const Profile: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Boutons */}
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => verifyAndEnable2FA(twoFactorCode.join(''))}
@@ -2044,7 +2033,6 @@ const Profile: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Saisie du code */}
                 <div className="space-y-4">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Code à 6 chiffres
@@ -2082,7 +2070,6 @@ const Profile: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Boutons */}
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => verifyAndDisable2FA(twoFactorCode.join(''))}
