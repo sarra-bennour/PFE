@@ -3,6 +3,7 @@ package com.tunisia.commerce.controller;
 import com.tunisia.commerce.dto.user.DeactivationRequestAdminDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.entity.Administrateur;
+import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.repository.AdministrateurRepository;
 import com.tunisia.commerce.service.UserService;
 import com.tunisia.commerce.config.JwtUtil;
@@ -135,34 +136,6 @@ public class AdminController {
         }
     }
 
-    /**
-     * Réinitialiser le mot de passe d'un utilisateur
-     */
-    @PostMapping("/users/{userId}/reset-password")
-    public ResponseEntity<?> resetUserPassword(
-            @PathVariable Long userId,
-            @RequestHeader("Authorization") String authHeader) {
-
-        try {
-            log.info("=== RÉINITIALISATION MOT DE PASSE UTILISATEUR ID: {} ===", userId);
-            validateAdmin(authHeader);
-
-            // Implémenter la logique de réinitialisation
-            // userService.resetUserPassword(userId);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Email de réinitialisation envoyé à l'utilisateur"
-            ));
-        } catch (Exception e) {
-            log.error("Erreur lors de la réinitialisation: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage()
-            ));
-        }
-    }
-
     @PostMapping("/deactivation-requests/{requestId}/process")
     public ResponseEntity<?> processDeactivationRequest(
             @PathVariable Long requestId,
@@ -238,6 +211,54 @@ public class AdminController {
 
         } catch (RuntimeException e) {
             log.error("Erreur lors de la réactivation: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur inattendue: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Erreur interne: " + e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/users/{userId}/reset-password")
+    public ResponseEntity<?> resetUserPassword(
+            @PathVariable Long userId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        try {
+            log.info("=== RÉINITIALISATION MOT DE PASSE - ID: {} ===", userId);
+
+            // Vérifier que l'utilisateur est admin
+            validateAdmin(authHeader);
+
+            // Récupérer l'utilisateur pour vérifier son type
+            UserDTO user = userService.getUserById(userId);
+
+            // Vérifier si l'utilisateur est un importateur
+            if (user.getRole() == UserRole.IMPORTATEUR) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Les importateurs n'utilisent pas de mot de passe. Ils s'authentifient via Mobile ID."
+                ));
+            }
+
+            String newPassword = userService.resetUserPassword(userId);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Mot de passe réinitialisé avec succès et envoyé par email");
+
+            // En développement uniquement - NE PAS FAIRE EN PRODUCTION
+            response.put("newPassword", newPassword);
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            log.error("Erreur lors de la réinitialisation: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "error", e.getMessage()

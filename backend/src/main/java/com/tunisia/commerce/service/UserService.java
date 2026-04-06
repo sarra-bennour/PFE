@@ -2,6 +2,7 @@ package com.tunisia.commerce.service;
 
 import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
+import com.tunisia.commerce.entity.User;
 
 import java.util.List;
 
@@ -37,6 +38,11 @@ public interface UserService {
     DeactivationRequestAdminDTO getDeactivationRequestById(Long requestId);
     void updateUserStatus(Long userId, String status);
     void reactivateAccount(Long userId, String adminComment);
+
+    // Dans UserService.java
+    String resetUserPassword(Long userId);
+    String generateAndSendPassword(Long userId);
+    boolean canHavePassword(User user);
 
 
 }

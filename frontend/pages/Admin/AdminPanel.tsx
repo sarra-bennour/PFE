@@ -1,11 +1,9 @@
-
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../App';
 import Sidebar from '../../components/Sidebar';
 import CreateUserForm from './CreateUserForm';
-import ResetPasswordForm from '../../components/ResetPasswordForm';
 import UserManagement from './UserManagement';
 
 const AdminPanel: React.FC = () => {
@@ -17,6 +15,9 @@ const AdminPanel: React.FC = () => {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [loadingPassword, setLoadingPassword] = useState(false);
 
   const sidebarItems = [
     { id: 'overview', label: 'Surveillance', icon: 'fa-chart-line' },
@@ -51,9 +52,49 @@ const AdminPanel: React.FC = () => {
     { name: '20:00', in: 280, out: 340 },
   ];
 
-  const handleResetPassword = (u: any) => {
+  // Fonction pour réinitialiser le mot de passe via l'API backend
+  const handleResetPassword = async (u: any) => {
+    const token = localStorage.getItem('token');
+    
+    // Vérifier si c'est un importateur
+    if (u.role === 'IMPORTATEUR') {
+      alert("Les importateurs n'utilisent pas de mot de passe.\nIls s'authentifient via Mobile ID.");
+      return;
+    }
+    
+    // Confirmation avant réinitialisation
+    if (!window.confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe de ${u.email} ?`)) {
+      return;
+    }
+    
+    setLoadingPassword(true);
     setSelectedUser(u);
-    setShowResetPassword(true);
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/admin/users/${u.id}/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        // Récupérer le mot de passe généré depuis la réponse
+        const tempPassword = data.newPassword || "Vérifiez votre email";
+        setGeneratedPassword(tempPassword);
+        setShowResetPassword(true);
+      } else {
+        alert(data.error || 'Erreur lors de la réinitialisation');
+      }
+    } catch (error) {
+      console.error('Erreur:', error);
+      alert('Erreur de connexion au serveur');
+    } finally {
+      setLoadingPassword(false);
+    }
   };
 
   return (
@@ -102,18 +143,47 @@ const AdminPanel: React.FC = () => {
               <div className="p-10 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
                 <div>
                   <h3 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">Réinitialisation</h3>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Utilisateur: {selectedUser?.name}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Utilisateur: {selectedUser?.name || selectedUser?.email}</p>
                 </div>
                 <button onClick={() => setShowResetPassword(false)} className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm">
                   <i className="fas fa-times"></i>
                 </button>
               </div>
               <div className="p-10">
-                <ResetPasswordForm 
-                  requireCurrentPassword={false}
-                  onSuccess={() => setShowResetPassword(false)}
-                  onCancel={() => setShowResetPassword(false)}
-                />
+                <div className="space-y-6 text-center">
+                  <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-emerald-100">
+                    <i className="fas fa-envelope-circle-check text-3xl"></i>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Nouveau Mot de Passe Généré</p>
+                    <div className="bg-slate-50 p-6 rounded-2xl border-2 border-dashed border-slate-200 group relative overflow-hidden">
+                      <span className="text-xl md:text-2xl font-black text-slate-900 tracking-[0.5em] font-mono italic">{generatedPassword}</span>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(generatedPassword || '');
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className={`absolute right-4 top-1/2 -translate-y-1/2 transition-all ${copied ? 'text-emerald-500' : 'text-slate-300 hover:text-tunisia-red'}`}
+                        title={copied ? "Copié !" : "Copier"}
+                      >
+                        <i className={`fas ${copied ? 'fa-check' : 'fa-copy'}`}></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-tight">
+                      <i className="fas fa-info-circle mr-2"></i>
+                      Un e-mail contenant ces identifiants a été envoyé à l'utilisateur.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setShowResetPassword(false)}
+                    className="w-full py-4 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
+                  >
+                    Terminer
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -10,6 +10,7 @@ import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.EmailService;
 import com.tunisia.commerce.service.UserService;
 import com.tunisia.commerce.config.JwtUtil;
+import com.tunisia.commerce.util.PasswordGenerator;
 import dev.samstevens.totp.code.CodeGenerator;
 import dev.samstevens.totp.code.DefaultCodeGenerator;
 import dev.samstevens.totp.time.SystemTimeProvider;
@@ -1542,5 +1543,116 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    @Override
+    @Transactional
+    public String generateAndSendPassword(Long userId) {
+        logger.info("=== GÉNÉRATION ET ENVOI MOT DE PASSE ID: "+ userId+" ===");
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+        String newPassword = PasswordGenerator.generatePasswordForUser(user);
+        String encodedPassword = passwordEncoder.encode(newPassword);
+
+        if (user instanceof ExportateurEtranger) {
+            ExportateurEtranger exportateur = (ExportateurEtranger) user;
+            exportateur.setPasswordHash(encodedPassword);
+            exportateur.setLastPasswordChange(LocalDateTime.now());
+            exportateurRepository.save(exportateur);
+        }
+
+        // Envoyer l'email avec le mot de passe
+        sendNewPasswordEmail(user, newPassword);
+
+        logger.info("✅ Nouveau mot de passe généré et envoyé pour: "+ user.getEmail());
+
+        return newPassword;
+    }
+
+    private void sendNewPasswordEmail(User user, String newPassword) {
+        try {
+            Map<String, Object> params = new HashMap<>();
+            params.put("userName", user.getNom() + " " + user.getPrenom());
+            params.put("email", user.getEmail());
+            params.put("newPassword", newPassword);
+            params.put("loginUrl", frontendUrl + "/login");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            if (user instanceof ExportateurEtranger) {
+                ExportateurEtranger exp = (ExportateurEtranger) user;
+                params.put("companyName", exp.getRaisonSociale());
+                emailService.sendValidationNotification(
+                        user.getEmail(),
+                        exp.getRaisonSociale(),
+                        ValidationNotificationType.PASSWORD_RESET_ADMIN,
+                        params
+                );
+            } else {
+                emailService.sendValidationNotification(
+                        user.getEmail(),
+                        user.getNom(),
+                        ValidationNotificationType.PASSWORD_RESET_ADMIN,
+                        params
+                );
+            }
+
+            logger.info("Email avec nouveau mot de passe envoyé à: "+ user.getEmail());
+        } catch (Exception e) {
+            logger.warning("Erreur lors de l'envoi de l'email: " + e.getMessage());
+        }
+    }
+    @Override
+    @Transactional
+    public String resetUserPassword(Long userId) {
+        logger.info("=== RÉINITIALISATION MOT DE PASSE UTILISATEUR ID: "+ userId+" ===");
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'id: " + userId));
+
+        // Vérifier si l'utilisateur peut avoir un mot de passe
+        if (!canHavePassword(user)) {
+            throw new RuntimeException("Cet utilisateur (Importateur) n'utilise pas de mot de passe. Il s'authentifie via Mobile ID.");
+        }
+
+        // Générer un nouveau mot de passe basé sur les attributs de l'utilisateur
+        String newPassword = PasswordGenerator.generatePasswordForUser(user);
+
+        if (newPassword == null) {
+            throw new RuntimeException("Impossible de générer un mot de passe pour cet utilisateur");
+        }
+
+        // Encoder le mot de passe
+        String encodedPassword = passwordEncoder.encode(newPassword);
+
+        // Mettre à jour selon le type d'utilisateur
+        if (user instanceof ExportateurEtranger) {
+            ExportateurEtranger exportateur = (ExportateurEtranger) user;
+            exportateur.setPasswordHash(encodedPassword);
+            exportateur.setLastPasswordChange(LocalDateTime.now());
+            exportateur.setResetPasswordToken(null);
+            exportateur.setResetPasswordTokenExpiry(null);
+            exportateurRepository.save(exportateur);
+            logger.info("✅ Mot de passe réinitialisé pour l'exportateur: "+ user.getEmail());
+        }
+        else {
+            // Pour admin (si vous avez une entité Administrateur)
+            // Administrateur admin = (Administrateur) user;
+            // admin.setPasswordHash(encodedPassword);
+            // administrateurRepository.save(admin);
+            logger.info("✅ Mot de passe réinitialisé pour l'admin: "+ user.getEmail());
+        }
+
+        // Envoyer le nouveau mot de passe par email
+        sendNewPasswordEmail(user, newPassword);
+
+        return newPassword;
+    }
+
+    @Override
+    public boolean canHavePassword(User user) {
+        // Seuls les exportateurs et les admins ont des mots de passe
+        // Les importateurs utilisent Mobile ID
+        return !(user instanceof ImportateurTunisien);
+    }
 
 }

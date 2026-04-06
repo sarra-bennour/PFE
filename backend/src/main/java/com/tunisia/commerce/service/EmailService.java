@@ -225,6 +225,8 @@ public class EmailService {
                 return "Demande de déactivation - Portail National Tunisien";
             case DEACTIVATION_CONFIRMATION:
                 return "Confirmation de déactivation - Portail National Tunisien";
+            case PASSWORD_RESET_ADMIN:
+                return "Réinitialisation de votre mot de passe depuis l'administration - Portail National Tunisien";
             default:
                 return "Notification - Portail National Tunisien";
         }
@@ -251,6 +253,8 @@ public class EmailService {
                 return "email/deactivation-request";
             case DEACTIVATION_CONFIRMATION:
                 return "email/deactivation-confirmation";
+            case PASSWORD_RESET_ADMIN:
+                return "email/password-reset-admin";
             default:
                 return "email/notification-generique";
         }
