@@ -1,9 +1,11 @@
 package com.tunisia.commerce.controller;
 
+import com.tunisia.commerce.dto.user.CreateInstanceValidationRequest;
 import com.tunisia.commerce.dto.user.DeactivationRequestAdminDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.entity.Administrateur;
 import com.tunisia.commerce.enums.UserRole;
+import com.tunisia.commerce.exception.InstanceValidationException;
 import com.tunisia.commerce.repository.AdministrateurRepository;
 import com.tunisia.commerce.service.UserService;
 import com.tunisia.commerce.config.JwtUtil;
@@ -271,6 +273,241 @@ public class AdminController {
             ));
         }
     }
+
+    // Dans AuthController.java ou UserController.java
+    @GetMapping("/verify-email")
+    public ResponseEntity<?> verifyEmail(@RequestParam String token) {
+        try {
+            boolean verified = userService.verifyInstanceValidationEmail(token);
+            if (verified) {
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Email vérifié avec succès. Vous pouvez maintenant vous connecter."
+                ));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "message", "Token invalide ou expiré."
+                ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
+    // ==================== INSTANCE VALIDATION ENDPOINTS ====================
+
+    @PostMapping("/instance-validation/create")
+    public ResponseEntity<?> createInstanceValidation(@RequestBody CreateInstanceValidationRequest request) {
+        try {
+            log.info("=== CRÉATION INSTANCE DE VALIDATION ===");
+            UserDTO created = userService.createInstanceValidation(request);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Instance de validation créée avec succès. Un email avec le mot de passe a été envoyé.",
+                    "data", created
+            ));
+        } catch (InstanceValidationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue: " + e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/instance-validation/all")
+    public ResponseEntity<?> getAllInstanceValidations(@RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== RÉCUPÉRATION DE TOUTES LES INSTANCES DE VALIDATION ===");
+            validateAdmin(authHeader);
+
+            List<UserDTO> instances = userService.getAllInstanceValidations();
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "instances", instances,
+                    "count", instances.size()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/instance-validation/{id}")
+    public ResponseEntity<?> getInstanceValidationById(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== RÉCUPÉRATION INSTANCE ID: {} ===", id);
+            validateAdmin(authHeader);
+
+            UserDTO instance = userService.getInstanceValidationById(id);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "instance", instance
+            ));
+        } catch (InstanceValidationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue"
+            ));
+        }
+    }
+
+    @GetMapping("/instance-validation/email/{email}")
+    public ResponseEntity<?> getInstanceValidationByEmail(
+            @PathVariable String email,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== RÉCUPÉRATION INSTANCE PAR EMAIL: {} ===", email);
+            validateAdmin(authHeader);
+
+            UserDTO instance = userService.getInstanceValidationByEmail(email);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "instance", instance
+            ));
+        } catch (InstanceValidationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue"
+            ));
+        }
+    }
+
+    @PutMapping("/instance-validation/{id}/status")
+    public ResponseEntity<?> updateInstanceValidationStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== MISE À JOUR STATUT INSTANCE ID: {} ===", id);
+            validateAdmin(authHeader);
+
+            String status = request.get("status");
+            if (status == null || (!status.equals("ACTIF") && !status.equals("INACTIF"))) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Statut invalide. Utilisez 'ACTIF' ou 'INACTIF'"
+                ));
+            }
+
+            userService.updateInstanceValidationStatus(id, status);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Statut mis à jour avec succès"
+            ));
+        } catch (InstanceValidationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue"
+            ));
+        }
+    }
+
+    @DeleteMapping("/instance-validation/{id}")
+    public ResponseEntity<?> deleteInstanceValidation(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== SUPPRESSION LOGIQUE INSTANCE ID: {} ===", id);
+            validateAdmin(authHeader);
+
+            userService.deleteInstanceValidation(id);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Instance de validation désactivée avec succès"
+            ));
+        } catch (InstanceValidationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue"
+            ));
+        }
+    }
+
+    @DeleteMapping("/instance-validation/{id}/hard")
+    public ResponseEntity<?> hardDeleteInstanceValidation(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== SUPPRESSION PHYSIQUE INSTANCE ID: {} ===", id);
+            validateAdmin(authHeader);
+
+            userService.hardDeleteInstanceValidation(id);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Instance de validation supprimée définitivement"
+            ));
+        } catch (InstanceValidationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue"
+            ));
+        }
+    }
+
     // ==================== MÉTHODES PRIVÉES ====================
 
     private void validateAdmin(String authHeader) {

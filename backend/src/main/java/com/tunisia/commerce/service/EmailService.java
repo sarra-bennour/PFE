@@ -227,6 +227,10 @@ public class EmailService {
                 return "Confirmation de déactivation - Portail National Tunisien";
             case PASSWORD_RESET_ADMIN:
                 return "Réinitialisation de votre mot de passe depuis l'administration - Portail National Tunisien";
+            case INSTANCE_VALIDATION_CREATED:
+                return "Bienvenue - Votre compte Instance de Validation a été créé - Portail National Tunisien";
+            case INSTANCE_VALIDATION_PASSWORD_RESET:
+                return "Réinitialisation de votre mot de passe - Portail National Tunisien";
             default:
                 return "Notification - Portail National Tunisien";
         }
@@ -255,6 +259,10 @@ public class EmailService {
                 return "email/deactivation-confirmation";
             case PASSWORD_RESET_ADMIN:
                 return "email/password-reset-admin";
+            case INSTANCE_VALIDATION_CREATED:
+                return "email/instance-validation-created";
+            case INSTANCE_VALIDATION_PASSWORD_RESET:
+                return "email/instance-validation-password-reset";
             default:
                 return "email/notification-generique";
         }

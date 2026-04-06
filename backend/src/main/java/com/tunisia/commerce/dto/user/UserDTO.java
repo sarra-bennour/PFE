@@ -1,10 +1,7 @@
 package com.tunisia.commerce.dto.user;
 
 import com.tunisia.commerce.dto.produits.ProduitDTO;
-import com.tunisia.commerce.enums.SiteType;
-import com.tunisia.commerce.enums.StatutAgrement;
-import com.tunisia.commerce.enums.UserRole;
-import com.tunisia.commerce.enums.UserStatus;
+import com.tunisia.commerce.enums.*;
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -53,6 +50,15 @@ public class UserDTO {
     // Champs spécifiques aux importateurs
     private String mobileIdMatricule;
     private String mobileIdPin;
+
+    // Champs spécifiques aux instances de validation
+    private String nomOfficiel;
+    private String codeMinistere;
+    private InstanceValidationType typeAutorite;
+    private Integer slaTraitementJours;
+    private String verificationToken;
+    private LocalDateTime verificationTokenExpiry;
+    private LocalDateTime updatedAt;
 
     private List<ProduitDTO> produits;
 

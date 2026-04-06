@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title>Bienvenue - Instance de Validation</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background-color: #1a202c; color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
+    .content { background-color: #f7fafc; padding: 30px; border-radius: 0 0 10px 10px; }
+    .credentials { background-color: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107; }
+    .password-box { background-color: #ffffff; padding: 15px; border-radius: 8px; text-align: center; margin: 15px 0; border: 2px dashed #1a202c; }
+    .password-box code { font-size: 28px; font-weight: bold; font-family: monospace; letter-spacing: 2px; color: #e53e3e; }
+    .activation-box { background-color: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; border: 2px solid #4caf50; }
+    .button { display: inline-block; padding: 12px 24px; background-color: #4caf50; color: white; text-decoration: none; border-radius: 6px; margin: 10px; font-weight: bold; }
+    .button-secondary { background-color: #1a202c; }
+    .warning { color: #e53e3e; font-weight: bold; }
+    .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #718096; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h2>Portail National Tunisien</h2>
+    <p>Instance de Validation - Création de compte</p>
+  </div>
+  <div class="content">
+    <p>Bonjour <strong th:text="${userFirstName}"></strong> <strong th:text="${userLastName}"></strong>,</p>
+    <p>Votre compte <strong>Instance de Validation</strong> a été créé avec succès.</p>
+
+    <div class="activation-box">
+      <h3>🔐 ACTIVEZ VOTRE COMPTE</h3>
+      <p>Cliquez sur le lien ci-dessous pour activer votre compte :</p>
+      <a th:href="${activationLink}" class="button">Activer mon compte</a>
+      <p style="font-size: 12px; margin-top: 10px;">Lien valable 24 heures</p>
+    </div>
+
+    <div class="credentials">
+      <h3>📋 Vos identifiants de connexion :</h3>
+      <ul>
+        <li><strong>Email :</strong> <span th:text="${email}"></span></li>
+      </ul>
+      <div class="password-box">
+        <strong>🔐 Mot de passe généré :</strong><br/>
+        <code th:text="${generatedPassword}"></code>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <h3>🏢 Informations de votre institution :</h3>
+      <ul>
+        <li><strong>Nom officiel :</strong> <span th:text="${nomOfficiel}"></span></li>
+        <li><strong>Code ministère :</strong> <span th:text="${codeMinistere}"></span></li>
+        <li><strong>Type d'autorité :</strong> <span th:text="${typeAutorite}"></span></li>
+        <li><strong>SLA de traitement :</strong> <span th:text="${slaTraitementJours}"></span> jours</li>
+      </ul>
+    </div>
+
+    <p class="warning">⚠️ <strong>Important :</strong></p>
+    <ul class="warning">
+      <li>Vous devez activer votre compte en cliquant sur le lien ci-dessus</li>
+      <li>Le lien d'activation expire après 24 heures</li>
+      <li>Changez votre mot de passe lors de votre première connexion</li>
+    </ul>
+
+    <div style="text-align: center;">
+      <a th:href="${loginUrl}" class="button button-secondary">Aller à la page de connexion</a>
+    </div>
+
+    <p>Pour toute assistance, contactez-nous à : <a th:href="'mailto:' + ${supportEmail}" th:text="${supportEmail}"></a></p>
+  </div>
+  <div class="footer">
+    <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+    <p>&copy; 2024 Portail National Tunisien - Tous droits réservés</p>
+  </div>
+</div>
+</body>
+</html>

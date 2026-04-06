@@ -1,4 +1,4 @@
-export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'VALIDATOR' | 'ADMIN';
+export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'INSTANCE_VALIDATION' | 'ADMIN';
 
 export interface User {
   email: string;
@@ -21,5 +21,10 @@ export interface User {
   // Champs spécifiques aux importateurs
   mobileIdMatricule?: string;
   mobileIdPin?: string;
-  id?: number; // Ajout de l'ID utilisateur
+  // Champs spécifiques aux instances de validation
+  nomOfficiel?: string;
+  codeMinistere?: string;
+  typeAutorite?: string;
+  slaTraitementJours?: number;
+  id?: number;
 }

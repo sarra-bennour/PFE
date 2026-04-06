@@ -38,11 +38,18 @@ public interface UserService {
     DeactivationRequestAdminDTO getDeactivationRequestById(Long requestId);
     void updateUserStatus(Long userId, String status);
     void reactivateAccount(Long userId, String adminComment);
-
-    // Dans UserService.java
     String resetUserPassword(Long userId);
     String generateAndSendPassword(Long userId);
     boolean canHavePassword(User user);
+
+    UserDTO createInstanceValidation(CreateInstanceValidationRequest request);
+    List<UserDTO> getAllInstanceValidations();
+    UserDTO getInstanceValidationById(Long id);
+    UserDTO getInstanceValidationByEmail(String email);
+    void updateInstanceValidationStatus(Long id, String status);
+    void deleteInstanceValidation(Long id);
+    void hardDeleteInstanceValidation(Long id);
+    boolean verifyInstanceValidationEmail(String token);
 
 
 }

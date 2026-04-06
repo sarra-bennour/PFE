@@ -124,7 +124,7 @@ const AdminPanel: React.FC = () => {
                   <i className="fas fa-times"></i>
                 </button>
               </div>
-              <div className="p-10">
+              <div className="p-10 max-h-[70vh] overflow-y-auto scrollbar-hide">
                 <CreateUserForm 
                   onSuccess={() => {
                     setShowCreateUser(false);

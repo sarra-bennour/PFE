@@ -5,6 +5,7 @@ import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.entity.DeactivationRequest;
 import com.tunisia.commerce.enums.*;
 import com.tunisia.commerce.exception.AuthException;
+import com.tunisia.commerce.exception.InstanceValidationException;
 import com.tunisia.commerce.exception.MobileAuthException;
 import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.EmailService;
@@ -29,6 +30,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +46,8 @@ public class UserServiceImpl implements UserService {
     private final EmailService emailService;
     private final TwoFactorAuthService twoFactorAuthService;
     private final AdministrateurRepository administrateurRepository;
+    private final InstanceValidationRepository instanceValidationRepository;
+
 
 
     @Value("${app.verification.expiry-hours}")
@@ -225,48 +230,54 @@ public class UserServiceImpl implements UserService {
     public boolean verifyEmail(String token) {
         logger.info("=== DÉBUT VÉRIFICATION EMAIL ===");
         logger.info("Token reçu: '" + token + "'");
-        logger.info("Longueur token: " + token.length());
 
-        // Log 1: Vérifier si le repository trouve le token
-        logger.info("Recherche du token dans la base...");
+        // 1. Chercher d'abord dans les exportateurs
         Optional<ExportateurEtranger> exportateurOpt = exportateurRepository.findByVerificationToken(token);
 
-        if (!exportateurOpt.isPresent()) {
-            logger.severe("ÉCHEC: Aucun exportateur trouvé avec ce token!");
-
-            // Log tous les tokens pour debug
-            logger.info("Liste de tous les tokens dans la base:");
-            List<ExportateurEtranger> all = exportateurRepository.findAll();
-            for (ExportateurEtranger exp : all) {
-                logger.info(" - Email: " + exp.getEmail() +
-                        " | Token: " + exp.getVerificationToken() +
-                        " | Token length: " + (exp.getVerificationToken() != null ? exp.getVerificationToken().length() : 0));
-            }
-
-            throw new RuntimeException("Token de vérification invalide");
+        if (exportateurOpt.isPresent()) {
+            return verifyExportateurEmail(exportateurOpt.get());
         }
 
-        ExportateurEtranger exportateur = exportateurOpt.get();
-        logger.info("SUCCÈS: Exportateur trouvé!");
-        logger.info("Email: " + exportateur.getEmail());
-        logger.info("Email vérifié actuellement: " + exportateur.isEmailVerified());
-        logger.info("Token expiry: " + exportateur.getVerificationTokenExpiry());
+        // 2. Chercher dans les instances de validation
+        Optional<InstanceValidation> instanceOpt = instanceValidationRepository.findByVerificationToken(token);
 
-        // Vérifier l'expiration
+        if (instanceOpt.isPresent()) {
+            return verifyInstanceValidationEmail(instanceOpt.get());
+        }
+
+        // 3. Aucun token trouvé
+        logger.severe("ÉCHEC: Aucun utilisateur trouvé avec ce token!");
+        throw new RuntimeException("Token de vérification invalide");
+    }
+
+    private boolean verifyExportateurEmail(ExportateurEtranger exportateur) {
+        logger.info("Exportateur trouvé: "+ exportateur.getEmail());
+
         if (exportateur.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
-            logger.warning("Token expiré!");
             throw new RuntimeException("Le token de vérification a expiré");
         }
 
-        // Mettre à jour
         exportateur.setEmailVerified(true);
         exportateur.setUserStatut(UserStatus.ACTIF);
         exportateur.setVerificationToken(null);
         exportateur.setVerificationTokenExpiry(null);
+        exportateurRepository.save(exportateur);
 
-        ExportateurEtranger saved = exportateurRepository.save(exportateur);
-        logger.info("SUCCÈS COMPLET: Email vérifié pour " + saved.getEmail());
-        logger.info("Nouveau statut email vérifié: " + saved.isEmailVerified());
+        return true;
+    }
+
+    private boolean verifyInstanceValidationEmail(InstanceValidation instance) {
+        logger.info("Instance Validation trouvée: "+ instance.getEmail());
+
+        if (instance.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Le token de vérification a expiré");
+        }
+
+        instance.setEmailVerified(true);
+        instance.setUserStatut(UserStatus.ACTIF);
+        instance.setVerificationToken(null);
+        instance.setVerificationTokenExpiry(null);
+        instanceValidationRepository.save(instance);
 
         return true;
     }
@@ -339,6 +350,13 @@ public class UserServiceImpl implements UserService {
                         .orElseThrow(AuthException::userNotFound);
                 passwordMatches = passwordEncoder.matches(request.getPassword(), exportateur.getPasswordHash());
             }
+            // 👇 AJOUT: Pour les INSTANCE_VALIDATION
+            else if (user.getRole() == UserRole.INSTANCE_VALIDATION) {
+                InstanceValidation instance = instanceValidationRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                passwordMatches = passwordEncoder.matches(request.getPassword(), instance.getPasswordHash());
+                logger.info("Vérification mot de passe pour instance: "+ passwordMatches);
+            }
             // Pour les autres rôles (si nécessaire)
             else {
                 // Fallback - essayer de trouver dans exportateur
@@ -355,7 +373,7 @@ public class UserServiceImpl implements UserService {
                 // 5. FORCER L'ÉCRITURE IMMÉDIATE EN BASE
                 userRepository.flush();
 
-                logger.info("=== Tentative échouée pour "+ request.getEmail()+" ===\"");
+                logger.info("=== Tentative échouée pour "+ request.getEmail()+" ===");
 
                 // 6. Lire la valeur depuis la base
                 int currentAttempts = userRepository.getFailedAttempts(request.getEmail());
@@ -382,13 +400,23 @@ public class UserServiceImpl implements UserService {
             User refreshedUser = userRepository.findByEmail(request.getEmail())
                     .orElseThrow(AuthException::userNotFound);
 
-            // 9. Vérifier l'email (seulement pour les exportateurs)
+            // 9. Vérifier l'email (selon le rôle)
             if (refreshedUser.getRole() == UserRole.EXPORTATEUR) {
                 ExportateurEtranger freshExportateur = exportateurRepository.findByEmail(request.getEmail())
                         .orElseThrow(AuthException::userNotFound);
                 if (!freshExportateur.isEmailVerified()) {
                     throw AuthException.emailNotVerified(request.getEmail());
                 }
+            }
+            // 👇 AJOUT: Vérification email pour les instances de validation
+            else if (refreshedUser.getRole() == UserRole.INSTANCE_VALIDATION) {
+                InstanceValidation freshInstance = instanceValidationRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                if (!freshInstance.isEmailVerified()) {
+                    logger.warning("❌ Instance non vérifiée: "+ request.getEmail());
+                    throw AuthException.emailNotVerified(request.getEmail());
+                }
+                logger.info("✅ Instance vérifiée: "+ request.getEmail());
             }
 
             // Pour les admins, pas besoin de vérification d'email
@@ -399,18 +427,15 @@ public class UserServiceImpl implements UserService {
             // 10. Générer le token
             String token = jwtUtil.generateToken(refreshedUser.getEmail(), refreshedUser.getRole().name());
 
-            // Vérifier si le 2FA est activé (les admins n'ont pas de 2FA par défaut)
+            // Vérifier si le 2FA est activé (uniquement pour exportateurs)
             boolean requiresTwoFactor = false;
             if (refreshedUser.getRole() == UserRole.EXPORTATEUR) {
                 requiresTwoFactor = isTwoFactorEnabled(refreshedUser);
             }
 
-            // Si le 2FA est activé, on ne renvoie pas encore le token d'accès complet
-            // Mais on renvoie un token temporaire pour la phase 2FA
+            // Si le 2FA est activé, on renvoie un token temporaire
             if (requiresTwoFactor) {
-                // Générer un token temporaire pour la vérification 2FA
                 String tempToken = jwtUtil.generateTempToken(refreshedUser.getEmail(), refreshedUser.getRole().name());
-
                 return LoginResponse.builder()
                         .token(tempToken)
                         .requiresTwoFactor(true)
@@ -427,7 +452,7 @@ public class UserServiceImpl implements UserService {
         } catch (AuthException e) {
             throw e;
         } catch (Exception e) {
-            logger.severe("Erreur inattendue: {}"+ e.getMessage());
+            logger.severe("Erreur inattendue: " + e.getMessage());
             throw new RuntimeException("Erreur lors de la connexion: " + e.getMessage());
         }
     }
@@ -1572,7 +1597,7 @@ public class UserServiceImpl implements UserService {
     private void sendNewPasswordEmail(User user, String newPassword) {
         try {
             Map<String, Object> params = new HashMap<>();
-            params.put("userName", user.getNom() + " " + user.getPrenom());
+            params.put("userName", user.getPrenom() + " " + user.getNom());
             params.put("email", user.getEmail());
             params.put("newPassword", newPassword);
             params.put("loginUrl", frontendUrl + "/login");
@@ -1587,7 +1612,19 @@ public class UserServiceImpl implements UserService {
                         ValidationNotificationType.PASSWORD_RESET_ADMIN,
                         params
                 );
-            } else {
+            }
+            // 👇 AJOUT: Pour les instances de validation
+            else if (user instanceof InstanceValidation) {
+                InstanceValidation instance = (InstanceValidation) user;
+                params.put("companyName", instance.getNomOfficiel());
+                emailService.sendValidationNotification(
+                        user.getEmail(),
+                        instance.getNomOfficiel(),
+                        ValidationNotificationType.INSTANCE_VALIDATION_PASSWORD_RESET,
+                        params
+                );
+            }
+            else {
                 emailService.sendValidationNotification(
                         user.getEmail(),
                         user.getNom(),
@@ -1597,6 +1634,7 @@ public class UserServiceImpl implements UserService {
             }
 
             logger.info("Email avec nouveau mot de passe envoyé à: "+ user.getEmail());
+            logger.info("Nouveau mot de passe: "+ newPassword);
         } catch (Exception e) {
             logger.warning("Erreur lors de l'envoi de l'email: " + e.getMessage());
         }
@@ -1634,11 +1672,20 @@ public class UserServiceImpl implements UserService {
             exportateurRepository.save(exportateur);
             logger.info("✅ Mot de passe réinitialisé pour l'exportateur: "+ user.getEmail());
         }
+        // 👇 AJOUT: Pour les instances de validation
+        else if (user instanceof InstanceValidation) {
+            InstanceValidation instance = (InstanceValidation) user;
+            instance.setPasswordHash(encodedPassword);
+            instance.setUpdatedAt(LocalDateTime.now());
+            instanceValidationRepository.save(instance);
+            logger.info("✅ Mot de passe réinitialisé pour l'instance: "+ user.getEmail());
+        }
         else {
-            // Pour admin (si vous avez une entité Administrateur)
-            // Administrateur admin = (Administrateur) user;
-            // admin.setPasswordHash(encodedPassword);
-            // administrateurRepository.save(admin);
+            // Pour admin
+            Administrateur admin = administrateurRepository.findByEmail(user.getEmail())
+                    .orElseThrow(() -> new RuntimeException("Admin non trouvé"));
+            admin.setPasswordHash(encodedPassword);
+            administrateurRepository.save(admin);
             logger.info("✅ Mot de passe réinitialisé pour l'admin: "+ user.getEmail());
         }
 
@@ -1655,4 +1702,251 @@ public class UserServiceImpl implements UserService {
         return !(user instanceof ImportateurTunisien);
     }
 
+    // ==================== INSTANCE VALIDATION METHODS ====================
+
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@(.+)$");
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[0-9]{8,15}$");
+    private static final Pattern CODE_MINISTERE_PATTERN = Pattern.compile("^[A-Z_]{3,20}$");
+
+    @Override
+    @Transactional
+    public UserDTO createInstanceValidation(CreateInstanceValidationRequest request) {
+        logger.info("=== CRÉATION INSTANCE DE VALIDATION ===");
+
+        // Validations
+        validateRequiredField(request.getNom(), "nom");
+        validateRequiredField(request.getPrenom(), "prenom");
+        validateRequiredField(request.getEmail(), "email");
+        validateRequiredField(request.getTelephone(), "telephone");
+        validateRequiredField(request.getNomOfficiel(), "nomOfficiel");
+        validateRequiredField(request.getCodeMinistere(), "codeMinistere");
+
+        if (request.getSlaTraitementJours() == null) {
+            throw InstanceValidationException.missingRequiredField("slaTraitementJours");
+        }
+
+        if (!EMAIL_PATTERN.matcher(request.getEmail()).matches()) {
+            throw InstanceValidationException.invalidEmailFormat(request.getEmail());
+        }
+
+        if (!PHONE_PATTERN.matcher(request.getTelephone()).matches()) {
+            throw InstanceValidationException.invalidPhoneFormat(request.getTelephone());
+        }
+
+        if (!CODE_MINISTERE_PATTERN.matcher(request.getCodeMinistere()).matches()) {
+            throw InstanceValidationException.invalidCodeMinistereFormat(request.getCodeMinistere());
+        }
+
+        if (request.getSlaTraitementJours() < 1 || request.getSlaTraitementJours() > 60) {
+            throw InstanceValidationException.invalidSlaDays(request.getSlaTraitementJours());
+        }
+
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw InstanceValidationException.emailAlreadyExists(request.getEmail());
+        }
+
+        if (instanceValidationRepository.existsByCodeMinistere(request.getCodeMinistere())) {
+            throw InstanceValidationException.codeMinistereAlreadyExists(request.getCodeMinistere());
+        }
+
+        InstanceValidationType typeAutorite;
+        try {
+            typeAutorite = InstanceValidationType.valueOf(request.getTypeAutorite());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw InstanceValidationException.invalidTypeAutorite(
+                    request.getTypeAutorite() != null ? request.getTypeAutorite() : "null"
+            );
+        }
+
+        // Générer le token de vérification
+        String verificationToken = generateVerificationToken();
+        LocalDateTime tokenExpiry = LocalDateTime.now().plusHours(24);
+
+        // Création de l'instance
+        InstanceValidation instance = new InstanceValidation();
+        instance.setNom(request.getNom());
+        instance.setPrenom(request.getPrenom());
+        instance.setEmail(request.getEmail());
+        instance.setTelephone(request.getTelephone());
+        instance.setNomOfficiel(request.getNomOfficiel());
+        instance.setCodeMinistere(request.getCodeMinistere());
+        instance.setTypeAutorite(typeAutorite);
+        instance.setSlaTraitementJours(request.getSlaTraitementJours());
+        instance.setRole(UserRole.INSTANCE_VALIDATION);
+        instance.setUserStatut(UserStatus.INACTIF);
+        instance.setDateCreation(LocalDateTime.now());
+
+        // Ajouter les champs de vérification
+        instance.setEmailVerified(false);
+        instance.setVerificationToken(verificationToken);
+        instance.setVerificationTokenExpiry(tokenExpiry);
+
+        // ⚠️ IMPORTANT: Générer ET définir le mot de passe AVANT la sauvegarde
+        String generatedPassword = PasswordGenerator.generatePasswordForUser(instance);
+        instance.setPasswordHash(passwordEncoder.encode(generatedPassword));  // ← Définir ici
+
+        // Maintenant sauvegarder
+        InstanceValidation saved = instanceValidationRepository.save(instance);
+
+        logger.info("Instance de validation créée avec ID: "+ saved.getId());
+        logger.info("Mot de passe généré: "+ generatedPassword);
+
+        // Envoyer l'email APRÈS la sauvegarde
+        sendInstanceValidationCredentialsWithToken(saved, generatedPassword, verificationToken);
+
+        return mapToUserDTO(saved);
+    }
+
+    @Override
+    public List<UserDTO> getAllInstanceValidations() {
+        logger.info("=== RÉCUPÉRATION DE TOUTES LES INSTANCES DE VALIDATION ===");
+        return instanceValidationRepository.findAll().stream()
+                .map(this::mapToUserDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public UserDTO getInstanceValidationById(Long id) {
+        logger.info("=== RÉCUPÉRATION INSTANCE ID: "+ id+" ===");
+        InstanceValidation instance = instanceValidationRepository.findById(id)
+                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
+        return mapToUserDTO(instance);
+    }
+
+    @Override
+    public UserDTO getInstanceValidationByEmail(String email) {
+        logger.info("=== RÉCUPÉRATION INSTANCE PAR EMAIL: "+ email+" ===");
+        InstanceValidation instance = instanceValidationRepository.findByEmail(email)
+                .orElseThrow(() -> InstanceValidationException.instanceNotFoundByEmail(email));
+        return mapToUserDTO(instance);
+    }
+
+    @Override
+    @Transactional
+    public void updateInstanceValidationStatus(Long id, String status) {
+        logger.info("=== MISE À JOUR STATUT INSTANCE ID: "+ id+" ===");
+
+        InstanceValidation instance = instanceValidationRepository.findById(id)
+                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
+
+        try {
+            UserStatus newStatus = UserStatus.valueOf(status);
+            if (newStatus != UserStatus.ACTIF && newStatus != UserStatus.INACTIF) {
+                throw InstanceValidationException.invalidStatus(status);
+            }
+            instance.setUserStatut(newStatus);
+            instance.setUpdatedAt(LocalDateTime.now());
+            instanceValidationRepository.save(instance);
+            logger.info("Statut mis à jour: "+ instance.getEmail()+" -> "+ newStatus);
+        } catch (IllegalArgumentException e) {
+            throw InstanceValidationException.invalidStatus(status);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteInstanceValidation(Long id) {
+        logger.info("=== SUPPRESSION LOGIQUE INSTANCE ID: "+ id+" ===");
+
+        InstanceValidation instance = instanceValidationRepository.findById(id)
+                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
+
+        instance.setUserStatut(UserStatus.INACTIF);
+        instance.setUpdatedAt(LocalDateTime.now());
+        instanceValidationRepository.save(instance);
+
+        logger.info("Instance désactivée: "+ instance.getEmail());
+    }
+
+    @Override
+    @Transactional
+    public void hardDeleteInstanceValidation(Long id) {
+        logger.info("=== SUPPRESSION PHYSIQUE INSTANCE ID: "+ id+" ===");
+
+        InstanceValidation instance = instanceValidationRepository.findById(id)
+                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
+
+        instanceValidationRepository.delete(instance);
+        logger.info("Instance supprimée définitivement: "+ instance.getEmail());
+    }
+
+
+    // ==================== PRIVATE METHODS ====================
+
+    private void validateRequiredField(String value, String fieldName) {
+        if (value == null || value.trim().isEmpty()) {
+            throw InstanceValidationException.missingRequiredField(fieldName);
+        }
+    }
+
+    private void sendInstanceValidationCredentialsWithToken(InstanceValidation instance, String password, String token) {
+        try {
+            String activationLink = frontendUrl + "#/login?token=" + token;
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("userFirstName", instance.getPrenom());
+            params.put("userLastName", instance.getNom());
+            params.put("email", instance.getEmail());
+            params.put("generatedPassword", password);
+            params.put("activationLink", activationLink);
+            params.put("nomOfficiel", instance.getNomOfficiel());
+            params.put("codeMinistere", instance.getCodeMinistere());
+            params.put("typeAutorite", instance.getTypeAutorite());
+            params.put("slaTraitementJours", instance.getSlaTraitementJours());
+            params.put("loginUrl", frontendUrl + "/login");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    instance.getEmail(),
+                    instance.getNomOfficiel(),
+                    ValidationNotificationType.INSTANCE_VALIDATION_CREATED,
+                    params
+            );
+
+            logger.info("Email d'activation avec mot de passe envoyé à: "+ instance.getEmail());
+        } catch (Exception e) {
+            logger.severe("Erreur lors de l'envoi de l'email: " + e.getMessage());
+        }
+    }
+
+    private UserDTO mapToUserDTO(InstanceValidation instance) {
+        UserDTO dto = new UserDTO();
+        dto.setId(instance.getId());
+        dto.setNom(instance.getNom());
+        dto.setPrenom(instance.getPrenom());
+        dto.setEmail(instance.getEmail());
+        dto.setTelephone(instance.getTelephone());
+        dto.setRole(instance.getRole());
+        dto.setStatut(instance.getUserStatut());
+        dto.setDateCreation(instance.getDateCreation());
+        dto.setLastLogin(instance.getLastLogin());
+        dto.setNomOfficiel(instance.getNomOfficiel());
+        dto.setCodeMinistere(instance.getCodeMinistere());
+        dto.setTypeAutorite(instance.getTypeAutorite());
+        dto.setSlaTraitementJours(instance.getSlaTraitementJours());
+        dto.setUpdatedAt(instance.getUpdatedAt());
+        return dto;
+    }
+
+    @Override
+    @Transactional
+    public boolean verifyInstanceValidationEmail(String token) {
+        logger.info("=== VÉRIFICATION EMAIL INSTANCE VALIDATION ===");
+
+        InstanceValidation instance = instanceValidationRepository.findByVerificationToken(token)
+                .orElseThrow(() -> new RuntimeException("Token de vérification invalide"));
+
+        if (instance.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Le token de vérification a expiré");
+        }
+
+        instance.setEmailVerified(true);
+        instance.setUserStatut(UserStatus.ACTIF);
+        instance.setVerificationToken(null);
+        instance.setVerificationTokenExpiry(null);
+
+        instanceValidationRepository.save(instance);
+
+        return true;
+    }
 }
