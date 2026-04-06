@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { User } from '../types/User';
 
 // Interface pour typer les statuts
 interface DossierStatus {
@@ -9,22 +10,12 @@ interface DossierStatus {
   reference?: string;
 }
 
+
 export const useAuth = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [dossierStatus, setDossierStatus] = useState<DossierStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Fonction de logout centralisée
-  const performLogout = (reason?: string) => {
-    console.log('🚪 Déconnexion', reason ? `- Raison: ${reason}` : '');
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('dossierStatus');
-    setUser(null);
-    setIsAuthenticated(false);
-    setDossierStatus(null);
-  };
 
   useEffect(() => {
     // Récupérer les données du localStorage au chargement
@@ -40,7 +31,7 @@ export const useAuth = () => {
 
     if (token && userData) {
       try {
-        const parsedUser = JSON.parse(userData);
+        const parsedUser = JSON.parse(userData) as User;
         setUser(parsedUser);
         setIsAuthenticated(true);
         
@@ -53,7 +44,10 @@ export const useAuth = () => {
         console.log('✅ Utilisateur restauré:', parsedUser);
       } catch (error) {
         console.error('❌ Erreur lors du parsing:', error);
-        performLogout('Données corrompues');
+        // Nettoyer les données corrompues
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('dossierStatus');
       }
     } else {
       console.log('ℹ️ Aucune session trouvée dans localStorage');
@@ -61,57 +55,6 @@ export const useAuth = () => {
     
     setIsLoading(false);
   }, []);
-
-  // Écouter l'événement de session expirée
-  useEffect(() => {
-    const handleSessionExpired = (event: CustomEvent) => {
-      console.log('⏰ Session expirée détectée:', event.detail?.message);
-      performLogout('Token expiré');
-    };
-
-    window.addEventListener('sessionExpired', handleSessionExpired as EventListener);
-
-    return () => {
-      window.removeEventListener('sessionExpired', handleSessionExpired as EventListener);
-    };
-  }, []);
-
-  // Vérifier périodiquement si le token est valide (optionnel)
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const checkTokenValidity = () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        performLogout('Token manquant');
-        return;
-      }
-
-      // Optionnel: Décoder le token JWT pour vérifier l'expiration
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const exp = payload.exp;
-        const now = Math.floor(Date.now() / 1000);
-        
-        if (exp && exp < now) {
-          console.log('⏰ Token expiré (vérification périodique)');
-          performLogout('Token expiré');
-          // Déclencher l'événement pour afficher l'alerte
-          const sessionExpiredEvent = new CustomEvent('sessionExpired', {
-            detail: { message: 'Votre session a expiré. Veuillez vous reconnecter.' }
-          });
-          window.dispatchEvent(sessionExpiredEvent);
-        }
-      } catch (error) {
-        console.error('Erreur lors de la vérification du token:', error);
-      }
-    };
-
-    // Vérifier toutes les minutes
-    const interval = setInterval(checkTokenValidity, 60000);
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
 
   // Fonction pour mettre à jour les statuts du dossier
   const updateDossierStatus = (demandeStatus: string, paymentStatus: string, additionalData = {}) => {
@@ -130,7 +73,7 @@ export const useAuth = () => {
   };
 
   // Fonction pour mettre à jour l'utilisateur
-  const updateUser = (userData) => {
+  const updateUser = (userData: Partial<User>): User | null => {
     if (user) {
       const updatedUser = { ...user, ...userData };
       localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -141,7 +84,7 @@ export const useAuth = () => {
     return null;
   };
 
-  const login = (userData, token) => {
+  const login = (userData: User, token: string): void => {
     console.log('🔐 Connexion - Données reçues:', userData);
     
     localStorage.setItem('token', token);
@@ -152,8 +95,14 @@ export const useAuth = () => {
     console.log('✅ Connexion réussie');
   };
 
-  const logout = () => {
-    performLogout('Déconnexion manuelle');
+  const logout = (): void => {
+      console.log('🚪 Déconnexion');
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('dossierStatus');
+      setUser(null);
+      setIsAuthenticated(false);
+      setDossierStatus(null);
   };
 
   return { 

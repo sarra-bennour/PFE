@@ -16,43 +16,10 @@ import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 import ProductDeclaration from './pages/Exportateur/ProductDeclaration';
 import DeclarationsList from './pages/DeclarationsList';
-import { SessionExpiredHandler } from './components/SessionExpiredHandler';
+import { DossierStatus } from './types/DossierStatus';
+import { User, UserRole } from './types/User';
 
-// Define User types for the simulation
-export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'validator' | 'ADMIN';
 
-export interface User {
-  email: string;
-  role: UserRole;
-  companyName?: string;
-  legalRep?: string;
-  phone?: string;
-  isTwoFactorEnabled?: boolean;
-  submissionDate?: string;
-  // Champs spécifiques aux exportateurs
-  raisonSociale?: string;
-  paysOrigine?: string;
-  numeroRegistreCommerce?: string;
-  adresseLegale?: string;
-  ville?: string;
-  siteWeb?: string;
-  representantLegal?: string;
-  numeroTVA?: string;
-  emailVerified?: boolean;
-  // Champs spécifiques aux importateurs
-  mobileIdMatricule?: string;
-  mobileIdPin?: string;
-  id?: number; // Ajout de l'ID utilisateur
-}
-
-// Interface pour les statuts du dossier
-interface DossierStatus {
-  demandeStatus: string;
-  paymentStatus: string;
-  lastUpdated: string;
-  demandeId?: number;
-  reference?: string;
-}
 
 interface AuthContextType {
   user: User | null;
@@ -264,7 +231,6 @@ const App: React.FC = () => {
       clearAcceptedProduct // Exposer la fonction pour effacer
     }}>
       <Router>
-        <SessionExpiredHandler />
         <AppLayout>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -301,12 +267,12 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/validator" element={
-              <ProtectedRoute roles={['validator']}>
+              <ProtectedRoute roles={['VALIDATOR']}>
                 <ValidatorSpace />
               </ProtectedRoute>
             } />
             <Route path="/dashboard" element={
-              <ProtectedRoute roles={['ADMIN', 'validator']}>
+              <ProtectedRoute roles={['ADMIN', 'VALIDATOR']}>
                 <DecisionAid />
               </ProtectedRoute>
             } />

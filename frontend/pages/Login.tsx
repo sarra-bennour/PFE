@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'; // 👈 AJOUT useLocation
-import { useAuth, UserRole, User } from '../App';
+import { useNavigate, useSearchParams } from 'react-router-dom'; // 👈 AJOUT useLocation
+import { useAuth } from '../App';
+import { UserRole } from '../types/User';
 import ExporterSignUp from './Exportateur/ExporterSignUp';
 import ForgotPassword from './ForgotPassword';
 import TwoFactorAuth from './TwoFactorAuth';
@@ -11,7 +12,6 @@ import FormAlert from '../components/FormAlert';
 const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
 
@@ -41,18 +41,6 @@ const Login: React.FC = () => {
 
   const CARD_HEIGHT = 750;
 
-  // 👈 AJOUT: Vérifier si on vient d'une session expirée
-  useEffect(() => {
-    // Vérifier si on a été redirigé à cause d'une session expirée
-    if (location.state?.sessionExpired) {
-      const message = location.state.message || 'Votre session a expiré. Veuillez vous reconnecter.';
-      setAlertMessage(message);
-      setAlertType('error');
-
-      // Nettoyer le state pour éviter de réafficher le message après refresh
-      window.history.replaceState({}, document.title);
-    }
-  }, [location]);
 
   const handleSignupError = (message: string) => {
     setAlertMessage(message);
@@ -75,7 +63,7 @@ const Login: React.FC = () => {
   };
 
   // Fonction de validation qui retourne un booléen sans setter l'état
-  const isValidEmail = useCallback((email: string): boolean => {
+  const isValidEmailFormat = useCallback((email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   }, []);
@@ -86,14 +74,14 @@ const Login: React.FC = () => {
       setEmailError("L'adresse e-mail est requise.");
       return false;
     }
-    else if (!isValidEmail(emailValue)) {
+    else if (!isValidEmailFormat(emailValue)) {
       setEmailError("L'adresse e-mail saisie n'est pas valide. Veuillez vérifier le format (ex: nom@domaine.com).");
       return false;
     } else {
       setEmailError('');
       return true;
     }
-  }, [isValidEmail]);
+  }, [isValidEmailFormat]);
 
   // Fonction pour valider le mot de passe (required)
   const validateAndSetPasswordError = useCallback((passwordValue: string): boolean => {
@@ -108,10 +96,10 @@ const Login: React.FC = () => {
 
   // isFormValid utilise les validations sans setter l'état
   const isFormValid = useMemo((): boolean => {
-    const isEmailValid = email && email.trim() !== '' && isValidEmail(email);
-    const isPasswordValid = password && password.trim() !== '';
+    const isEmailValid = !!(email && email.trim() !== '' && isValidEmailFormat(email));
+    const isPasswordValid = !!(password && password.trim() !== '');
     return isEmailValid && isPasswordValid && !loading;
-  }, [email, password, loading, isValidEmail]);
+  }, [email, password, loading, isValidEmailFormat]);
 
   useEffect(() => {
     const emailToken = searchParams.get('token');
@@ -220,7 +208,7 @@ const Login: React.FC = () => {
 
   const executeLogin = (userEmail: string, userData?: any) => {
     if (userData) {
-      login(userData, localStorage.getItem('token'));
+      login(userData, userData.token);
       const role = userData.role;
       if (role === 'ADMIN') {
         navigate('/admin');
@@ -241,10 +229,9 @@ const Login: React.FC = () => {
     login({
       email: userEmail,
       role,
-      status,
       companyName: 'Opérateur International',
       isTwoFactorEnabled: is2FA
-    }, localStorage.getItem('token'));
+    }, userData.token);
 
     if (role === 'ADMIN') {
     navigate('/admin');
