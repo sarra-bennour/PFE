@@ -31,7 +31,7 @@ public class JwtUtil {
                 .setClaims(claims)
                 .setSubject(email)
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                //.setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
@@ -80,11 +80,11 @@ public class JwtUtil {
                     .parseClaimsJws(token);
 
             // Vérifier aussi l'expiration
-            Date expiration = extractExpiration(token);
+            /*Date expiration = extractExpiration(token);
             if (expiration != null && expiration.before(new Date())) {
                 System.out.println("❌ Token expiré");
                 return false;
-            }
+            }*/
 
             System.out.println("✅ Token valide");
             return true;
