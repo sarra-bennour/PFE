@@ -1,10 +1,12 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence } from 'motion/react';
+import axios from 'axios';
 import { useAuth } from '../../App';
 import Sidebar from '../../components/Sidebar';
-import InstructionModal, { ValidationRequest, RequestType } from './InstructionModal';
+import InstructionModal, { ValidationRequest, RequestType, Product, ImportDetails, AttachedDocument } from './InstructionModal';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const ValidatorSpace: React.FC = () => {
   const { t } = useTranslation();
@@ -13,6 +15,9 @@ const ValidatorSpace: React.FC = () => {
   const [inboxTab, setInboxTab] = useState<RequestType>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<ValidationRequest | null>(null);
   const [selectedAgency, setSelectedAgency] = useState('Ministère du Commerce');
+  const [loading, setLoading] = useState(false);
+  const [requests, setRequests] = useState<ValidationRequest[]>([]);
+  const [archivedRequests, setArchivedRequests] = useState<ValidationRequest[]>([]);
 
   const institutions = [
     "Ministère du Commerce",
@@ -29,94 +34,166 @@ const ValidatorSpace: React.FC = () => {
     { id: 'admin', label: 'Admin Panel', icon: 'fa-shield-halved', path: '/admin', roles: ['admin'] as any },
   ];
 
-  const [requests, setRequests] = useState<ValidationRequest[]>([
-    {
-      id: '1',
-      reference: 'REG-2024-001',
-      submittedAt: '2024-05-10 14:30',
-      paymentAmount: '150 TND',
-      applicantType: 'EXPORTATEUR',
-      applicantName: 'Tunisia Olive Oil Co.',
-      type: 'REGISTRATION',
-      status: 'PENDING',
-      documents: [
-        { id: 'd1', name: 'Registre de Commerce', status: 'PENDING' },
-        { id: 'd2', name: 'Identifiant Fiscal', status: 'PENDING' },
-        { id: 'd3', name: 'Attestation d\'Exportation', status: 'PENDING' },
-      ]
-    },
-    {
-      id: '2',
-      reference: 'PRD-2024-042',
-      submittedAt: '2024-05-11 09:15',
-      paymentAmount: '250 TND',
-      applicantType: 'EXPORTATEUR',
-      applicantName: 'Sousse Textile S.A.',
-      type: 'PRODUCT_DECLARATION',
-      status: 'PENDING',
-      documents: [
-        { id: 'd4', name: 'Fiche Technique', status: 'PENDING' },
-        { id: 'd5', name: 'Certificat d\'Origine', status: 'PENDING' },
-      ],
-      products: [
-        {
-          type: 'INDUSTRIEL',
-          category: 'Textile',
-          hscode: '61091000',
-          name: 'T-shirt Coton',
-          originCountry: 'Tunisie',
-          commercialBrand: 'TunisStyle'
-        },
-        {
-          type: 'ALIMENTAIRE',
-          category: 'Huiles',
-          hscode: '15091000',
-          name: 'Huile d\'Olive Vierge',
-          originCountry: 'Tunisie',
-          commercialBrand: 'Zitouna',
-          productState: 'Liquide',
-          brandName: 'Zitouna Gold',
-          annualQuantity: '5000',
-          unit: 'Litres'
-        }
-      ]
-    },
-    {
-      id: '3',
-      reference: 'IMP-2024-991',
-      submittedAt: '2024-05-12 16:45',
-      paymentAmount: '450 TND',
-      applicantType: 'IMPORTATEUR',
-      applicantName: 'Global Trading Tunis',
-      type: 'IMPORT',
-      status: 'PENDING',
-      documents: [
-        { id: 'd6', name: 'Facture Proforma', status: 'PENDING' },
-        { id: 'd7', name: 'Liste de Colisage', status: 'PENDING' },
-        { id: 'd8', name: 'Titre de Transport', status: 'PENDING' },
-      ],
-      importDetails: {
-        invoiceNum: 'INV-8822',
-        invoiceDate: '2024-05-01',
-        amount: '12500',
-        currency: 'EUR',
-        incoterm: 'FOB',
-        transportMode: 'SEA',
-        departurePort: 'Marseille',
-        arrivalPort: 'Radès',
-        arrivalDate: '2024-05-20'
-      }
+  // Fetch all pending requests
+  const fetchRequests = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/validation/demandes`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { status: 'SOUMISE' }
+      });
+      
+      const demandesData = response.data.data || response.data || [];
+      const mappedRequests = demandesData.map((req: any) => mapBackendRequestToFrontend(req));
+      setRequests(mappedRequests);
+      
+      // Also fetch archived requests (non-pending)
+      const archivedResponse = await axios.get(`${API_BASE_URL}/validation/demandes`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { status: 'ALL' }
+      });
+      
+      const allData = archivedResponse.data.data || archivedResponse.data || [];
+      const allRequests = allData.map((req: any) => mapBackendRequestToFrontend(req));
+      const nonPending = allRequests.filter((req: ValidationRequest) => req.status !== 'PENDING');
+      setArchivedRequests(nonPending);
+      
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+    } finally {
+      setLoading(false);
     }
-  ]);
-
-  const handleFinalDecision = (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest) => {
-    setRequests(prev => prev.map(req => 
-      req.id === updatedRequest.id ? { ...updatedRequest, status: decision } : req
-    ));
-    setSelectedRequest(null);
   };
 
-  const filteredRequests = requests.filter(r => r.type === inboxTab && r.status === 'PENDING');
+  // Map backend data to frontend format
+  const mapBackendRequestToFrontend = (backendReq: any): ValidationRequest => {
+    const isImportateur = backendReq.typeDemandeur === 'IMPORTATEUR';
+    const isExportateur = backendReq.typeDemandeur === 'EXPORTATEUR';
+    
+    // Determine request type
+    let requestType: RequestType = 'REGISTRATION';
+    if (backendReq.reference?.startsWith('IMP-')) {
+      requestType = 'IMPORT';
+    } else if (backendReq.reference?.startsWith('DEM-')) {
+      requestType = 'PRODUCT_DECLARATION';
+    } else if (backendReq.reference?.startsWith('DOS-')) {
+      requestType = 'REGISTRATION';
+    }
+    
+    // Map documents
+    const documents: AttachedDocument[] = (backendReq.documents || []).map((doc: any) => ({
+      id: doc.id.toString(),
+      name: doc.fileName,
+      status: mapDocumentStatus(doc.status),
+      comment: doc.validationComment,
+      fileUrl: doc.downloadUrl ? `${API_BASE_URL}${doc.downloadUrl}` : null,
+      documentType: doc.documentType
+    }));
+    
+    // Map products
+    const products: Product[] = (backendReq.products || []).map((prod: any) => ({
+      type: prod.productType === 'ALIMENTAIRE' ? 'ALIMENTAIRE' : 'INDUSTRIEL',
+      category: prod.category || '',
+      hscode: prod.hsCode || '',
+      name: prod.productName || '',
+      originCountry: prod.originCountry || '',
+      commercialBrand: prod.commercialBrandName || prod.brandName || '',
+      productState: prod.productState || prod.processingType,
+      brandName: prod.brandName,
+      annualQuantity: prod.annualQuantityValue,
+      unit: prod.annualQuantityUnit
+    }));
+    
+    // Map import details if applicable
+    let importDetails: ImportDetails | undefined;
+    if (requestType === 'IMPORT') {
+      importDetails = {
+        invoiceNum: backendReq.invoiceNumber || '',
+        invoiceDate: backendReq.invoiceDate || '',
+        amount: backendReq.amount?.toString() || '',
+        currency: backendReq.currency || 'TND',
+        incoterm: backendReq.incoterm || 'FOB',
+        transportMode: backendReq.transportMode || 'SEA',
+        departurePort: backendReq.loadingPort || '',
+        arrivalPort: backendReq.dischargePort || '',
+        arrivalDate: backendReq.arrivalDate || ''
+      };
+    }
+    
+    return {
+      id: backendReq.id.toString(),
+      reference: backendReq.reference || '',
+      submittedAt: backendReq.submittedAt ? new Date(backendReq.submittedAt).toLocaleString() : '',
+      paymentAmount: backendReq.paymentAmount ? `${backendReq.paymentAmount} TND` : '0 TND',
+      applicantType: isImportateur ? 'IMPORTATEUR' : 'EXPORTATEUR',
+      applicantName: backendReq.applicantName || (isImportateur ? 'Importateur' : 'Exportateur'),
+      type: requestType,
+      status: mapBackendStatus(backendReq.status),
+      documents,
+      products: products.length > 0 ? products : undefined,
+      importDetails
+    };
+  };
+  
+  const mapDocumentStatus = (backendStatus: string): 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'NOT_SURE' => {
+    switch (backendStatus) {
+      case 'VALIDE': return 'ACCEPTED';
+      case 'REJETE': return 'REJECTED';
+      case 'EN_ATTENTE': return 'PENDING';
+      default: return 'PENDING';
+    }
+  };
+  
+  const mapBackendStatus = (backendStatus: string): 'PENDING' | 'APPROVED' | 'REJECTED' | 'MORE_INFO' => {
+    switch (backendStatus) {
+      case 'SOUMISE': return 'PENDING';
+      case 'VALIDEE': return 'APPROVED';
+      case 'REJETEE': return 'REJECTED';
+      case 'EN_ATTENTE_INFO': return 'MORE_INFO';
+      default: return 'PENDING';
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+  }, []);
+
+  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      let endpoint = '';
+      
+      if (decision === 'APPROVED') {
+        endpoint = `${API_BASE_URL}/validation/demandes/${updatedRequest.id}/approve`;
+      } else if (decision === 'REJECTED') {
+        endpoint = `${API_BASE_URL}/validation/demandes/${updatedRequest.id}/reject`;
+      } else {
+        endpoint = `${API_BASE_URL}/validation/demandes/${updatedRequest.id}/request-info`;
+      }
+      
+      await axios.post(endpoint, 
+        { comment: comment || '' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      // Update local state
+      setRequests(prev => prev.filter(req => req.id !== updatedRequest.id));
+      setArchivedRequests(prev => [...prev, { ...updatedRequest, status: decision === 'APPROVED' ? 'APPROVED' : decision === 'REJECTED' ? 'REJECTED' : 'MORE_INFO' }]);
+      setSelectedRequest(null);
+      
+    } catch (error) {
+      console.error('Error submitting decision:', error);
+      alert('Erreur lors de la soumission de la décision');
+    }
+  };
+
+  const filteredRequests = requests.filter(r => {
+    if (inboxTab === 'REGISTRATION') return r.type === 'REGISTRATION';
+    if (inboxTab === 'PRODUCT_DECLARATION') return r.type === 'PRODUCT_DECLARATION';
+    if (inboxTab === 'IMPORT') return r.type === 'IMPORT';
+    return true;
+  });
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -165,9 +242,9 @@ const ValidatorSpace: React.FC = () => {
             {/* Inbox Tabs */}
             <div className="flex gap-4 p-2 bg-slate-100 rounded-3xl w-fit">
               {[
-                { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus', count: requests.filter(r => r.type === 'REGISTRATION' && r.status === 'PENDING').length },
-                { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box', count: requests.filter(r => r.type === 'PRODUCT_DECLARATION' && r.status === 'PENDING').length },
-                { id: 'IMPORT', label: 'Importations', icon: 'fa-ship', count: requests.filter(r => r.type === 'IMPORT' && r.status === 'PENDING').length },
+                { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus', count: requests.filter(r => r.type === 'REGISTRATION').length },
+                { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box', count: requests.filter(r => r.type === 'PRODUCT_DECLARATION').length },
+                { id: 'IMPORT', label: 'Importations', icon: 'fa-ship', count: requests.filter(r => r.type === 'IMPORT').length },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -194,50 +271,63 @@ const ValidatorSpace: React.FC = () => {
                 <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
                   Inbox : {inboxTab === 'REGISTRATION' ? 'Enregistrements' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations Produits' : 'Importations'}
                 </h3>
+                <button 
+                  onClick={fetchRequests}
+                  className="px-4 py-2 bg-slate-100 rounded-xl text-[8px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-200 transition-all"
+                >
+                  <i className="fas fa-sync-alt mr-1"></i> Rafraîchir
+                </button>
               </div>
               
               <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-white">
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Demandeur</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Soumis le</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant</th>
-                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {filteredRequests.length > 0 ? filteredRequests.map((req) => (
-                      <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
-                        <td className="px-8 py-6 font-black text-slate-900 italic tracking-tighter">{req.reference}</td>
-                        <td className="px-8 py-6">
-                          <div className="text-xs font-bold text-slate-800 uppercase tracking-tight">{req.applicantName}</div>
-                          <div className="text-[8px] text-slate-400 font-black uppercase tracking-widest">{req.applicantType}</div>
-                        </td>
-                        <td className="px-8 py-6 text-[10px] font-bold text-slate-500">{req.submittedAt}</td>
-                        <td className="px-8 py-6 text-[10px] font-black text-slate-900">{req.paymentAmount}</td>
-                        <td className="px-8 py-6 text-right">
-                          <button 
-                            onClick={() => setSelectedRequest(req)}
-                            className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
-                          >
-                            Instruire
-                          </button>
-                        </td>
+                {loading ? (
+                  <div className="p-20 text-center">
+                    <div className="w-12 h-12 border-4 border-tunisia-red border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Chargement des dossiers...</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-white">
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Demandeur</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Soumis le</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Montant</th>
+                        <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                       </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={5} className="px-8 py-20 text-center">
-                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
-                            <i className="fas fa-inbox text-2xl"></i>
-                          </div>
-                          <p className="text-sm font-black text-slate-300 uppercase tracking-widest italic">Aucun dossier en attente dans cette inbox</p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {filteredRequests.length > 0 ? filteredRequests.map((req) => (
+                        <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6 font-black text-slate-900 italic tracking-tighter">{req.reference}</td>
+                          <td className="px-8 py-6">
+                            <div className="text-xs font-bold text-slate-800 uppercase tracking-tight">{req.applicantName}</div>
+                            <div className="text-[8px] text-slate-400 font-black uppercase tracking-widest">{req.applicantType}</div>
+                          </td>
+                          <td className="px-8 py-6 text-[10px] font-bold text-slate-500">{req.submittedAt}</td>
+                          <td className="px-8 py-6 text-[10px] font-black text-slate-900">{req.paymentAmount}</td>
+                          <td className="px-8 py-6 text-right">
+                            <button 
+                              onClick={() => setSelectedRequest(req)}
+                              className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg hover:bg-black transition-all"
+                            >
+                              Instruire
+                            </button>
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td colSpan={5} className="px-8 py-20 text-center">
+                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
+                              <i className="fas fa-inbox text-2xl"></i>
+                            </div>
+                            <p className="text-sm font-black text-slate-300 uppercase tracking-widest italic">Aucun dossier en attente dans cette inbox</p>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           </div>
@@ -256,7 +346,21 @@ const ValidatorSpace: React.FC = () => {
         {activeTab === 'stats' && (
           <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 animate-fade-in">
             <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter mb-8">Analyse des Performances</h3>
-            <p className="text-slate-500">Visualisation des données de validation en cours de développement...</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="p-6 bg-emerald-50 rounded-2xl">
+                <div className="text-3xl font-black text-emerald-600">{requests.filter(r => r.type === 'REGISTRATION').length}</div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mt-2">Dossiers en attente</p>
+              </div>
+              <div className="p-6 bg-blue-50 rounded-2xl">
+                <div className="text-3xl font-black text-blue-600">{requests.filter(r => r.type === 'PRODUCT_DECLARATION').length}</div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mt-2">Déclarations produits</p>
+              </div>
+              <div className="p-6 bg-purple-50 rounded-2xl">
+                <div className="text-3xl font-black text-purple-600">{requests.filter(r => r.type === 'IMPORT').length}</div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-purple-600 mt-2">Demandes importation</p>
+              </div>
+            </div>
+            <p className="text-slate-500 text-center">Visualisation détaillée des performances en cours de développement...</p>
           </div>
         )}
 
@@ -270,10 +374,11 @@ const ValidatorSpace: React.FC = () => {
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</th>
                     <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut Final</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Décision</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {requests.filter(r => r.status !== 'PENDING').map(req => (
+                  {archivedRequests.length > 0 ? archivedRequests.map(req => (
                     <tr key={req.id}>
                       <td className="px-8 py-4 font-black text-slate-900 italic tracking-tighter">{req.reference}</td>
                       <td className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">{req.type}</td>
@@ -282,11 +387,21 @@ const ValidatorSpace: React.FC = () => {
                           req.status === 'APPROVED' ? 'text-emerald-500' : 
                           req.status === 'REJECTED' ? 'text-tunisia-red' : 'text-amber-500'
                         }`}>
-                          {req.status}
+                          {req.status === 'APPROVED' ? 'Approuvé' : req.status === 'REJECTED' ? 'Rejeté' : 'Plus d\'infos'}
                         </span>
                       </td>
+                      <td className="px-8 py-4 text-[9px] font-black text-slate-500">{req.submittedAt}</td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={4} className="px-8 py-20 text-center">
+                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
+                          <i className="fas fa-archive text-2xl"></i>
+                        </div>
+                        <p className="text-sm font-black text-slate-300 uppercase tracking-widest italic">Aucun dossier traité</p>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

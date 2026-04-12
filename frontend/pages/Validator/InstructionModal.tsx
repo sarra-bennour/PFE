@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import axios from 'axios';
 
 export type DocStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'NOT_SURE';
 
@@ -8,6 +9,8 @@ export interface AttachedDocument {
   name: string;
   status: DocStatus;
   comment?: string;
+  fileUrl?: string;
+  documentType?: string;
 }
 
 export interface Product {
@@ -54,13 +57,17 @@ export interface ValidationRequest {
 interface InstructionModalProps {
   request: ValidationRequest;
   onClose: () => void;
-  onDecision: (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest) => void;
+  onDecision: (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => void;
 }
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, onDecision }) => {
   const [localRequest, setLocalRequest] = React.useState<ValidationRequest>({ ...request });
   const [previewDoc, setPreviewDoc] = React.useState<AttachedDocument | null>(null);
   const [zoom, setZoom] = React.useState(1);
+  const [loading, setLoading] = React.useState(false);
+  const [decisionComment, setDecisionComment] = React.useState('');
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.2, 0.5));
@@ -89,6 +96,84 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   };
 
   const recommendation = getRecommendation();
+
+  const handleViewDocument = async (doc: AttachedDocument) => {
+    if (!doc.fileUrl) {
+      console.error('No file URL for document:', doc);
+      alert('URL du document non disponible');
+      return;
+    }
+    
+    // Corriger l'URL si elle contient /api/api/
+    let correctedUrl = doc.fileUrl;
+    if (correctedUrl.includes('/api/api/')) {
+      correctedUrl = correctedUrl.replace('/api/api/', '/api/');
+    }
+    
+    setPreviewDoc(doc);
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Fetching document from:', correctedUrl);
+      
+      const response = await axios.get(correctedUrl, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Accept': 'application/pdf,image/*,*/*'
+        },
+        responseType: 'blob'
+      });
+      
+      const blobUrl = URL.createObjectURL(response.data);
+      setPreviewDoc({ ...doc, fileUrl: blobUrl });
+    } catch (error) {
+      console.error('Error fetching document:', error);
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 403) {
+          alert('Accès non autorisé au document. Vérifiez vos permissions.');
+        } else if (error.response?.status === 404) {
+          alert('Document non trouvé.');
+        } else {
+          alert(`Erreur lors du chargement du document: ${error.message}`);
+        }
+      } else {
+        alert('Erreur lors du chargement du document');
+      }
+    }
+  };
+
+  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO') => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      let endpoint = '';
+      
+      if (decision === 'APPROVED') {
+        endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/approve`;
+      } else if (decision === 'REJECTED') {
+        endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/reject`;
+      } else {
+        endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/request-info`;
+      }
+      
+      console.log('Sending decision to:', endpoint);
+      
+      await axios.post(endpoint, 
+        { comment: decisionComment },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      onDecision(decision, localRequest, decisionComment);
+    } catch (error) {
+      console.error('Error submitting decision:', error);
+      if (axios.isAxiosError(error)) {
+        alert(`Erreur: ${error.response?.data?.message || error.message}`);
+      } else {
+        alert('Erreur lors de la soumission de la décision');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
@@ -120,7 +205,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             {/* Left Column: Details */}
             <div className="space-y-8">
-              {localRequest.type === 'PRODUCT_DECLARATION' && localRequest.products && (
+              {(localRequest.type === 'PRODUCT_DECLARATION' || localRequest.type === 'REGISTRATION') && localRequest.products && (
                 <div className="space-y-6">
                   <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight flex items-center gap-2">
                     <i className="fas fa-box-open text-tunisia-red"></i> Liste des Produits
@@ -220,7 +305,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 </div>
               )}
 
-              {localRequest.type === 'REGISTRATION' && (
+              {localRequest.type === 'REGISTRATION' && !localRequest.products && (
                 <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
                   <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight">Informations Demandeur</h4>
                   <div className="space-y-4 text-[10px]">
@@ -266,7 +351,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                         <div className="flex flex-col">
                           <span className="text-xs font-black text-slate-800 uppercase tracking-tight italic">{doc.name}</span>
                           <button 
-                            onClick={() => setPreviewDoc(doc)}
+                            onClick={() => handleViewDocument(doc)}
                             className="text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline text-left"
                           >
                             <i className="fas fa-eye mr-1"></i> Consulter le document
@@ -306,6 +391,19 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                   </div>
                 ))}
               </div>
+
+              {/* Decision Comment Section */}
+              <div className="mt-6 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-3">
+                  Commentaire général (optionnel)
+                </label>
+                <textarea
+                  value={decisionComment}
+                  onChange={(e) => setDecisionComment(e.target.value)}
+                  placeholder="Ajoutez un commentaire global pour cette décision..."
+                  className="w-full p-4 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-tunisia-red transition-all h-24 resize-none"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -329,20 +427,23 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
 
           <div className="flex gap-4">
             <button 
-              onClick={() => onDecision('MORE_INFO', localRequest)}
-              className="px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all"
+              onClick={() => handleFinalDecision('MORE_INFO')}
+              disabled={loading}
+              className="px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50"
             >
-              Demander plus d'infos
+              {loading ? 'Chargement...' : 'Demander plus d\'infos'}
             </button>
             <button 
-              onClick={() => onDecision('REJECTED', localRequest)}
-              className="px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all"
+              onClick={() => handleFinalDecision('REJECTED')}
+              disabled={loading}
+              className="px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all disabled:opacity-50"
             >
               Rejeter Dossier
             </button>
             <button 
-              onClick={() => onDecision('APPROVED', localRequest)}
-              className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all"
+              onClick={() => handleFinalDecision('APPROVED')}
+              disabled={loading}
+              className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50"
             >
               Valider Dossier
             </button>
@@ -371,7 +472,12 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                   </div>
                 </div>
                 <button 
-                  onClick={() => setPreviewDoc(null)}
+                  onClick={() => {
+                    if (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:')) {
+                      URL.revokeObjectURL(previewDoc.fileUrl);
+                    }
+                    setPreviewDoc(null);
+                  }}
                   className="w-12 h-12 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all flex items-center justify-center"
                 >
                   <i className="fas fa-times"></i>
@@ -401,66 +507,79 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                     </button>
                   </div>
                   <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Zoom: {Math.round(zoom * 100)}%</div>
-                  <button className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all">
-                    <i className="fas fa-download"></i>
-                  </button>
+                  {previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:') && (
+                    <a 
+                      href={previewDoc.fileUrl}
+                      download={previewDoc.name}
+                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all"
+                    >
+                      <i className="fas fa-download"></i>
+                    </a>
+                  )}
                 </div>
                 <div className="flex-1 p-12 overflow-y-auto bg-slate-200 flex justify-center">
-                  <div 
-                    className="w-full max-w-2xl bg-white shadow-lg p-16 min-h-[1000px] relative transition-transform duration-200 origin-top"
-                    style={{ transform: `scale(${zoom})` }}
-                  >
-                    {/* Simulated Document Content */}
-                    <div className="absolute top-10 right-10 opacity-10">
-                      <i className="fas fa-shield-halved text-8xl"></i>
-                    </div>
-                    <div className="border-b-4 border-slate-900 pb-8 mb-12 flex justify-between items-start">
-                      <div>
-                        <h1 className="text-2xl font-black uppercase tracking-tighter italic mb-2">République Tunisienne</h1>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ministère du Commerce et de l'Exportation</p>
+                  {previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:') ? (
+                    <iframe 
+                      src={previewDoc.fileUrl}
+                      className="w-full h-full min-h-[600px]"
+                      title={previewDoc.name}
+                    />
+                  ) : (
+                    <div 
+                      className="w-full max-w-2xl bg-white shadow-lg p-16 min-h-[1000px] relative transition-transform duration-200 origin-top"
+                      style={{ transform: `scale(${zoom})` }}
+                    >
+                      <div className="absolute top-10 right-10 opacity-10">
+                        <i className="fas fa-shield-halved text-8xl"></i>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Document Officiel</p>
-                        <p className="text-xs font-bold text-slate-900">REF: {localRequest.reference}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-8">
-                      <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-3xl">
-                        <h2 className="text-xl font-black uppercase italic tracking-tight text-slate-900 mb-2">{previewDoc.name}</h2>
-                        <div className="w-20 h-1 bg-tunisia-red mx-auto"></div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-10">
-                        <div className="space-y-4">
-                          <div className="h-4 bg-slate-50 rounded-full w-3/4"></div>
-                          <div className="h-4 bg-slate-50 rounded-full w-full"></div>
-                          <div className="h-4 bg-slate-50 rounded-full w-5/6"></div>
+                      <div className="border-b-4 border-slate-900 pb-8 mb-12 flex justify-between items-start">
+                        <div>
+                          <h1 className="text-2xl font-black uppercase tracking-tighter italic mb-2">République Tunisienne</h1>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ministère du Commerce et de l'Exportation</p>
                         </div>
-                        <div className="space-y-4">
-                          <div className="h-4 bg-slate-50 rounded-full w-full"></div>
-                          <div className="h-4 bg-slate-50 rounded-full w-2/3"></div>
-                          <div className="h-4 bg-slate-50 rounded-full w-full"></div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Document Officiel</p>
+                          <p className="text-xs font-bold text-slate-900">REF: {localRequest.reference}</p>
                         </div>
                       </div>
                       
-                      <div className="pt-20 space-y-6">
-                        <div className="h-32 bg-slate-50 rounded-3xl w-full"></div>
-                        <div className="flex justify-between items-end pt-20">
+                      <div className="space-y-8">
+                        <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-3xl">
+                          <h2 className="text-xl font-black uppercase italic tracking-tight text-slate-900 mb-2">{previewDoc.name}</h2>
+                          <div className="w-20 h-1 bg-tunisia-red mx-auto"></div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-10">
                           <div className="space-y-4">
-                            <div className="h-4 bg-slate-50 rounded-full w-40"></div>
-                            <div className="w-32 h-32 border-4 border-slate-50 rounded-2xl flex items-center justify-center text-slate-100">
-                              <i className="fas fa-stamp text-5xl"></i>
+                            <div className="h-4 bg-slate-50 rounded-full w-3/4"></div>
+                            <div className="h-4 bg-slate-50 rounded-full w-full"></div>
+                            <div className="h-4 bg-slate-50 rounded-full w-5/6"></div>
+                          </div>
+                          <div className="space-y-4">
+                            <div className="h-4 bg-slate-50 rounded-full w-full"></div>
+                            <div className="h-4 bg-slate-50 rounded-full w-2/3"></div>
+                            <div className="h-4 bg-slate-50 rounded-full w-full"></div>
+                          </div>
+                        </div>
+                        
+                        <div className="pt-20 space-y-6">
+                          <div className="h-32 bg-slate-50 rounded-3xl w-full"></div>
+                          <div className="flex justify-between items-end pt-20">
+                            <div className="space-y-4">
+                              <div className="h-4 bg-slate-50 rounded-full w-40"></div>
+                              <div className="w-32 h-32 border-4 border-slate-50 rounded-2xl flex items-center justify-center text-slate-100">
+                                <i className="fas fa-stamp text-5xl"></i>
+                              </div>
+                            </div>
+                            <div className="text-right space-y-4">
+                              <div className="h-4 bg-slate-50 rounded-full w-40 ml-auto"></div>
+                              <div className="italic text-slate-300 font-serif text-4xl opacity-50">Signature</div>
                             </div>
                           </div>
-                          <div className="text-right space-y-4">
-                            <div className="h-4 bg-slate-50 rounded-full w-40 ml-auto"></div>
-                            <div className="italic text-slate-300 font-serif text-4xl opacity-50">Signature</div>
-                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>

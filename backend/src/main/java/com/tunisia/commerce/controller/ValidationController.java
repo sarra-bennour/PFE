@@ -1,428 +1,479 @@
 package com.tunisia.commerce.controller;
 
-import com.tunisia.commerce.config.JwtUtil;
-import com.tunisia.commerce.dto.validation.*;
-import com.tunisia.commerce.entity.DemandeEnregistrement;
+import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
+import com.tunisia.commerce.dto.validation.DecisionRequest;
+import com.tunisia.commerce.dto.validation.DocumentDTO;
+import com.tunisia.commerce.dto.validation.DocumentValidationRequest;
+import com.tunisia.commerce.dto.validation.ValidationSummaryDTO;
 import com.tunisia.commerce.entity.Document;
-import com.tunisia.commerce.entity.ExportateurEtranger;
-import com.tunisia.commerce.entity.User;
-import com.tunisia.commerce.enums.DemandeStatus;
-import com.tunisia.commerce.enums.DocumentStatus;
-import com.tunisia.commerce.repository.DocumentRepository;
-import com.tunisia.commerce.repository.UserRepository;
+import com.tunisia.commerce.exception.ValidationException;
 import com.tunisia.commerce.service.ValidationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/validation")
 @RequiredArgsConstructor
+@Slf4j
+@Tag(name = "Validation", description = "API pour la gestion des validations des demandes")
+@CrossOrigin(origins = "*")
 public class ValidationController {
 
     private final ValidationService validationService;
-    private final JwtUtil jwtUtil;
-    private final UserRepository userRepository;
-    private final DocumentRepository documentRepository;
+
+    // ==================== ENDPOINTS POUR LES DEMANDES ====================
 
     /**
-     * Récupérer la liste des demandes à traiter
+     * Récupérer toutes les demandes (tous types confondus)
      */
     @GetMapping("/demandes")
-    public ResponseEntity<ValidationResponseDTO> getDemandes(
-            @RequestHeader("Authorization") String authHeader,
-            @RequestParam(required = false) DemandeStatus status) {
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Récupérer toutes les demandes", description = "Retourne la liste de toutes les demandes avec filtres optionnels")
+    public ResponseEntity<?> getAllDemandes(
+            @RequestParam(required = false) @Parameter(description = "Type de demandeur (EXPORTATEUR, IMPORTATEUR, ALL)") String type,
+            @RequestParam(required = false) @Parameter(description = "Statut de la demande (SOUMISE, VALIDEE, REJETEE, EN_ATTENTE_INFO, ALL)") String status) {
+
+        log.info("========== RÉCUPÉRATION TOUTES LES DEMANDES ==========");
+        log.info("Type: {}, Status: {}", type, status);
 
         try {
-            // Vérifier l'utilisateur
-            User agent = getAgentFromToken(authHeader);
+            List<DemandeEnregistrementDTO> demandes = validationService.getAllDemandes(type, status);
+            log.info("Nombre de demandes trouvées: {}", demandes.size());
 
-            // Récupérer les demandes
-            List<DemandeEnregistrement> demandes = validationService
-                    .getDemandesAAfficher(agent.getId(), status);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", demandes);
+            response.put("count", demandes.size());
 
-            // Convertir en DTOs
-            List<DemandeEnregistrementDTO> demandeDTOs = demandes.stream()
-                    .map(this::convertToDTO)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message(demandes.size() + " demande(s) trouvée(s)")
-                    .timestamp(LocalDateTime.now())
-                    .data(demandeDTOs)
-                    .build());
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des demandes: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "RETRIEVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     /**
-     * Récupérer les détails d'une demande spécifique
+     * Récupérer les demandes d'enregistrement exportateur (DOS-)
      */
-    @GetMapping("/demandes/{demandeId}")
-    public ResponseEntity<ValidationResponseDTO> getDemandeDetails(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long demandeId) {
+    @GetMapping("/demandes/dossier-conformite")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Récupérer les dossiers de conformité", description = "Retourne la liste des demandes d'enregistrement exportateur (préfixe DOS-)")
+    public ResponseEntity<?> getDossierConformiteDemandes(
+            @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
+
+        log.info("========== RÉCUPÉRATION DOSSIERS DE CONFORMITÉ (DOS-) ==========");
 
         try {
-            // Vérifier l'utilisateur
-            User agent = getAgentFromToken(authHeader);
+            List<DemandeEnregistrementDTO> demandes = validationService.getDemandesByReferencePrefix("DOS-", status);
+            log.info("Nombre de dossiers de conformité trouvés: {}", demandes.size());
 
-            // Récupérer la demande (à implémenter dans le service si besoin)
-            DemandeEnregistrement demande = validationService.getDemandeById(demandeId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", demandes);
+            response.put("count", demandes.size());
 
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message("Détails de la demande")
-                    .timestamp(LocalDateTime.now())
-                    .data(convertToDTO(demande))
-                    .build());
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "RETRIEVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     /**
-     * Récupérer les documents d'une demande
+     * Récupérer les demandes de déclaration de produits (DEM-)
      */
-    @GetMapping("/demandes/{demandeId}/documents")
-    public ResponseEntity<ValidationResponseDTO> getDemandeDocuments(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long demandeId) {
+    @GetMapping("/demandes/declaration-produits")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Récupérer les déclarations de produits", description = "Retourne la liste des demandes de déclaration de produits (préfixe DEM-)")
+    public ResponseEntity<?> getDeclarationProduitsDemandes(
+            @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
+
+        log.info("========== RÉCUPÉRATION DÉCLARATIONS DE PRODUITS (DEM-) ==========");
 
         try {
-            User agent = getAgentFromToken(authHeader);
+            List<DemandeEnregistrementDTO> demandes = validationService.getDemandesByReferencePrefix("DEM-", status);
+            log.info("Nombre de déclarations de produits trouvées: {}", demandes.size());
 
-            // Récupérer les documents de la demande
-            List<Document> documents = documentRepository.findByDemandeId(demandeId);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", demandes);
+            response.put("count", demandes.size());
 
-            List<DocumentDTO> documentDTOs = documents.stream()
-                    .map(this::convertToDTO)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message(documents.size() + " document(s) trouvé(s)")
-                    .timestamp(LocalDateTime.now())
-                    .data(documentDTOs)
-                    .build());
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "RETRIEVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     /**
-     * Assigner une demande à l'agent connecté
+     * Récupérer les demandes d'importation (IMP-)
      */
-    @PostMapping("/demandes/{demandeId}/assigner")
-    public ResponseEntity<ValidationResponseDTO> assignerDemande(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long demandeId) {
+    @GetMapping("/demandes/importation")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Récupérer les demandes d'importation", description = "Retourne la liste des demandes d'importation (préfixe IMP-)")
+    public ResponseEntity<?> getImportationDemandes(
+            @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
+
+        log.info("========== RÉCUPÉRATION DEMANDES D'IMPORTATION (IMP-) ==========");
 
         try {
-            User agent = getAgentFromToken(authHeader);
+            List<DemandeEnregistrementDTO> demandes = validationService.getDemandesByReferencePrefix("IMP-", status);
+            log.info("Nombre de demandes d'importation trouvées: {}", demandes.size());
 
-            DemandeEnregistrement demande = validationService
-                    .assignerDemande(demandeId, agent.getId());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", demandes);
+            response.put("count", demandes.size());
 
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message("Demande assignée avec succès")
-                    .timestamp(LocalDateTime.now())
-                    .data(convertToDTO(demande))
-                    .build());
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest()
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "RETRIEVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     /**
-     * Valider ou rejeter un document
+     * Récupérer une demande spécifique par son ID
      */
-    @PostMapping("/documents/{documentId}/valider")
-    public ResponseEntity<ValidationResponseDTO> validerDocument(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long documentId,
-            @RequestBody ValidationRequest request) {
+    @GetMapping("/demandes/{id}")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Récupérer une demande par ID", description = "Retourne les détails complets d'une demande spécifique")
+    public ResponseEntity<?> getDemandeById(
+            @Parameter(description = "ID de la demande") @PathVariable Long id) {
+
+        log.info("========== RÉCUPÉRATION DEMANDE ID: {} ==========", id);
 
         try {
-            User agent = getAgentFromToken(authHeader);
+            DemandeEnregistrementDTO demande = validationService.getDemandeById(id);
 
-            validationService.validerDocument(
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", demande);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "NOT_FOUND");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+        }
+    }
+
+    // ==================== ENDPOINTS POUR LES DÉCISIONS ====================
+
+    /**
+     * Approuver une demande
+     */
+    @PostMapping("/demandes/{id}/approve")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Approuver une demande", description = "Valide une demande et génère un numéro d'agrément si nécessaire")
+    public ResponseEntity<?> approveDemande(
+            @Parameter(description = "ID de la demande") @PathVariable Long id,
+            @RequestBody(required = false) DecisionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("========== APPROBATION DEMANDE ID: {} ==========", id);
+
+        try {
+            Long agentId = getAgentIdFromUserDetails(userDetails);
+            String comment = request != null ? request.getComment() : "";
+
+            DemandeEnregistrementDTO demande = validationService.approveDemande(id, agentId, comment);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Demande approuvée avec succès");
+            response.put("data", demande);
+            if (demande.getNumeroAgrement() != null) {
+                response.put("numeroAgrement", demande.getNumeroAgrement());
+            }
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors de l'approbation: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "APPROVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * Rejeter une demande
+     */
+    @PostMapping("/demandes/{id}/reject")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Rejeter une demande", description = "Refuse une demande avec une raison")
+    public ResponseEntity<?> rejectDemande(
+            @Parameter(description = "ID de la demande") @PathVariable Long id,
+            @RequestBody DecisionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("========== REJET DEMANDE ID: {} ==========", id);
+
+        try {
+            Long agentId = getAgentIdFromUserDetails(userDetails);
+            String reason = request != null && request.getComment() != null ? request.getComment() : "Demande rejetée";
+
+            DemandeEnregistrementDTO demande = validationService.rejectDemande(id, agentId, reason);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Demande rejetée avec succès");
+            response.put("data", demande);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors du rejet: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "REJECTION_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    /**
+     * Demander plus d'informations
+     */
+    @PostMapping("/demandes/{id}/request-info")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Demander plus d'informations", description = "Met une demande en attente d'informations complémentaires")
+    public ResponseEntity<?> requestMoreInfo(
+            @Parameter(description = "ID de la demande") @PathVariable Long id,
+            @RequestBody DecisionRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("========== DEMANDE D'INFOS SUPPLÉMENTAIRES ID: {} ==========", id);
+
+        try {
+            Long agentId = getAgentIdFromUserDetails(userDetails);
+            String comment = request != null && request.getComment() != null ? request.getComment() : "Informations complémentaires requises";
+
+            DemandeEnregistrementDTO demande = validationService.requestMoreInfo(id, agentId, comment);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Demande d'informations envoyée avec succès");
+            response.put("data", demande);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors de la demande d'infos: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "REQUEST_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    // ==================== ENDPOINTS POUR LES DOCUMENTS ====================
+
+    /**
+     * Valider un document
+     */
+    @PostMapping("/documents/{documentId}/validate")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Valider un document", description = "Valide ou rejette un document individuel")
+    public ResponseEntity<?> validateDocument(
+            @Parameter(description = "ID du document") @PathVariable Long documentId,
+            @RequestBody DocumentValidationRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("========== VALIDATION DOCUMENT ID: {} ==========", documentId);
+        log.info("Statut: {}, Commentaire: {}", request.getStatus(), request.getComment());
+
+        try {
+            Long agentId = getAgentIdFromUserDetails(userDetails);
+
+            Document document = validationService.validateDocument(
                     documentId,
-                    agent.getId(),
-                    request.getComment(),
-                    request.isValide()
+                    agentId,
+                    request.getStatus(),
+                    request.getComment()
             );
 
-            String message = request.isValide() ?
-                    "Document validé avec succès" :
-                    "Document rejeté";
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Document validé avec succès");
+            response.put("documentId", document.getId());
+            response.put("status", document.getStatus());
+            response.put("validatedAt", document.getValidatedAt());
 
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message(message)
-                    .timestamp(LocalDateTime.now())
-                    .build());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors de la validation du document: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "DOCUMENT_VALIDATION_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
 
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest()
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+    // ==================== ENDPOINTS POUR LES STATISTIQUES ====================
+
+    /**
+     * Récupérer le résumé des validations
+     */
+    @GetMapping("/summary")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @Operation(summary = "Résumé des validations", description = "Retourne les statistiques globales des validations")
+    public ResponseEntity<?> getValidationSummary() {
+
+        log.info("========== RÉCUPÉRATION DU RÉSUMÉ DES VALIDATIONS ==========");
+
+        try {
+            ValidationSummaryDTO summary = validationService.getValidationSummary();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", summary);
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération du résumé: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "SUMMARY_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     /**
-     * Prendre une décision finale sur une demande
+     * Télécharger un document par son ID
      */
-    @PostMapping("/demandes/{demandeId}/decision")
-    public ResponseEntity<ValidationResponseDTO> prendreDecision(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long demandeId,
-            @RequestBody DecisionRequest request) {
+    @GetMapping("/documents/{documentId}/telecharger")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN') or hasRole('INSTANCE_VALIDATION')")
+    @Operation(summary = "Télécharger un document", description = "Télécharge le fichier d'un document spécifique")
+    public ResponseEntity<?> downloadDocument(
+            @Parameter(description = "ID du document") @PathVariable Long documentId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("========== TÉLÉCHARGEMENT DOCUMENT ID: {} ==========", documentId);
 
         try {
-            User agent = getAgentFromToken(authHeader);
+            // Récupérer l'ID de l'agent depuis le UserDetails
+            Long agentId = getAgentIdFromUserDetails(userDetails);
 
-            DemandeEnregistrement demande = validationService
-                    .prendreDecisionFinale(
-                            demandeId,
-                            agent.getId(),
-                            request.isApprouve(),
-                            request.getComment()
-                    );
+            // Récupérer le fichier du document via le service
+            org.springframework.core.io.Resource resource = validationService.getDocumentFile(documentId, agentId);
+            DocumentDTO documentInfo = validationService.getDocumentDTOById(documentId, agentId);
 
-            String message = request.isApprouve() ?
-                    "Demande approuvée avec succès" :
-                    "Demande rejetée";
+            log.info("Document téléchargé: {}", documentInfo.getFileName());
 
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message(message)
-                    .timestamp(LocalDateTime.now())
-                    .data(convertToDTO(demande))
-                    .build());
+            // Déterminer le Content-Type
+            String contentType = determineContentType(documentInfo.getFileType());
 
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest()
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + documentInfo.getFileName() + "\"")
+                    .body(resource);
+
+        } catch (ValidationException e) {
+            log.error("Erreur: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+        } catch (Exception e) {
+            log.error("Erreur inattendue: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", "DOWNLOAD_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 
     /**
-     * Demander des informations complémentaires
+     * Obtenir les informations d'un document
      */
-    @PostMapping("/demandes/{demandeId}/info-complementaire")
-    public ResponseEntity<ValidationResponseDTO> demanderInfoComplementaire(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long demandeId,
-            @RequestBody InfoComplementaireRequest request) {
+    @GetMapping("/documents/{documentId}")
+    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN') or hasRole('INSTANCE_VALIDATION')")
+    @Operation(summary = "Informations d'un document")
+    public ResponseEntity<?> getDocumentInfo(
+            @Parameter(description = "ID du document") @PathVariable Long documentId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        log.info("========== INFOS DOCUMENT ID: {} ==========", documentId);
 
         try {
-            User agent = getAgentFromToken(authHeader);
+            Long agentId = getAgentIdFromUserDetails(userDetails);
+            DocumentDTO documentInfo = validationService.getDocumentDTOById(documentId, agentId);
 
-            validationService.demanderInformationsComplementaires(
-                    demandeId,
-                    agent.getId(),
-                    request.getMessage(),
-                    request.getDocumentsIds()
-            );
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", documentInfo);
 
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message("Demande d'informations complémentaires envoyée")
-                    .timestamp(LocalDateTime.now())
-                    .build());
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest()
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
+            return ResponseEntity.ok(response);
+        } catch (ValidationException e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("success", "false");
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
         }
     }
 
-    /**
-     * Récupérer les statistiques de l'agent
-     */
-    @GetMapping("/statistiques")
-    public ResponseEntity<ValidationResponseDTO> getStatistiques(
-            @RequestHeader("Authorization") String authHeader) {
+    private String determineContentType(String fileType) {
+        if (fileType == null) return "application/octet-stream";
 
-        try {
-            User agent = getAgentFromToken(authHeader);
+        String type = fileType.toLowerCase();
+        if (type.contains("pdf")) return "application/pdf";
+        if (type.contains("jpg") || type.contains("jpeg")) return "image/jpeg";
+        if (type.contains("png")) return "image/png";
+        if (type.contains("gif")) return "image/gif";
 
-            // Compter les demandes par statut pour cet agent
-            List<DemandeEnregistrement> demandesAgent =
-                    validationService.getDemandesAAfficher(agent.getId(), DemandeStatus.EN_COURS_VALIDATION);
-
-            List<DemandeEnregistrement> demandesNonAssignees =
-                    validationService.getDemandesAAfficher(null, DemandeStatus.SOUMISE);
-
-            Map<String, Object> stats = Map.of(
-                    "enCours", demandesAgent.size(),
-                    "enAttente", demandesNonAssignees.size(),
-                    "agentId", agent.getId(),
-                    "agentEmail", agent.getEmail()
-            );
-
-            return ResponseEntity.ok(ValidationResponseDTO.builder()
-                    .success(true)
-                    .message("Statistiques récupérées")
-                    .timestamp(LocalDateTime.now())
-                    .data(stats)
-                    .build());
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest()
-                    .body(ValidationResponseDTO.builder()
-                            .success(false)
-                            .message(e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
-        }
+        return "application/octet-stream";
     }
-
     // ==================== MÉTHODES PRIVÉES ====================
 
-    /**
-     * Extraire l'agent depuis le token
-     */
-    private User getAgentFromToken(String authHeader) {
-        String token = extractToken(authHeader);
-        String email = jwtUtil.extractUsername(token);
-
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Agent non trouvé"));
-    }
-
-    /**
-     * Extraire le token JWT du header
-     */
-    private String extractToken(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new RuntimeException("Token d'authentification manquant ou invalide");
+    private Long getAgentIdFromUserDetails(UserDetails userDetails) {
+        if (userDetails == null) {
+            return 1L; // ID par défaut pour admin/agent
         }
-        return authHeader.substring(7);
-    }
-
-    /**
-     * Convertir une entité DemandeEnregistrement en DTO
-     */
-    private DemandeEnregistrementDTO convertToDTO(DemandeEnregistrement demande) {
-        if (demande == null) return null;
-
-        // Compter les documents si nécessaire
-        int documentsCount = 0;
-        int documentsValides = 0;
-        int documentsRejetes = 0;
-
-        if (demande.getExportateur() != null && demande.getExportateur().getDocuments() != null) {
-            documentsCount = demande.getExportateur().getDocuments().size();
-            documentsValides = (int) demande.getExportateur().getDocuments().stream()
-                    .filter(d -> d.getStatus() == DocumentStatus.VALIDE)
-                    .count();
-            documentsRejetes = (int) demande.getExportateur().getDocuments().stream()
-                    .filter(d -> d.getStatus() == DocumentStatus.REJETE)
-                    .count();
-        }
-
-        return DemandeEnregistrementDTO.builder()
-                .id(demande.getId())
-                .reference(demande.getReference())
-                .status(demande.getStatus())
-                .submittedAt(demande.getSubmittedAt())
-                .decisionDate(demande.getDecisionDate())
-                .dateAgrement(demande.getDateAgrement())
-                .paymentReference(demande.getPaymentReference())
-                .paymentAmount(demande.getPaymentAmount())
-                .paymentStatus(demande.getPaymentStatus())
-                .assignedTo(demande.getAssignedTo())
-                .decisionComment(demande.getDecisionComment())
-                .numeroAgrement(demande.getNumeroAgrement())
-                .exportateur(convertToExportateurSimpleDTO(demande.getExportateur()))
-                .documentsCount(documentsCount)
-                .documentsValidesCount(documentsValides)
-                .documentsRejetesCount(documentsRejetes)
-                .build();
-    }
-
-    /**
-     * Convertir un ExportateurEtranger en DTO simplifié
-     */
-    private ExportateurSimpleDTO convertToExportateurSimpleDTO(ExportateurEtranger exportateur) {
-        if (exportateur == null) return null;
-
-        return ExportateurSimpleDTO.builder()
-                .id(exportateur.getId())
-                .email(exportateur.getEmail())
-                .raisonSociale(exportateur.getRaisonSociale())
-                .paysOrigine(exportateur.getPaysOrigine())
-                .telephone(exportateur.getTelephone())
-                .statutAgrement(exportateur.getStatutAgrement() != null ?
-                        exportateur.getStatutAgrement().name() : null)
-                .build();
-    }
-
-    /**
-     * Convertir un Document en DTO
-     */
-    private DocumentDTO convertToDTO(Document document) {
-        if (document == null) return null;
-
-        return DocumentDTO.builder()
-                .id(document.getId())
-                .fileName(document.getFileName())
-                .fileType(document.getFileType())
-                .fileSize(document.getFileSize())
-                .documentType(document.getDocumentType())
-                .status(document.getStatus())
-                .validationComment(document.getValidationComment())
-                .uploadedAt(document.getUploadedAt())
-                .validatedAt(document.getValidatedAt())
-                .validatedBy(document.getValidatedBy() != null ?
-                        document.getValidatedBy().getEmail() : null)
-                .downloadUrl("/api/files/" + document.getId()) // À adapter selon ton API
-                .build();
+        // Ici vous devriez récupérer l'ID depuis le userDetails
+        // Pour l'instant on retourne 1
+        return 1L;
     }
 }

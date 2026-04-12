@@ -54,5 +54,9 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
             @Param("produitId") Long produitId,
             @Param("statuses") List<DemandeStatus> statuses
     );
+    List<DemandeEnregistrement> findByImportateurId(Long importateurId);
+    List<DemandeEnregistrement> findByTypeDemandeur(TypeDemandeur typeDemandeur);
+    @Query("SELECT d FROM DemandeEnregistrement d WHERE d.importateur.id = :importateurId AND d.reference LIKE 'IMP-%'")
+    List<DemandeEnregistrement> findImportationDemandesByImportateurId(@Param("importateurId") Long importateurId);
 }
 
