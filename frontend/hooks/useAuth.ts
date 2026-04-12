@@ -1,14 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User } from '../types/User';
-
-// Interface pour typer les statuts
-interface DossierStatus {
-  demandeStatus: string;
-  paymentStatus: string;
-  lastUpdated: string;
-  demandeId?: number;
-  reference?: string;
-}
+import { DossierStatus } from '../types/DossierStatus';
 
 
 export const useAuth = () => {

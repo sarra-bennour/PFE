@@ -206,39 +206,39 @@ const Login: React.FC = () => {
     i18n.changeLanguage(lng);
   };
 
-  const executeLogin = (userEmail: string, userData?: any) => {
-    if (userData) {
-      login(userData, userData.token);
-      const role = userData.role;
-      if (role === 'ADMIN') {
-        navigate('/admin');
-      } else {
-        navigate(`/${role.toLowerCase()}`);
-      }
-      return;
-    }
+  // const executeLogin = (userEmail: string, userData?: any) => {
+  //   if (userData) {
+  //     login(userData, userData.token);
+  //     const role = userData.role;
+  //     if (role === 'ADMIN') {
+  //       navigate('/admin');
+  //     } else {
+  //       navigate(`/${role.toLowerCase()}`);
+  //     }
+  //     return;
+  //   }
 
-    let role: UserRole = 'EXPORTATEUR';
-    if (userEmail.includes('admin')) {
-      role = 'ADMIN';
-    }
+  //   let role: UserRole = 'EXPORTATEUR';
+  //   if (userEmail.includes('admin')) {
+  //     role = 'ADMIN';
+  //   }
     
 
-    const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
+  //   const is2FA = localStorage.getItem(`2fa_${userEmail}`) === 'true';
 
-    login({
-      email: userEmail,
-      role,
-      companyName: 'Opérateur International',
-      isTwoFactorEnabled: is2FA
-    }, userData.token);
+  //   login({
+  //     email: userEmail,
+  //     role,
+  //     companyName: 'Opérateur International',
+  //     isTwoFactorEnabled: is2FA
+  //   }, userData.token);
 
-    if (role === 'ADMIN') {
-    navigate('/admin');
-  } else {
-    navigate(`/${role}`);
-  }
-  };
+  //   if (role === 'ADMIN') {
+  //   navigate('/admin');
+  // } else {
+  //   navigate(`/${role}`);
+  // }
+  // };
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -272,6 +272,7 @@ const Login: React.FC = () => {
       });
 
       const data = await response.json();
+      console.log('Réponse de ROLEEEEEE', data.user.role);
 
       if (response.ok) {
         localStorage.setItem('token', data.token);
@@ -284,11 +285,19 @@ const Login: React.FC = () => {
         } else {
           showAlert('✅ Connexion réussie ! Redirection en cours...', 'success');
           setTimeout(() => {
-          if (data.user?.role === 'ADMIN') {
-            navigate('/admin');
-          } else {
-            executeLogin(email, data.user);
-          }
+            // Redirection directe sans executeLogin
+            const role = data.user?.role?.toLowerCase();
+            if (role === 'admin') {
+              navigate('/admin');
+            } else if (role === 'exportateur') {
+              navigate('/exportateur');
+            } else if (role === 'importateur') {
+              navigate('/importateur');
+            } else if (role === 'instance_validation') {
+              navigate('/instance-validation');
+            } else {
+              navigate(`/${role}`);
+            }
           }, 1500);
         }
       } else {

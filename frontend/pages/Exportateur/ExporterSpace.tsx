@@ -207,16 +207,30 @@ const ExporterSpace: React.FC = () => {
   });
 
   // Au début du composant
-  useEffect(() => {
-    const token = localStorage.getItem('token');
+  // Au début du composant ExporterSpace, vers les lignes 200-220
+useEffect(() => {
+  const token = localStorage.getItem('token');
 
-    if (token) {
-      // Décoder le token pour voir son contenu
-      const base64Url = token.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(window.atob(base64));
+  if (token) {
+    try {
+      // Vérifier que le token a bien 3 parties
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        // Décoder le token pour voir son contenu
+        const base64Url = parts[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(window.atob(base64));
+        console.log('📦 Payload du token:', payload);
+      } else {
+        console.warn('⚠️ Token invalide - mauvais nombre de parties:', parts.length);
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors du décodage du token:', error);
+      // Nettoyer le token invalide
+      localStorage.removeItem('token');
     }
-  }, []);
+  }
+}, []);
 
   const productDeclarations = [
     {
@@ -276,11 +290,11 @@ const ExporterSpace: React.FC = () => {
 
         // Mettre à jour l'utilisateur avec des informations pertinentes
         // mais sans statut statique
-        updateUser({
-          dossierStatut: response.data.status,
-          dossierId: response.data.demandeId,
-          dossierReference: response.data.reference
-        });
+        // updateUser({
+        //   dossierStatut: response.data.status,
+        //   dossierId: response.data.demandeId,
+        //   dossierReference: response.data.reference
+        // });
       }
     } catch (error) {
       console.error('Erreur lors de la récupération du dossier:', error);
@@ -564,12 +578,6 @@ const ExporterSpace: React.FC = () => {
           paymentReference: result.paymentReference || result.transactionId,
           amount: result.amount,
           status: result.status
-        });
-
-        // Remplacer updateUserStatus par updateUser
-        updateUser({
-          dossierStatut: 'EN_COURS_VALIDATION',
-          paymentStatus: 'REUSSI'
         });
 
         setDossierInfo(prev => ({

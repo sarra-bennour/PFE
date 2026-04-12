@@ -7,7 +7,7 @@ import Footer from './components/Footer';
 import Home from './pages/Home';
 import ExporterSpace from './pages/Exportateur/ExporterSpace';
 import ImporterSpace from './pages/Importateur/ImporterSpace';
-import ValidatorSpace from './pages/ValidatorSpace';
+import ValidatorSpace from './pages/Validator/ValidatorSpace';
 import DecisionAid from './pages/DecisionAid';
 import AdminPanel from './pages/Admin/AdminPanel';
 import ExporterSignUp from './pages/Exportateur/ExporterSignUp';
@@ -81,7 +81,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     '/forgot-password', 
     '/reset-password',
     '/admin',
-    '/validator'
+    '/instance-validation'
   ];
   
   const shouldHideNavbar = noNavbarRoutes.includes(location.pathname);
@@ -266,13 +266,13 @@ const App: React.FC = () => {
                 <ImporterSpace />
               </ProtectedRoute>
             } />
-            <Route path="/validator" element={
-              <ProtectedRoute roles={['VALIDATOR']}>
+            <Route path="/instance-validation" element={
+              <ProtectedRoute roles={['INSTANCE_VALIDATION']}>
                 <ValidatorSpace />
               </ProtectedRoute>
             } />
             <Route path="/dashboard" element={
-              <ProtectedRoute roles={['ADMIN', 'VALIDATOR']}>
+              <ProtectedRoute roles={['ADMIN', 'INSTANCE_VALIDATION']}>
                 <DecisionAid />
               </ProtectedRoute>
             } />
