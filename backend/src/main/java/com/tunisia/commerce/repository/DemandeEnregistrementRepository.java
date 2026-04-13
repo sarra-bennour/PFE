@@ -58,5 +58,6 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
     List<DemandeEnregistrement> findByTypeDemandeur(TypeDemandeur typeDemandeur);
     @Query("SELECT d FROM DemandeEnregistrement d WHERE d.importateur.id = :importateurId AND d.reference LIKE 'IMP-%'")
     List<DemandeEnregistrement> findImportationDemandesByImportateurId(@Param("importateurId") Long importateurId);
+
 }
 

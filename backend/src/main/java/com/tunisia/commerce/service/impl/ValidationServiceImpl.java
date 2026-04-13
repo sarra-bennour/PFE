@@ -2,12 +2,12 @@ package com.tunisia.commerce.service.impl;
 
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.produits.ProduitDTO;
-import com.tunisia.commerce.dto.validation.DecisionRequest;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.dto.validation.ValidationSummaryDTO;
 import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.DocumentStatus;
+import com.tunisia.commerce.enums.PaymentStatus;
 import com.tunisia.commerce.enums.TypeDemandeur;
 import com.tunisia.commerce.exception.ValidationException;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
@@ -60,7 +60,12 @@ public class ValidationServiceImpl implements ValidationService {
             demandes = demandeRepository.findAll();
         }
 
-        // Filtrer par statut
+        // 🔥 FILTRER PAR STATUT DE PAIEMENT - Garder uniquement les paiements valides
+        demandes = demandes.stream()
+                .filter(d -> d.getPaymentStatus() == PaymentStatus.REUSSI)
+                .collect(Collectors.toList());
+
+        // Filtrer par statut de la demande
         if (status != null && !status.isEmpty() && !"ALL".equals(status)) {
             try {
                 DemandeStatus demandeStatus = DemandeStatus.valueOf(status);
@@ -141,9 +146,9 @@ public class ValidationServiceImpl implements ValidationService {
                 .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée avec l'ID: " + demandeId));
 
         // Vérifier que la demande est en statut SOUMISE
-        if (demande.getStatus() != DemandeStatus.SOUMISE) {
+        if (demande.getStatus() != DemandeStatus.SOUMISE && demande.getStatus() != DemandeStatus.EN_ATTENTE_INFO) {
             throw new ValidationException("INVALID_STATUS",
-                    "Seules les demandes soumises peuvent être approuvées. Statut actuel: " + demande.getStatus());
+                    "Seules les demandes soumises ou en attente d'informations peuvent être approuvées. Statut actuel: " + demande.getStatus());
         }
 
         User agent = userRepository.findById(agentId)
@@ -158,6 +163,10 @@ public class ValidationServiceImpl implements ValidationService {
             demande.setDateAgrement(LocalDateTime.now().toLocalDate());
             log.info("Agrément généré pour la demande {}: {}", demande.getReference(), numeroAgrement);
         }
+
+        // 🔥 NOUVEAU : Valider automatiquement tous les documents en attente
+        validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.VALIDE,
+                "Document automatiquement validé suite à l'approbation de la demande");
 
         // Mettre à jour la demande
         demande.setStatus(DemandeStatus.VALIDEE);
@@ -198,6 +207,10 @@ public class ValidationServiceImpl implements ValidationService {
 
         DemandeStatus oldStatus = demande.getStatus();
 
+        // 🔥 NOUVEAU : Rejeter automatiquement tous les documents en attente
+        validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.REJETE,
+                "Document automatiquement rejeté suite au rejet de la demande. Raison: " + reason);
+
         // Mettre à jour la demande
         demande.setStatus(DemandeStatus.REJETEE);
         demande.setDecisionDate(LocalDateTime.now());
@@ -236,6 +249,10 @@ public class ValidationServiceImpl implements ValidationService {
                 .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé avec l'ID: " + agentId));
 
         DemandeStatus oldStatus = demande.getStatus();
+
+        // 🔥 NOUVEAU : Marquer tous les documents en attente comme "A_COMPLETER"
+        validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.A_COMPLETER,
+                "Des informations complémentaires sont requises: " + comment);
 
         // Mettre à jour la demande
         demande.setStatus(DemandeStatus.EN_ATTENTE_INFO);
@@ -528,5 +545,48 @@ public class ValidationServiceImpl implements ValidationService {
                         document.getValidatedBy().getNom() + " " + document.getValidatedBy().getPrenom() : null)
                 .downloadUrl("/api/validation/documents/" + document.getId() + "/telecharger")
                 .build();
+    }
+
+    /**
+     * Valide tous les documents en attente pour une demande donnée
+     * @param demandeId ID de la demande
+     * @param agentId ID de l'agent qui effectue la validation
+     * @param targetStatus Statut à appliquer aux documents en attente
+     * @param defaultComment Commentaire par défaut
+     */
+    private void validatePendingDocumentsForDemande(Long demandeId, Long agentId,
+                                                    DocumentStatus targetStatus,
+                                                    String defaultComment) {
+        log.info("Validation automatique des documents en attente pour la demande {} vers le statut {}",
+                demandeId, targetStatus);
+
+        // 🔥 Récupérer UNIQUEMENT les documents EN_ATTENTE (PENDING)
+        List<Document> pendingDocuments = documentRepository.findByDemandeIdAndStatus(
+                demandeId, DocumentStatus.EN_ATTENTE);
+
+        if (pendingDocuments.isEmpty()) {
+            log.info("Aucun document en attente pour la demande {}", demandeId);
+            return;
+        }
+
+        User agent = userRepository.findById(agentId)
+                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND",
+                        "Agent non trouvé avec l'ID: " + agentId));
+
+        for (Document doc : pendingDocuments) {
+            // 🔥 Vérifier que le document est toujours EN_ATTENTE avant de le modifier
+            if (doc.getStatus() == DocumentStatus.EN_ATTENTE) {
+                doc.setStatus(targetStatus);
+                doc.setValidationComment(defaultComment);
+                doc.setValidatedAt(LocalDateTime.now());
+                doc.setValidatedBy(agent);
+                documentRepository.save(doc);
+                log.info("Document {} (ID: {}) automatiquement passé en statut {}",
+                        doc.getFileName(), doc.getId(), targetStatus);
+            } else {
+                log.info("Document {} (ID: {}) déjà en statut {}, ignoré",
+                        doc.getFileName(), doc.getId(), doc.getStatus());
+            }
+        }
     }
 }

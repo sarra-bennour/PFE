@@ -6,7 +6,9 @@ import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.dto.validation.DocumentValidationRequest;
 import com.tunisia.commerce.dto.validation.ValidationSummaryDTO;
 import com.tunisia.commerce.entity.Document;
+import com.tunisia.commerce.entity.User;
 import com.tunisia.commerce.exception.ValidationException;
+import com.tunisia.commerce.repository.UserRepository;
 import com.tunisia.commerce.service.ValidationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,8 +20,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -35,14 +37,12 @@ import java.util.Map;
 public class ValidationController {
 
     private final ValidationService validationService;
+    private final UserRepository userRepository;
 
     // ==================== ENDPOINTS POUR LES DEMANDES ====================
 
-    /**
-     * Récupérer toutes les demandes (tous types confondus)
-     */
     @GetMapping("/demandes")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer toutes les demandes", description = "Retourne la liste de toutes les demandes avec filtres optionnels")
     public ResponseEntity<?> getAllDemandes(
             @RequestParam(required = false) @Parameter(description = "Type de demandeur (EXPORTATEUR, IMPORTATEUR, ALL)") String type,
@@ -71,11 +71,8 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Récupérer les demandes d'enregistrement exportateur (DOS-)
-     */
     @GetMapping("/demandes/dossier-conformite")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer les dossiers de conformité", description = "Retourne la liste des demandes d'enregistrement exportateur (préfixe DOS-)")
     public ResponseEntity<?> getDossierConformiteDemandes(
             @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
@@ -102,11 +99,8 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Récupérer les demandes de déclaration de produits (DEM-)
-     */
     @GetMapping("/demandes/declaration-produits")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer les déclarations de produits", description = "Retourne la liste des demandes de déclaration de produits (préfixe DEM-)")
     public ResponseEntity<?> getDeclarationProduitsDemandes(
             @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
@@ -133,11 +127,8 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Récupérer les demandes d'importation (IMP-)
-     */
     @GetMapping("/demandes/importation")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer les demandes d'importation", description = "Retourne la liste des demandes d'importation (préfixe IMP-)")
     public ResponseEntity<?> getImportationDemandes(
             @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
@@ -164,11 +155,8 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Récupérer une demande spécifique par son ID
-     */
     @GetMapping("/demandes/{id}")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer une demande par ID", description = "Retourne les détails complets d'une demande spécifique")
     public ResponseEntity<?> getDemandeById(
             @Parameter(description = "ID de la demande") @PathVariable Long id) {
@@ -195,22 +183,18 @@ public class ValidationController {
 
     // ==================== ENDPOINTS POUR LES DÉCISIONS ====================
 
-    /**
-     * Approuver une demande
-     */
     @PostMapping("/demandes/{id}/approve")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Approuver une demande", description = "Valide une demande et génère un numéro d'agrément si nécessaire")
     public ResponseEntity<?> approveDemande(
             @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @RequestBody(required = false) DecisionRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestBody(required = false) DecisionRequest request) {  // 🔥 RETIRER @AuthenticationPrincipal
 
         log.info("========== APPROBATION DEMANDE ID: {} ==========", id);
 
         try {
-            Long agentId = getAgentIdFromUserDetails(userDetails);
-            String comment = request != null ? request.getComment() : "";
+            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
+            String comment = request != null ? request.getComment() : null;
 
             DemandeEnregistrementDTO demande = validationService.approveDemande(id, agentId, comment);
 
@@ -233,21 +217,17 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Rejeter une demande
-     */
     @PostMapping("/demandes/{id}/reject")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Rejeter une demande", description = "Refuse une demande avec une raison")
     public ResponseEntity<?> rejectDemande(
             @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @RequestBody DecisionRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestBody DecisionRequest request) {  // 🔥 RETIRER @AuthenticationPrincipal
 
         log.info("========== REJET DEMANDE ID: {} ==========", id);
 
         try {
-            Long agentId = getAgentIdFromUserDetails(userDetails);
+            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
             String reason = request != null && request.getComment() != null ? request.getComment() : "Demande rejetée";
 
             DemandeEnregistrementDTO demande = validationService.rejectDemande(id, agentId, reason);
@@ -268,21 +248,17 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Demander plus d'informations
-     */
     @PostMapping("/demandes/{id}/request-info")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Demander plus d'informations", description = "Met une demande en attente d'informations complémentaires")
     public ResponseEntity<?> requestMoreInfo(
             @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @RequestBody DecisionRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestBody DecisionRequest request) {  // 🔥 RETIRER @AuthenticationPrincipal
 
         log.info("========== DEMANDE D'INFOS SUPPLÉMENTAIRES ID: {} ==========", id);
 
         try {
-            Long agentId = getAgentIdFromUserDetails(userDetails);
+            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
             String comment = request != null && request.getComment() != null ? request.getComment() : "Informations complémentaires requises";
 
             DemandeEnregistrementDTO demande = validationService.requestMoreInfo(id, agentId, comment);
@@ -305,22 +281,18 @@ public class ValidationController {
 
     // ==================== ENDPOINTS POUR LES DOCUMENTS ====================
 
-    /**
-     * Valider un document
-     */
     @PostMapping("/documents/{documentId}/validate")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Valider un document", description = "Valide ou rejette un document individuel")
     public ResponseEntity<?> validateDocument(
             @Parameter(description = "ID du document") @PathVariable Long documentId,
-            @RequestBody DocumentValidationRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @RequestBody DocumentValidationRequest request) {  // 🔥 RETIRER @AuthenticationPrincipal
 
         log.info("========== VALIDATION DOCUMENT ID: {} ==========", documentId);
         log.info("Statut: {}, Commentaire: {}", request.getStatus(), request.getComment());
 
         try {
-            Long agentId = getAgentIdFromUserDetails(userDetails);
+            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
 
             Document document = validationService.validateDocument(
                     documentId,
@@ -349,11 +321,8 @@ public class ValidationController {
 
     // ==================== ENDPOINTS POUR LES STATISTIQUES ====================
 
-    /**
-     * Récupérer le résumé des validations
-     */
     @GetMapping("/summary")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Résumé des validations", description = "Retourne les statistiques globales des validations")
     public ResponseEntity<?> getValidationSummary() {
 
@@ -377,29 +346,22 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Télécharger un document par son ID
-     */
     @GetMapping("/documents/{documentId}/telecharger")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN') or hasRole('INSTANCE_VALIDATION')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Télécharger un document", description = "Télécharge le fichier d'un document spécifique")
     public ResponseEntity<?> downloadDocument(
-            @Parameter(description = "ID du document") @PathVariable Long documentId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @Parameter(description = "ID du document") @PathVariable Long documentId) {  // 🔥 RETIRER @AuthenticationPrincipal
 
         log.info("========== TÉLÉCHARGEMENT DOCUMENT ID: {} ==========", documentId);
 
         try {
-            // Récupérer l'ID de l'agent depuis le UserDetails
-            Long agentId = getAgentIdFromUserDetails(userDetails);
+            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
 
-            // Récupérer le fichier du document via le service
             org.springframework.core.io.Resource resource = validationService.getDocumentFile(documentId, agentId);
             DocumentDTO documentInfo = validationService.getDocumentDTOById(documentId, agentId);
 
             log.info("Document téléchargé: {}", documentInfo.getFileName());
 
-            // Déterminer le Content-Type
             String contentType = determineContentType(documentInfo.getFileType());
 
             return ResponseEntity.ok()
@@ -425,20 +387,16 @@ public class ValidationController {
         }
     }
 
-    /**
-     * Obtenir les informations d'un document
-     */
     @GetMapping("/documents/{documentId}")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN') or hasRole('INSTANCE_VALIDATION')")
+    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Informations d'un document")
     public ResponseEntity<?> getDocumentInfo(
-            @Parameter(description = "ID du document") @PathVariable Long documentId,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            @Parameter(description = "ID du document") @PathVariable Long documentId) {  // 🔥 RETIRER @AuthenticationPrincipal
 
         log.info("========== INFOS DOCUMENT ID: {} ==========", documentId);
 
         try {
-            Long agentId = getAgentIdFromUserDetails(userDetails);
+            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
             DocumentDTO documentInfo = validationService.getDocumentDTOById(documentId, agentId);
 
             Map<String, Object> response = new HashMap<>();
@@ -466,14 +424,31 @@ public class ValidationController {
 
         return "application/octet-stream";
     }
+
     // ==================== MÉTHODES PRIVÉES ====================
 
-    private Long getAgentIdFromUserDetails(UserDetails userDetails) {
-        if (userDetails == null) {
-            return 1L; // ID par défaut pour admin/agent
+    /**
+     * Récupère l'ID de l'utilisateur actuellement authentifié
+     */
+    private Long getCurrentAgentId() {
+        // Récupérer l'authentification depuis le SecurityContext
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.error("Aucune authentification trouvée dans le SecurityContext");
+            throw new ValidationException("AUTHENTICATION_ERROR", "Utilisateur non authentifié");
         }
-        // Ici vous devriez récupérer l'ID depuis le userDetails
-        // Pour l'instant on retourne 1
-        return 1L;
+
+        String email = authentication.getName();
+        log.info("Utilisateur authentifié: email={}", email);
+
+        // Récupérer l'utilisateur depuis la base de données
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ValidationException("USER_NOT_FOUND",
+                        "Utilisateur non trouvé avec l'email: " + email));
+
+        log.info("Agent trouvé: ID={}, Nom={}, Rôle={}", user.getId(), user.getNom(), user.getRole());
+
+        return user.getId();
     }
 }

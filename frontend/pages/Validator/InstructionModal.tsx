@@ -68,18 +68,52 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   const [zoom, setZoom] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
   const [decisionComment, setDecisionComment] = React.useState('');
+  const [confirmationDecision, setConfirmationDecision] = React.useState<'APPROVED' | 'REJECTED' | 'MORE_INFO' | null>(null);
+  
+  // 🔥 Ref pour suivre si une soumission est en cours
+  const isSubmitting = React.useRef(false);
+  // 🔥 Compteur pour tracer les appels
+  let callCounter = 0;
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.2, 0.5));
 
-  const handleUpdateDocStatus = (docId: string, status: DocStatus, comment?: string) => {
-    const updatedDocs = localRequest.documents.map(doc => 
-      doc.id === docId ? { ...doc, status, comment } : doc
+  const handleUpdateDocStatus = async (docId: string, status: DocStatus, comment?: string) => {
+  if (loading || isSubmitting.current) return;
+  
+  // 🔥 Mettre à jour localement immédiatement (optimiste)
+  const updatedDocs = localRequest.documents.map(doc => 
+    doc.id === docId ? { ...doc, status, comment } : doc
+  );
+  setLocalRequest({ ...localRequest, documents: updatedDocs });
+  
+  // 🔥 Envoyer la validation au backend
+  try {
+    const token = localStorage.getItem('token');
+    let backendStatus = '';
+    switch (status) {
+      case 'ACCEPTED': backendStatus = 'VALIDE'; break;
+      case 'REJECTED': backendStatus = 'REJETE'; break;
+      case 'NOT_SURE': backendStatus = 'A_COMPLETER'; break;
+      default: return;
+    }
+    
+    await axios.post(`${API_BASE_URL}/validation/documents/${docId}/validate`,
+      { status: backendStatus, comment: comment || '' },
+      { headers: { Authorization: `Bearer ${token}` } }
     );
-    setLocalRequest({ ...localRequest, documents: updatedDocs });
-  };
+    
+    console.log(`Document ${docId} validé avec statut ${backendStatus}`);
+  } catch (error) {
+    console.error('Erreur lors de la validation du document:', error);
+    // 🔥 Revert local change on error
+    setLocalRequest({ ...localRequest });
+    alert('Erreur lors de la validation du document');
+  }
+};
 
   const handleAutoValidateAll = () => {
+    if (loading || isSubmitting.current) return;
     const updatedDocs = localRequest.documents.map(doc => ({ ...doc, status: 'ACCEPTED' as DocStatus }));
     setLocalRequest({ ...localRequest, documents: updatedDocs });
   };
@@ -97,14 +131,81 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
 
   const recommendation = getRecommendation();
 
+  const allDocumentsReviewed = !localRequest.documents.some(d => d.status === 'PENDING');
+  
+  const hasRejected = localRequest.documents.some(d => d.status === 'REJECTED');
+  const hasNotSure = localRequest.documents.some(d => d.status === 'NOT_SURE');
+  const allAccepted = localRequest.documents.every(d => d.status === 'ACCEPTED');
+
+  let activeButton: 'APPROVED' | 'REJECTED' | 'MORE_INFO' | null = null;
+  if (allDocumentsReviewed) {
+    if (hasRejected) {
+      activeButton = 'REJECTED';
+    } else if (hasNotSure) {
+      activeButton = 'MORE_INFO';
+    } else if (allAccepted) {
+      activeButton = 'APPROVED';
+    }
+  }
+
+  const handleDecisionClick = (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO') => {
+    console.log('🔘 [handleDecisionClick]', { decision, loading, isSubmitting: isSubmitting.current });
+    if (loading || isSubmitting.current) {
+      console.log('⚠️ [handleDecisionClick] Bloqué - soumission en cours');
+      return;
+    }
+    setConfirmationDecision(decision);
+  };
+
+  const confirmDecision = async () => {
+  const callId = ++callCounter;
+  console.log(`🚀 [confirmDecision #${callId}] DEBUT`, { 
+    confirmationDecision, 
+    loading, 
+    isSubmitting: isSubmitting.current,
+    timestamp: new Date().toISOString()
+  });
+  
+  if (!confirmationDecision) {
+    console.log(`❌ [confirmDecision #${callId}] Aucune décision à confirmer`);
+    return;
+  }
+  
+  if (loading || isSubmitting.current) {
+    console.log(`⚠️ [confirmDecision #${callId}] SOUMISSION DÉJÀ EN COURS - IGNORÉE`);
+    return;
+  }
+  
+  isSubmitting.current = true;
+  setLoading(true);
+  console.log(`🔒 [confirmDecision #${callId}] Verrou acquis, début de la soumission`);
+  
+  try {
+    // 🔥 NE PAS modifier les documents ici !
+    // Le backend s'occupe de mettre à jour uniquement les documents PENDING
+    
+    const decision = confirmationDecision;
+    setConfirmationDecision(null);
+    
+    console.log(`📤 [confirmDecision #${callId}] Appel de handleFinalDecision`);
+    await handleFinalDecision(decision, localRequest, callId);
+    
+  } catch (error) {
+    console.error(`💥 [confirmDecision #${callId}] Erreur:`, error);
+    isSubmitting.current = false;
+    setLoading(false);
+  }
+};
+
   const handleViewDocument = async (doc: AttachedDocument) => {
+    if (loading || isSubmitting.current) return;
+    
     if (!doc.fileUrl) {
       console.error('No file URL for document:', doc);
       alert('URL du document non disponible');
       return;
     }
     
-    // Corriger l'URL si elle contient /api/api/
     let correctedUrl = doc.fileUrl;
     if (correctedUrl.includes('/api/api/')) {
       correctedUrl = correctedUrl.replace('/api/api/', '/api/');
@@ -141,36 +242,53 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
     }
   };
 
-  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO') => {
-    setLoading(true);
+  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, callId?: number) => {
+    const requestId = callId || ++callCounter;
+    console.log(`🌐 [handleFinalDecision #${requestId}] DEBUT`, { decision, endpoint: '' });
+    
     try {
       const token = localStorage.getItem('token');
       let endpoint = '';
       
       if (decision === 'APPROVED') {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/approve`;
+        console.log(`📡 [handleFinalDecision #${requestId}] Appel API: POST ${endpoint}`);
       } else if (decision === 'REJECTED') {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/reject`;
+        console.log(`📡 [handleFinalDecision #${requestId}] Appel API: POST ${endpoint}`);
       } else {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/request-info`;
+        console.log(`📡 [handleFinalDecision #${requestId}] Appel API: POST ${endpoint}`);
       }
       
-      console.log('Sending decision to:', endpoint);
+      console.log(`⏳ [handleFinalDecision #${requestId}] Envoi de la requête...`);
       
-      await axios.post(endpoint, 
+      const response = await axios.post(endpoint, 
         { comment: decisionComment },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
-      onDecision(decision, localRequest, decisionComment);
+      console.log(`✅ [handleFinalDecision #${requestId}] SUCCÈS API`, { status: response.status, data: response.data });
+      
+      console.log(`📞 [handleFinalDecision #${requestId}] Appel onDecision callback`);
+      onDecision(decision, updatedRequest, decisionComment);
+      
+      console.log(`🚪 [handleFinalDecision #${requestId}] Fermeture du modal`);
+      onClose();
+      
     } catch (error) {
-      console.error('Error submitting decision:', error);
+      console.error(`❌ [handleFinalDecision #${requestId}] ÉCHEC API:`, error);
       if (axios.isAxiosError(error)) {
+        console.error(`   - Status: ${error.response?.status}`);
+        console.error(`   - Message: ${error.response?.data?.message || error.message}`);
         alert(`Erreur: ${error.response?.data?.message || error.message}`);
       } else {
         alert('Erreur lors de la soumission de la décision');
       }
+      throw error;
     } finally {
+      console.log(`🔓 [handleFinalDecision #${requestId}] FIN - Nettoyage des verrous`);
+      isSubmitting.current = false;
       setLoading(false);
     }
   };
@@ -194,7 +312,8 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
           </div>
           <button 
             onClick={onClose}
-            className="w-12 h-12 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm"
+            disabled={loading || isSubmitting.current}
+            className="w-12 h-12 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i className="fas fa-times"></i>
           </button>
@@ -203,7 +322,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-10 space-y-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {/* Left Column: Details */}
+            {/* Left Column: Details - inchangé */}
             <div className="space-y-8">
               {(localRequest.type === 'PRODUCT_DECLARATION' || localRequest.type === 'REGISTRATION') && localRequest.products && (
                 <div className="space-y-6">
@@ -334,7 +453,8 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 </h4>
                 <button 
                   onClick={handleAutoValidateAll}
-                  className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all"
+                  disabled={loading || isSubmitting.current}
+                  className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <i className="fas fa-magic mr-1"></i> Validation Auto
                 </button>
@@ -361,19 +481,22 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                       <div className="flex gap-2">
                         <button 
                           onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'}`}
+                          disabled={loading || isSubmitting.current}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
                           <i className="fas fa-check"></i>
                         </button>
                         <button 
                           onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'}`}
+                          disabled={loading || isSubmitting.current}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
                           <i className="fas fa-question"></i>
                         </button>
                         <button 
                           onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'}`}
+                          disabled={loading || isSubmitting.current}
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
                         >
                           <i className="fas fa-times"></i>
                         </button>
@@ -385,7 +508,8 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                         placeholder="Pourquoi ? (Commentaire obligatoire)"
                         value={doc.comment || ''}
                         onChange={(e) => handleUpdateDocStatus(doc.id, doc.status, e.target.value)}
-                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all h-16 resize-none"
+                        disabled={loading || isSubmitting.current}
+                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all h-16 resize-none disabled:opacity-50"
                       ></textarea>
                     )}
                   </div>
@@ -400,8 +524,9 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 <textarea
                   value={decisionComment}
                   onChange={(e) => setDecisionComment(e.target.value)}
+                  disabled={loading || isSubmitting.current}
                   placeholder="Ajoutez un commentaire global pour cette décision..."
-                  className="w-full p-4 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-tunisia-red transition-all h-24 resize-none"
+                  className="w-full p-4 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-tunisia-red transition-all h-24 resize-none disabled:opacity-50"
                 />
               </div>
             </div>
@@ -427,31 +552,31 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
 
           <div className="flex gap-4">
             <button 
-              onClick={() => handleFinalDecision('MORE_INFO')}
-              disabled={loading}
-              className="px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50"
+              onClick={() => handleDecisionClick('MORE_INFO')}
+              disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'MORE_INFO')}
+              className={`px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {loading ? 'Chargement...' : 'Demander plus d\'infos'}
+              {loading ? 'Traitement...' : 'Demander plus d\'infos'}
             </button>
             <button 
-              onClick={() => handleFinalDecision('REJECTED')}
-              disabled={loading}
-              className="px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all disabled:opacity-50"
+              onClick={() => handleDecisionClick('REJECTED')}
+              disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'REJECTED')}
+              className={`px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              Rejeter Dossier
+              {loading ? 'Traitement...' : 'Rejeter Dossier'}
             </button>
             <button 
-              onClick={() => handleFinalDecision('APPROVED')}
-              disabled={loading}
-              className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50"
+              onClick={() => handleDecisionClick('APPROVED')}
+              disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'APPROVED')}
+              className={`px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              Valider Dossier
+              {loading ? 'Traitement...' : 'Valider Dossier'}
             </button>
           </div>
         </div>
       </motion.div>
 
-      {/* Document Preview Overlay */}
+      {/* Document Preview Overlay - inchangé */}
       <AnimatePresence>
         {previewDoc && (
           <motion.div 
@@ -583,6 +708,80 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmationDecision && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl text-center space-y-8"
+            >
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto text-3xl ${
+                confirmationDecision === 'APPROVED' ? 'bg-emerald-50 text-emerald-500' :
+                confirmationDecision === 'REJECTED' ? 'bg-red-50 text-tunisia-red' :
+                'bg-amber-50 text-amber-500'
+              }`}>
+                <i className={`fas ${
+                  confirmationDecision === 'APPROVED' ? 'fa-check-circle' :
+                  confirmationDecision === 'REJECTED' ? 'fa-times-circle' :
+                  'fa-question-circle'
+                }`}></i>
+              </div>
+              
+              <div className="space-y-4">
+                <h3 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">Êtes-vous sûr ?</h3>
+                <p className="text-xs font-bold text-slate-500 leading-relaxed">
+                  {!allDocumentsReviewed && (
+                    <>
+                      Certains documents n'ont pas encore été vérifiés. 
+                      <br />
+                    </>
+                  )}
+                  <span className="text-slate-900">
+                    {!allDocumentsReviewed ? (
+                      <>Si vous continuez, tous les documents en attente seront 
+                      {confirmationDecision === 'APPROVED' ? ' ACCEPTÉS' : 
+                       confirmationDecision === 'REJECTED' ? ' REJETÉS' : 
+                       ' marqués comme NÉCESSITANT PLUS D\'INFOS'}.</>
+                    ) : (
+                      <>Voulez-vous vraiment {confirmationDecision === 'APPROVED' ? 'accepter' : confirmationDecision === 'REJECTED' ? 'rejeter' : 'demander plus d\'informations pour'} ce dossier ?</>
+                    )}
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={confirmDecision}
+                  disabled={loading || isSubmitting.current}
+                  className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all ${
+                    confirmationDecision === 'APPROVED' ? 'bg-emerald-500 hover:bg-emerald-600' :
+                    confirmationDecision === 'REJECTED' ? 'bg-tunisia-red hover:bg-red-600' :
+                    'bg-amber-500 hover:bg-amber-600'
+                  } disabled:opacity-50`}
+                >
+                  {loading ? 'Traitement en cours...' : `Confirmer et ${confirmationDecision === 'APPROVED' ? 'Accepter' : confirmationDecision === 'REJECTED' ? 'Rejeter' : 'Demander plus d\'infos'}`}
+                </button>
+                <button 
+                  onClick={() => setConfirmationDecision(null)}
+                  disabled={loading || isSubmitting.current}
+                  className="w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-all disabled:opacity-50"
+                >
+                  Annuler et vérifier les documents
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

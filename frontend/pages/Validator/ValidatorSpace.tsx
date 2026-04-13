@@ -159,34 +159,19 @@ const ValidatorSpace: React.FC = () => {
     fetchRequests();
   }, []);
 
-  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => {
-    try {
-      const token = localStorage.getItem('token');
-      let endpoint = '';
-      
-      if (decision === 'APPROVED') {
-        endpoint = `${API_BASE_URL}/validation/demandes/${updatedRequest.id}/approve`;
-      } else if (decision === 'REJECTED') {
-        endpoint = `${API_BASE_URL}/validation/demandes/${updatedRequest.id}/reject`;
-      } else {
-        endpoint = `${API_BASE_URL}/validation/demandes/${updatedRequest.id}/request-info`;
-      }
-      
-      await axios.post(endpoint, 
-        { comment: comment || '' },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      // Update local state
-      setRequests(prev => prev.filter(req => req.id !== updatedRequest.id));
-      setArchivedRequests(prev => [...prev, { ...updatedRequest, status: decision === 'APPROVED' ? 'APPROVED' : decision === 'REJECTED' ? 'REJECTED' : 'MORE_INFO' }]);
-      setSelectedRequest(null);
-      
-    } catch (error) {
-      console.error('Error submitting decision:', error);
-      alert('Erreur lors de la soumission de la décision');
-    }
-  };
+  const handleFinalDecision = (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => {
+  console.log('📝 [ValidatorSpace] Mise à jour UI après décision:', { decision, requestId: updatedRequest.id });
+  
+  // 🔥 NE PAS FAIRE D'APPEL API ICI - Le modal a déjà fait l'appel
+  // Il suffit de mettre à jour l'état local
+  
+  setRequests(prev => prev.filter(req => req.id !== updatedRequest.id));
+  setArchivedRequests(prev => [...prev, { 
+    ...updatedRequest, 
+    status: decision === 'APPROVED' ? 'APPROVED' : decision === 'REJECTED' ? 'REJECTED' : 'MORE_INFO' 
+  }]);
+  setSelectedRequest(null);
+};
 
   const filteredRequests = requests.filter(r => {
     if (inboxTab === 'REGISTRATION') return r.type === 'REGISTRATION';
