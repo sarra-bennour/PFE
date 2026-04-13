@@ -108,7 +108,7 @@ public class AdminController {
     }
 
     /**
-     * Changer le statut d'un utilisateur
+     * Changer le statut d'un utilisateur (SUSPENDRE)
      */
     @PutMapping("/users/{userId}/status")
     public ResponseEntity<?> toggleUserStatus(
@@ -118,12 +118,20 @@ public class AdminController {
 
         try {
             log.info("=== CHANGEMENT STATUT UTILISATEUR ID: {} ===", userId);
+            log.info("status", request.get("status"));
             validateAdmin(authHeader);
 
             String newStatus = request.get("status");
 
-            // Ici, vous pouvez implémenter la logique de changement de statut
-            // userService.updateUserStatus(userId, newStatus);
+            if (newStatus == null || (!newStatus.equals("ACTIF") && !newStatus.equals("INACTIF"))) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "Statut invalide. Utilisez 'ACTIF' ou 'INACTIF'"
+                ));
+            }
+
+            // 🔥 Appeler la méthode du service
+            userService.updateUserStatus(userId, newStatus);
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -137,7 +145,6 @@ public class AdminController {
             ));
         }
     }
-
     @PostMapping("/deactivation-requests/{requestId}/process")
     public ResponseEntity<?> processDeactivationRequest(
             @PathVariable Long requestId,

@@ -211,13 +211,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ status: 'INACTIF' })
+        body: JSON.stringify({ status: 'INACTIF' })  // 🔥 Important: "INACTIF" en majuscule
       });
       
       const data = await response.json();
       
       if (data.success) {
-        fetchData();
+        await fetchData(); // Rafraîchir la liste
         alert(`Compte ${userEmail} suspendu avec succès`);
       } else {
         alert(data.error || 'Erreur lors de la suspension');
