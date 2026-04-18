@@ -98,6 +98,8 @@ const Navbar: React.FC = () => {
   const allNavLinks = [
     { path: '/', label: 'nav_home', roles: ['EXPORTATEUR','IMPORTATEUR'] },
     { path: '/exportateur', label: 'nav_exporter', roles: ['EXPORTATEUR'] },
+    { path: '/products', label: 'catalogue_products', roles: ['EXPORTATEUR'] },
+    { path: '/declarations', label: 'my_declarations', roles: ['EXPORTATEUR'] },
     { path: '/importer', label: 'nav_importer', roles: ['IMPORTATEUR'] },
     { path: '/validator', label: 'nav_validator', roles: ['VALIDATOR'] },
     { path: '/dashboard', label: 'nav_dashboard', roles: ['ADMIN', 'VALIDATOR'] },

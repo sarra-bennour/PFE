@@ -80,7 +80,9 @@ const resources = {
       "manage_account": "Gérer mon compte",
       "settings": "Paramètres",
       "preferences": "Préférences",
-      "sign_out_account": "Se déconnecter du compte"
+      "sign_out_account": "Se déconnecter du compte",
+      "catalogue_products": "Catalogue Produits",
+      "my_declarations": "Mes Déclarations"
     }
   },
   ar: {
@@ -158,9 +160,26 @@ const resources = {
       "manage_account": "إدارة حسابي",
       "settings": "الإعدادات",
       "preferences": "التفضيلات",
-      "sign_out_account": "تسجيل الخروج من الحساب"
+      "sign_out_account": "تسجيل الخروج من الحساب",
+      "catalogue_products": "كتالوج المنتجات",
+      "my_declarations": "تصاريحي"
     }
-  }
+  },
+  en: {
+    translation: {
+      "app_title": "National Portal for Foreign Exporters",
+      "gov_name": "Republic of Tunisia",
+      "nav_home": "Home",
+      "nav_exporter": "Exporter Space",
+      "nav_importer": "Importer Space",
+      "nav_validator": "Validation Authority",
+      "nav_dashboard": "Decision Support",
+      "nav_admin": "Administration",
+      "nav_login": "Login",
+      "catalogue_products": "Products Catalog",
+      "my_declarations": "My Declarations"
+    }
+  }    
 };
 
 i18n

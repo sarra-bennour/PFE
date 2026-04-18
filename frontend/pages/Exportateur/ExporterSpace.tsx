@@ -932,9 +932,9 @@ useEffect(() => {
                   <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
                     Représentant Légal
                   </h3>
-                  {user?.legalRep && (
+                  {user?.representantLegal && (
                     <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-widest">
-                      Identifié : {user.legalRep}
+                      Identifié : {user.representantLegal}
                     </span>
                   )}
                 </div>
@@ -942,7 +942,7 @@ useEffect(() => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                      Fonction {user?.legalRep ? `de ${user.legalRep}` : ''}
+                      Fonction {user?.representantLegal ? `de ${user.representantLegal}` : ''}
                     </label>
                     <div className="relative">
                       <input 
@@ -1192,65 +1192,46 @@ useEffect(() => {
         </button>
       </div>
 
-      {/* HERO SECTION : DÉCLARATIONS DE PRODUITS - Ne s'affiche que si le dossier est validé */}
+
+      {/* RUBRIQUE CATALOGUE PRODUITS INDEPENDANTE */}
       {dossierInfo?.status === 'VALIDEE' ? (
-        <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100 relative overflow-hidden">
-          <div className="absolute -right-20 -top-20 opacity-[0.03] pointer-events-none">
-            <i className="fas fa-box-open text-[25rem] transform rotate-12"></i>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col justify-between group cursor-pointer hover:border-tunisia-red transition-all relative overflow-hidden" onClick={() => navigate('/products')}>
+          <div className="absolute -right-10 -bottom-10 opacity-[0.03] group-hover:scale-110 transition-transform">
+            <i className="fas fa-barcode text-[12rem]"></i>
           </div>
-
-          <div className="relative z-10">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-              <div>
-                <h2 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Mes Déclarations</h2>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-3">Gestion des lots de marchandises en cours</p>
-              </div>
-              <div className="flex items-center gap-4 w-full md:w-auto">
-                <button
-                  onClick={() => navigate('/declare-product')}
-                  className="bg-tunisia-red text-white px-8 py-4 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-3 group whitespace-nowrap"
-                >
-                  <i className="fas fa-plus-circle"></i>
-                  <span className="text-[10px] font-black uppercase tracking-widest">Nouvelle</span>
-                </button>
-              </div>
+          <div>
+            <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center mb-6">
+              <i className="fas fa-boxes-stacked"></i>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-2">Total Déclarations</span>
-                <div className="text-3xl font-black text-slate-900 italic tracking-tighter">01</div>
-              </div>
-              <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100">
-                <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest block mb-2">En cours</span>
-                <div className="text-3xl font-black text-amber-600 italic tracking-tighter">01</div>
-              </div>
-              <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100">
-                <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest block mb-2">Validées</span>
-                <div className="text-3xl font-black text-emerald-600 italic tracking-tighter">00</div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div
-                onClick={() => navigate('/declarations')}
-                className="p-6 bg-slate-900 rounded-[2rem] flex items-center justify-between group cursor-pointer overflow-hidden relative"
-              >
-                <div className="absolute inset-0 bg-tunisia-red translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 opacity-10"></div>
-                <div className="flex items-center gap-4 relative z-10">
-                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
-                    <i className="fas fa-list-check text-white"></i>
-                  </div>
-                  <div>
-                    <p className="text-sm font-black text-white uppercase italic tracking-tighter">Accéder au Registre Complet</p>
-                    <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest">Consultez, filtrez et suivez l'état de toutes vos déclarations</p>
-                  </div>
-                </div>
-                <i className="fas fa-chevron-right text-white/20 group-hover:text-white transition-colors relative z-10"></i>
-              </div>
-            </div>
+            <h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase mb-2">Catalogue Produits</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+              Gérez votre référentiel d'articles, consultez les fiches techniques et les codes NGP associés à votre entreprise.
+            </p>
+          </div>
+          <div className="mt-8 flex items-center gap-3 text-tunisia-red font-black uppercase text-[10px] tracking-widest group-hover:gap-5 transition-all">
+            Accéder au catalogue <i className="fas fa-arrow-right"></i>
           </div>
         </div>
+
+        <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col justify-between group cursor-pointer hover:border-tunisia-red transition-all relative overflow-hidden" onClick={() => navigate('/declarations')}>
+          <div className="absolute -right-10 -bottom-10 opacity-[0.03] group-hover:scale-110 transition-transform">
+            <i className="fas fa-file-invoice text-[12rem]"></i>
+          </div>
+          <div>
+            <div className="w-12 h-12 bg-emerald-500 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/20">
+              <i className="fas fa-clipboard-list"></i>
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase mb-2">Mes Déclarations</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+              Consultez l'historique complet de vos demandes, suivez l'état d'avancement et téléchargez vos documents officiels.
+            </p>
+          </div>
+          <div className="mt-8 flex items-center gap-3 text-emerald-600 font-black uppercase text-[10px] tracking-widest group-hover:gap-5 transition-all">
+            Voir mes déclarations < i className="fas fa-arrow-right"></i>
+          </div>
+        </div>
+      </div>
       ) : (
         /* Message si le dossier n'est pas encore validé */
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-100">
@@ -1268,6 +1249,7 @@ useEffect(() => {
           </div>
         </div>
       )}
+      
 
       {/* PIPELINE DE STATUT TYPE JENKINS */}
       <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">

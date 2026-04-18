@@ -18,6 +18,7 @@ import ProductDeclaration from './pages/Exportateur/ProductDeclaration';
 import DeclarationsList from './pages/Exportateur/DeclarationsList';
 import { DossierStatus } from './types/DossierStatus';
 import { User, UserRole } from './types/User';
+import ProductsCatalog from './pages/ProductsCatalog';
 
 
 
@@ -257,10 +258,15 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/declarations" element={
-              <ProtectedRoute roles={['EXPORTATEUR']}>
-                <DeclarationsList />
-              </ProtectedRoute>
-            } />
+                <ProtectedRoute roles={['EXPORTATEUR']}>
+                  <DeclarationsList />
+                </ProtectedRoute>
+              } />
+              <Route path="/products" element={
+                <ProtectedRoute roles={['EXPORTATEUR']}>
+                  <ProductsCatalog />
+                </ProtectedRoute>
+              } />
             <Route path="/importer" element={
               <ProtectedRoute roles={['IMPORTATEUR']}>
                 <ImporterSpace />
