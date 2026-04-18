@@ -12,7 +12,10 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductRequestDTO {
+    private Long id;
     private String productType; // "alimentaire" or "industriel"
+    private String productImage;
+    private String productImageName;
     private String category;
     private String hsCode;
     private String productName;
@@ -28,12 +31,6 @@ public class ProductRequestDTO {
 
     // For backward compatibility
     public String getHsCode() { return hsCode; }
-    public String getProductCategory() { return category; }
-    public String getProcessingType() { return productState; }
-    public String getAnnualExportCapacity() {
-        if (annualQuantityValue != null && annualQuantityUnit != null) {
-            return annualQuantityValue + " " + annualQuantityUnit;
-        }
-        return null;
-    }
+
+
 }

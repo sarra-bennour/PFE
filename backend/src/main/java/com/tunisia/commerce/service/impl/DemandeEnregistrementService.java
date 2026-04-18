@@ -20,9 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,12 +52,12 @@ public class DemandeEnregistrementService {
                     .orElseThrow(() -> ProductDeclarationException.exportateurNotFound(request.getExportateurId()));
 
             // Vérifier si l'exportateur a déjà une demande en cours
-            long pendingDemandes = demandeRepository.countByExportateurIdAndStatus(
+            /*long pendingDemandes = demandeRepository.countByExportateurIdAndStatus(
                     exportateur.getId(), DemandeStatus.SOUMISE);
 
             if (pendingDemandes > MAX_SUBMITTED_DEMANDES) {
                 throw ProductDeclarationException.maxPendingDemandesExceeded(MAX_SUBMITTED_DEMANDES);
-            }
+            }*/
 
             // Créer la demande
             DemandeEnregistrement demande = DemandeEnregistrement.builder()
@@ -106,21 +104,18 @@ public class DemandeEnregistrementService {
      * Uploader une image pour un produit
      */
     @Transactional
-    public String uploadProductImage(Long demandeId, Long productId, MultipartFile file) {
+    public String uploadProductImage(Long demandeId, Long productId, MultipartFile file, String originalFileName) {
         log.info("Upload de l'image pour le produit ID: {}, demande ID: {}", productId, demandeId);
 
         try {
-            // 1. Récupérer le produit
             Product product = productRepository.findById(productId)
                     .orElseThrow(() -> new RuntimeException("Produit non trouvé avec ID: " + productId));
 
-            // 2. Vérifier que le produit appartient à la demande
             boolean isAssociated = demandeProduitRepository.existsByDemandeIdAndProduitId(demandeId, productId);
             if (!isAssociated) {
                 throw new RuntimeException("Ce produit n'appartient pas à cette demande");
             }
 
-            // 3. Créer le répertoire pour les images
             String uploadDir = UPLOAD_DIR + demandeId + "/products/" + productId + "/images/";
             Path uploadPath = Paths.get(uploadDir);
             if (!Files.exists(uploadPath)) {
@@ -128,23 +123,46 @@ public class DemandeEnregistrementService {
                 log.info("Répertoire créé: {}", uploadDir);
             }
 
-            // 4. Générer un nom de fichier unique
-            String originalFileName = file.getOriginalFilename();
-            String fileExtension = "";
-            if (originalFileName != null && originalFileName.contains(".")) {
-                fileExtension = originalFileName.substring(originalFileName.lastIndexOf("."));
+            // ✅ Utiliser le nom original s'il est fourni
+            String fileName;
+            if (originalFileName != null && !originalFileName.isEmpty()) {
+                fileName = cleanFileName(originalFileName);
+            } else {
+                String extension = "";
+                String originalFilename = file.getOriginalFilename();
+                if (originalFilename != null && originalFilename.contains(".")) {
+                    extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+                }
+                fileName = "product_" + productId + "_" + System.currentTimeMillis() + extension;
             }
-            String fileName = UUID.randomUUID().toString() + fileExtension;
 
-            // 5. Sauvegarder le fichier
+            // ✅ Vérifier si le fichier existe déjà et ajouter un compteur
             Path filePath = uploadPath.resolve(fileName);
+            String finalFileName = fileName;
+            int counter = 1;
+
+            while (Files.exists(filePath)) {
+                String nameWithoutExt = fileName;
+                String extension = "";
+                int lastDot = fileName.lastIndexOf('.');
+                if (lastDot > 0) {
+                    nameWithoutExt = fileName.substring(0, lastDot);
+                    extension = fileName.substring(lastDot);
+                }
+                finalFileName = nameWithoutExt + "_" + counter + extension;
+                filePath = uploadPath.resolve(finalFileName);
+                counter++;
+            }
+
             Files.copy(file.getInputStream(), filePath);
             log.info("Fichier sauvegardé: {}", filePath.toString());
 
-            // 6. Supprimer l'ancienne image si elle existe
+            // Supprimer l'ancienne image si elle existe
             if (product.getProductImage() != null && !product.getProductImage().isEmpty()) {
                 try {
-                    Path oldImagePath = Paths.get(product.getProductImage());
+                    // Extraire le nom du fichier depuis l'URL
+                    String oldFilePath = product.getProductImage().replace("\\", "/");
+                    Path oldImagePath = Paths.get("." + oldFilePath);
                     if (Files.exists(oldImagePath)) {
                         Files.delete(oldImagePath);
                         log.info("Ancienne image supprimée: {}", oldImagePath);
@@ -154,12 +172,12 @@ public class DemandeEnregistrementService {
                 }
             }
 
-            // 7. Mettre à jour le produit avec le chemin de l'image
-            String imageUrl = "\\uploads\\" + demandeId + "\\products\\" + productId + "\\images\\" + fileName;
+            // ✅ URL avec le nom original
+            String imageUrl = "/uploads/" + demandeId + "/products/" + productId + "/images/" + finalFileName;
             product.setProductImage(imageUrl);
             productRepository.save(product);
 
-            log.info("Image uploadée avec succès pour le produit ID: {}", productId);
+            log.info("Image uploadée avec succès - URL: {}", imageUrl);
             return imageUrl;
 
         } catch (IOException e) {
@@ -168,6 +186,24 @@ public class DemandeEnregistrementService {
         }
     }
 
+    /**
+     * Nettoie le nom du fichier
+     */
+    private String cleanFileName(String fileName) {
+        if (fileName == null) return "image.jpg";
+        String cleaned = fileName.replaceAll("\\s+", "_");
+        cleaned = cleaned.replaceAll("[^a-zA-Z0-9._-]", "");
+        if (cleaned.length() > 100) {
+            String extension = "";
+            int lastDot = cleaned.lastIndexOf('.');
+            if (lastDot > 0) {
+                extension = cleaned.substring(lastDot);
+                cleaned = cleaned.substring(0, 80);
+            }
+            cleaned = cleaned + extension;
+        }
+        return cleaned.isEmpty() ? "image.jpg" : cleaned;
+    }
     /**
      * Map ProductRequestDTO to Product entity
      */
@@ -334,6 +370,367 @@ public class DemandeEnregistrementService {
             throw ProductDeclarationException.demandeSubmissionFailed(e.getMessage());
         }
     }
+
+
+    /**
+     * Mettre à jour une demande avec ses documents
+     */
+    @Transactional
+    public DemandeEnregistrementDTO updateDemandeWithDocuments(Long demandeId, DemandeEnregistrementRequestDTO request) {
+        log.info("=== DÉBUT updateDemandeWithDocuments ===");
+        log.info("Demande ID: {}", demandeId);
+        log.info("Exportateur ID: {}", request.getExportateurId());
+
+        try {
+            // 1. Vérifier que la demande existe
+            log.info("1. Recherche de la demande ID: {}", demandeId);
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> {
+                        log.error("Demande non trouvée avec ID: {}", demandeId);
+                        return ProductDeclarationException.demandeNotFound(demandeId);
+                    });
+            log.info("   ✅ Demande trouvée - Référence: {}, Statut: {}", demande.getReference(), demande.getStatus());
+
+            // 2. Vérifier l'autorisation
+            log.info("2. Vérification de l'autorisation...");
+            log.info("   Exportateur de la demande: {}", demande.getExportateur().getId());
+            log.info("   Exportateur connecté: {}", request.getExportateurId());
+
+            if (!demande.getExportateur().getId().equals(request.getExportateurId())) {
+                log.error("Accès non autorisé!");
+                throw ProductDeclarationException.unauthorizedAccess();
+            }
+            log.info("   ✅ Autorisation OK");
+
+            // 3. Vérifier que la demande est en BROUILLON
+            log.info("3. Vérification du statut...");
+            log.info("   Statut actuel: {}", demande.getStatus());
+            if (demande.getStatus() != DemandeStatus.BROUILLON) {
+                log.error("Statut invalide pour modification. Attendu: BROUILLON, Obtenu: {}", demande.getStatus());
+                throw ProductDeclarationException.invalidDemandeStatusForUpdate(demande.getStatus());
+            }
+            log.info("   ✅ Statut valide pour modification");
+
+            // 4. Mettre à jour les produits
+            log.info("4. Mise à jour des produits...");
+            log.info("   Nombre de produits reçus: {}", request.getProducts() != null ? request.getProducts().size() : 0);
+            updateProducts(demande, request.getProducts());
+            log.info("   ✅ Produits mis à jour");
+
+            // 5. Mettre à jour les documents
+            log.info("5. Mise à jour des documents...");
+            log.info("   Nombre de documents reçus: {}", request.getDocuments() != null ? request.getDocuments().size() : 0);
+            if (request.getDocuments() != null && !request.getDocuments().isEmpty()) {
+                updateDocuments(demande, request.getDocuments());
+            }
+            log.info("   ✅ Documents mis à jour");
+
+            // 6. Ajouter l'historique
+            log.info("6. Ajout de l'historique...");
+            User user = userRepository.findById(request.getExportateurId())
+                    .orElseThrow(() -> {
+                        log.error("Utilisateur non trouvé avec ID: {}", request.getExportateurId());
+                        return ProductDeclarationException.userNotFound(request.getExportateurId());
+                    });
+
+            addHistory(demande, demande.getStatus(), DemandeStatus.BROUILLON, "MODIFICATION",
+                    "Demande mise à jour avec produits et documents", user);
+            log.info("   ✅ Historique ajouté");
+
+            log.info("=== FIN SUCCÈS updateDemandeWithDocuments ===");
+            return mapToDTO(demande);
+
+        } catch (ProductDeclarationException e) {
+            log.error("Erreur métier: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Erreur technique: {}", e.getMessage(), e);
+            throw ProductDeclarationException.demandeUpdateFailed(e.getMessage());
+        }
+    }
+
+    /**
+     * Mettre à jour les documents d'une demande
+     */
+    private void updateDocuments(DemandeEnregistrement demande, List<DocumentRequestDTO> documentUploads) {
+        for (DocumentRequestDTO docUpload : documentUploads) {
+            try {
+                // Vérifier si le document existe déjà
+                Document existingDoc = documentRepository.findByDemandeIdAndProductIdAndDocumentType(
+                                demande.getId(), docUpload.getProductId(), docUpload.getDocumentType())
+                        .orElse(null);
+
+                // Convertir base64 en fichier
+                byte[] fileBytes = java.util.Base64.getDecoder().decode(docUpload.getFileContent());
+
+                // Créer le répertoire
+                String uploadDir = UPLOAD_DIR + demande.getId() + "/" +
+                        (docUpload.getProductId() != null ? "product_" + docUpload.getProductId() : "global");
+                Path uploadPath = Paths.get(uploadDir);
+                if (!Files.exists(uploadPath)) {
+                    Files.createDirectories(uploadPath);
+                }
+
+                // Générer le nom du fichier
+                String fileName = UUID.randomUUID().toString() + "_" + docUpload.getFileName();
+                Path filePath = uploadPath.resolve(fileName);
+
+                // Sauvegarder le fichier
+                Files.write(filePath, fileBytes);
+
+                if (existingDoc != null) {
+                    // Supprimer l'ancien fichier
+                    Path oldPath = Paths.get(existingDoc.getFilePath());
+                    if (Files.exists(oldPath)) {
+                        Files.deleteIfExists(oldPath);
+                    }
+                    // Mettre à jour le document existant
+                    existingDoc.setFileName(docUpload.getFileName());
+                    existingDoc.setFilePath(filePath.toString());
+                    existingDoc.setFileType(docUpload.getFileType());
+                    existingDoc.setUploadedAt(LocalDateTime.now());
+                    documentRepository.save(existingDoc);
+                } else {
+                    // Créer un nouveau document
+                    Product product = null;
+                    if (docUpload.getProductId() != null) {
+                        product = productRepository.findById(docUpload.getProductId()).orElse(null);
+                    }
+
+                    Document document = Document.builder()
+                            .fileName(docUpload.getFileName())
+                            .filePath(filePath.toString())
+                            .fileType(docUpload.getFileType())
+                            .fileSize((long) fileBytes.length)
+                            .documentType(docUpload.getDocumentType())
+                            .status(DocumentStatus.EN_ATTENTE)
+                            .uploadedAt(LocalDateTime.now())
+                            .exportateur(demande.getExportateur())
+                            .demande(demande)
+                            .product(product)
+                            .build();
+                    documentRepository.save(document);
+                }
+
+                log.info("Document {} mis à jour pour le produit {}", docUpload.getDocumentType(), docUpload.getProductId());
+
+            } catch (Exception e) {
+                log.error("Erreur lors de la mise à jour du document: {}", e.getMessage());
+                throw new RuntimeException("Erreur lors de la mise à jour du document: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Mettre à jour les produits d'une demande
+     */
+    private List<Product> updateProducts(DemandeEnregistrement demande, List<ProductRequestDTO> productRequests) {
+        // Récupérer les produits existants
+        List<DemandeProduit> existingDemandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+        List<Product> existingProducts = existingDemandeProduits.stream()
+                .map(DemandeProduit::getProduit)
+                .collect(Collectors.toList());
+
+        Map<Long, Product> existingProductMap = existingProducts.stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
+        List<Product> productsToKeep = new ArrayList<>();
+        List<Product> productsToCreate = new ArrayList<>();
+
+        for (ProductRequestDTO productRequest : productRequests) {
+            if (productRequest.getId() != null && existingProductMap.containsKey(productRequest.getId())) {
+                // Produit existant
+                Product existingProduct = existingProductMap.get(productRequest.getId());
+
+                // Mettre à jour les champs texte
+                updateProductEntity(existingProduct, productRequest);
+
+                // ✅ Gérer la nouvelle image si elle est en Base64
+                if (productRequest.getProductImage() != null &&
+                        productRequest.getProductImage().startsWith("data:image")) {
+
+                    log.info("Nouvelle image Base64 détectée pour le produit ID: {}", existingProduct.getId());
+
+                    // Sauvegarder l'image et obtenir le chemin
+                    String imagePath = saveImageFromBase64(
+                            productRequest.getProductImage(),
+                            demande.getId(),
+                            existingProduct.getId(),
+                            productRequest.getProductImageName()
+                    );
+
+                    // ✅ CRUCIAL: Mettre à jour le produit avec le nouveau chemin
+                    if (imagePath != null) {
+                        existingProduct.setProductImage(imagePath);
+                        log.info("Image mise à jour avec le chemin: {}", imagePath);
+                    }
+                }
+
+                productsToKeep.add(existingProduct);
+            } else {
+                // Nouveau produit
+                Product newProduct = mapToEntity(productRequest);
+                productsToCreate.add(newProduct);
+            }
+        }
+
+        // Sauvegarder les produits existants
+        productRepository.saveAll(productsToKeep);
+
+        // Créer et sauvegarder les nouveaux produits
+        List<Product> savedNewProducts = new ArrayList<>();
+        for (Product newProduct : productsToCreate) {
+            Product savedProduct = productRepository.save(newProduct);
+
+            // ✅ Pour les nouveaux produits, sauvegarder aussi l'image
+            // Trouver le DTO correspondant
+            ProductRequestDTO matchingDto = productRequests.stream()
+                    .filter(dto -> dto.getId() == null &&
+                            dto.getProductName() != null &&
+                            dto.getProductName().equals(newProduct.getProductName()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (matchingDto != null && matchingDto.getProductImage() != null &&
+                    matchingDto.getProductImage().startsWith("data:image")) {
+
+                String imagePath = saveImageFromBase64(
+                        matchingDto.getProductImage(),
+                        demande.getId(),
+                        savedProduct.getId(),
+                        matchingDto.getProductImageName()
+                );
+
+                if (imagePath != null) {
+                    savedProduct.setProductImage(imagePath);
+                    productRepository.save(savedProduct);
+                    log.info("Nouvelle image sauvegardée pour le produit ID: {}, chemin: {}", savedProduct.getId(), imagePath);
+                }
+            }
+
+            savedNewProducts.add(savedProduct);
+
+            // Créer l'association
+            DemandeProduit demandeProduit = DemandeProduit.builder()
+                    .demande(demande)
+                    .produit(savedProduct)
+                    .type(TypeDemandeur.EXPORTATEUR)
+                    .dateAssociation(LocalDateTime.now())
+                    .build();
+            demandeProduitRepository.save(demandeProduit);
+        }
+
+        // Supprimer les produits qui ne sont plus dans la liste
+        List<Long> productIdsToKeep = productRequests.stream()
+                .filter(r -> r.getId() != null)
+                .map(ProductRequestDTO::getId)
+                .collect(Collectors.toList());
+
+        List<Product> productsToDelete = existingProducts.stream()
+                .filter(p -> !productIdsToKeep.contains(p.getId()))
+                .collect(Collectors.toList());
+
+        for (Product productToDelete : productsToDelete) {
+            demandeProduitRepository.deleteByDemandeIdAndProduitId(demande.getId(), productToDelete.getId());
+            productRepository.delete(productToDelete);
+            log.info("Produit ID: {} supprimé", productToDelete.getId());
+        }
+
+        List<Product> allProducts = new ArrayList<>();
+        allProducts.addAll(productsToKeep);
+        allProducts.addAll(savedNewProducts);
+
+        return allProducts;
+    }
+
+    /**
+     * Sauvegarder une image encodée en Base64
+     */
+    private String saveImageFromBase64(String base64Image, Long demandeId, Long productId, String originalFileName) {
+        try {
+            String[] parts = base64Image.split(",");
+            String header = parts[0];
+            String base64Data = parts[1];
+
+            String extension = "jpg";
+            if (header.contains("image/png")) {
+                extension = "png";
+            } else if (header.contains("image/jpeg")) {
+                extension = "jpg";
+            } else if (header.contains("image/gif")) {
+                extension = "gif";
+            }
+
+            byte[] imageBytes = java.util.Base64.getDecoder().decode(base64Data);
+
+            String uploadDir = UPLOAD_DIR + demandeId + "/products/" + productId + "/images/";
+            Path uploadPath = Paths.get(uploadDir);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+            }
+
+            String fileName;
+            if (originalFileName != null && !originalFileName.isEmpty()) {
+                fileName = cleanFileName(originalFileName);
+                if (!fileName.endsWith("." + extension)) {
+                    String nameWithoutExt = fileName;
+                    int lastDot = fileName.lastIndexOf('.');
+                    if (lastDot > 0) {
+                        nameWithoutExt = fileName.substring(0, lastDot);
+                    }
+                    fileName = nameWithoutExt + "." + extension;
+                }
+            } else {
+                fileName = "product_" + productId + "_" + System.currentTimeMillis() + "." + extension;
+            }
+
+            Path filePath = uploadPath.resolve(fileName);
+            String finalFileName = fileName;
+            int counter = 1;
+
+            while (Files.exists(filePath)) {
+                String nameWithoutExt = fileName;
+                String ext = "." + extension;
+                int lastDot = fileName.lastIndexOf('.');
+                if (lastDot > 0) {
+                    nameWithoutExt = fileName.substring(0, lastDot);
+                    ext = fileName.substring(lastDot);
+                }
+                finalFileName = nameWithoutExt + "_" + counter + ext;
+                filePath = uploadPath.resolve(finalFileName);
+                counter++;
+            }
+
+            Files.write(filePath, imageBytes);
+            log.info("Image sauvegardée: {}", finalFileName);
+
+            return "/uploads/" + demandeId + "/products/" + productId + "/images/" + finalFileName;
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la sauvegarde de l'image: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Mettre à jour une entité Product existante
+     */
+    private void updateProductEntity(Product product, ProductRequestDTO dto) {
+        product.setProductType(dto.getProductType());
+        product.setCategory(dto.getCategory());
+        product.setHsCode(dto.getHsCode());
+        product.setProductName(dto.getProductName());
+        product.setIsLinkedToBrand(dto.getIsLinkedToBrand());
+        product.setBrandName(dto.getBrandName());
+        product.setIsBrandOwner(dto.getIsBrandOwner());
+        product.setHasBrandLicense(dto.getHasBrandLicense());
+        product.setProductState(dto.getProductState());
+        product.setOriginCountry(dto.getOriginCountry());
+        product.setAnnualQuantityValue(dto.getAnnualQuantityValue());
+        product.setAnnualQuantityUnit(dto.getAnnualQuantityUnit());
+        product.setCommercialBrandName(dto.getCommercialBrandName());
+    }
+
 
     /**
      * Supprimer une demande en mode brouillon

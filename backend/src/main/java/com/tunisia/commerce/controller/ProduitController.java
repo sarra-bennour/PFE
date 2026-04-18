@@ -3,10 +3,11 @@ package com.tunisia.commerce.controller;
 import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementRequestDTO;
-import com.tunisia.commerce.dto.produits.ProductRequestDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
+import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.exception.ProductDeclarationException;
+import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.service.impl.DemandeEnregistrementService;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -34,6 +35,7 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/produits")
@@ -45,6 +47,7 @@ public class ProduitController {
     private final DemandeEnregistrementService demandeService;
     private final JwtUtil jwtUtil;
     private final ExportateurRepository exportateurRepository;
+    private final DemandeEnregistrementRepository demandeEnregistrementRepository;
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
@@ -72,7 +75,12 @@ public class ProduitController {
                 for (int i = 0; i < images.size() && i < created.getProducts().size(); i++) {
                     MultipartFile image = images.get(i);
                     Long productId = created.getProducts().get(i).getId();
-                    demandeService.uploadProductImage(created.getId(), productId, image);
+                    String originalImageName = null;
+                    if (request.getProducts() != null && i < request.getProducts().size()) {
+                        originalImageName = request.getProducts().get(i).getProductImageName();
+                    }
+
+                    demandeService.uploadProductImage(created.getId(), productId, image,originalImageName);
                 }
             }
 
@@ -111,39 +119,6 @@ public class ProduitController {
                 file, documentType, productId);
         return ResponseEntity.ok(document);
     }
-
-    /**
-     * Récupérer un document par son ID
-     */
-    /*@GetMapping("/documents/{documentId}")
-    @Operation(summary = "Récupérer un document")
-    @PreAuthorize("hasRole('EXPORTATEUR') or hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<DocumentDTO> getDocumentById(
-            @Parameter(description = "ID du document") @PathVariable Long documentId,
-            @RequestHeader("Authorization") String authHeader) {
-
-        ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        DocumentDTO document = demandeService.getDocumentById(documentId, exportateur.getId());
-        return ResponseEntity.ok(document);
-    }*/
-
-    /**
-     * Télécharger un document
-     */
-    /*@GetMapping("/documents/{documentId}/telecharger")
-    @Operation(summary = "Télécharger un document")
-    @PreAuthorize("hasRole('EXPORTATEUR') or hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<Resource> downloadDocument(
-            @Parameter(description = "ID du document") @PathVariable Long documentId,
-            @RequestHeader("Authorization") String authHeader) {
-
-        ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        Resource resource = demandeService.getDocumentFile(documentId, exportateur.getId());
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
-                .body(resource);
-    }*/
 
     /**
      * Soumettre une demande pour validation
@@ -211,6 +186,67 @@ public class ProduitController {
         }
     }
 
+
+    /**
+     * Mettre à jour une demande en mode brouillon
+     */
+    /**
+     * Mettre à jour une demande en mode brouillon (avec documents en base64)
+     */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('EXPORTATEUR')")
+    public ResponseEntity<?> updateDemande(
+            @PathVariable Long id,
+            @Valid @RequestBody DemandeEnregistrementRequestDTO request,
+            @RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT updateDemande ===");
+        System.out.println("Demande ID à modifier: " + id);
+
+        try {
+            // 1. Extraire l'exportateur du token
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            System.out.println("Exportateur connecté - ID: " + exportateur.getId() + ", Email: " + exportateur.getEmail());
+
+            // 2. Récupérer la demande
+            DemandeEnregistrement demande = demandeEnregistrementRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+            System.out.println("Demande trouvée - ID: " + demande.getId());
+            System.out.println("  - Statut: " + demande.getStatus());
+            System.out.println("  - Exportateur ID de la demande: " + demande.getExportateur().getId());
+            System.out.println("  - Exportateur email: " + demande.getExportateur().getEmail());
+
+            // 3. Comparaison des IDs
+            System.out.println("Comparaison: " + demande.getExportateur().getId() + " == " + exportateur.getId() + " ? " +
+                    (demande.getExportateur().getId().equals(exportateur.getId())));
+
+            if (!demande.getExportateur().getId().equals(exportateur.getId())) {
+                System.err.println("❌ ACCÈS NON AUTORISÉ!");
+                System.err.println("  La demande appartient à l'exportateur ID: " + demande.getExportateur().getId());
+                System.err.println("  L'utilisateur connecté est ID: " + exportateur.getId());
+
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "UNAUTHORIZED");
+                errorResponse.put("message", "Vous n'êtes pas autorisé à modifier cette demande");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+            }
+
+            System.out.println("✅ Autorisation OK");
+
+            request.setExportateurId(exportateur.getId());
+            DemandeEnregistrementDTO updatedDemande = demandeService.updateDemandeWithDocuments(id, request);
+
+            return ResponseEntity.ok(updatedDemande);
+
+        } catch (Exception e) {
+            System.err.println("Exception: " + e.getMessage());
+            e.printStackTrace();
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
     /**
      * Supprimer une demande en mode brouillon
      */
@@ -260,53 +296,6 @@ public class ProduitController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
-    /**
-     * Valider une demande (Agent)
-     */
-    /*@PostMapping("/{id}/valider")
-    @Operation(summary = "Valider une demande")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<DemandeEnregistrementDTO> validateDemande(
-            @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @Parameter(description = "Commentaire de validation") @RequestParam String comment,
-            @RequestHeader("Authorization") String authHeader) {
-
-        // Pour les agents, il faudrait un mécanisme différent pour obtenir l'ID
-        // Pour l'instant, on utilise une valeur par défaut
-        Long agentId = 2L; // À remplacer par la vraie logique
-        DemandeEnregistrementDTO demande = demandeService.validateDemande(id, comment, agentId);
-        return ResponseEntity.ok(demande);
-    }*/
-
-    /**
-     * Rejeter une demande (Agent)
-     */
-    /*@PostMapping("/{id}/rejeter")
-    @Operation(summary = "Rejeter une demande")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<DemandeEnregistrementDTO> rejectDemande(
-            @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @Parameter(description = "Raison du rejet") @RequestParam String reason,
-            @RequestHeader("Authorization") String authHeader) {
-
-        // Pour les agents, il faudrait un mécanisme différent pour obtenir l'ID
-        Long agentId = 2L; // À remplacer par la vraie logique
-        DemandeEnregistrementDTO demande = demandeService.rejectDemande(id, reason, agentId);
-        return ResponseEntity.ok(demande);
-    }*/
-
-    /**
-     * Récupérer une demande par son ID
-     */
-    /*@GetMapping("/{id}")
-    @Operation(summary = "Récupérer une demande")
-    @PreAuthorize("hasRole('EXPORTATEUR') or hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<DemandeEnregistrementDTO> getDemandeById(
-            @Parameter(description = "ID de la demande") @PathVariable Long id) {
-
-        DemandeEnregistrementDTO demande = demandeService.getDemandeById(id);
-        return ResponseEntity.ok(demande);
-    }*/
 
     /**
      * Récupérer les demandes de l'exportateur connecté
@@ -334,51 +323,42 @@ public class ProduitController {
 
         log.info("=== DÉBUT getProductImage ===");
         try {
-            // Chemin où sont stockées les images
-            String imagePath = "uploads/produits/" + demandeId + "/products/" + productId + "/images/" + fileName;
-            Path filePath = Paths.get(imagePath);
+            // ✅ CORRECTION : Le chemin dans la BD correspond à la structure des dossiers
+            // BD: /uploads/24/products/22/images/file.png
+            // Dossier physique: uploads/produits/24/products/22/images/file.png
 
-            log.info("=== DÉBUT getProductImage ===");
-            log.info("DemandeId: {}", demandeId);
-            log.info("ProductId: {}", productId);
-            log.info("FileName: {}", fileName);
+            String basePath = System.getProperty("user.dir");
+            // Construire le chemin avec le dossier "produits"
+            String relativePath = "uploads/produits/" + demandeId + "/products/" + productId + "/images/" + fileName;
+            Path filePath = Paths.get(basePath, relativePath);
+
+            log.info("Base path: {}", basePath);
+            log.info("Relative path: {}", relativePath);
             log.info("Chemin complet: {}", filePath.toAbsolutePath());
             log.info("Fichier existe: {}", Files.exists(filePath));
 
             Resource resource = new UrlResource(filePath.toUri());
 
             if (resource.exists() && resource.isReadable()) {
-                // Déterminer le content type en fonction de l'extension
                 String contentType = Files.probeContentType(filePath);
                 if (contentType == null) {
                     contentType = "application/octet-stream";
                 }
 
+                log.info("✅ Image trouvée: {}", fileName);
                 return ResponseEntity.ok()
                         .contentType(MediaType.parseMediaType(contentType))
                         .body(resource);
             } else {
-                log.warn("Image non trouvée: {}", imagePath);
+                log.warn("❌ Image non trouvée: {}", filePath);
                 return ResponseEntity.notFound().build();
             }
         } catch (Exception e) {
-            log.error("Erreur lors du chargement de l'image: {}", e.getMessage());
+            log.error("Erreur lors du chargement de l'image: {}", e.getMessage(), e);
             return ResponseEntity.notFound().build();
         }
     }
 
-    /**
-     * Récupérer les demandes par statut (Agent/Admin)
-     */
-    /*@GetMapping("/statut/{status}")
-    @Operation(summary = "Demandes par statut")
-    @PreAuthorize("hasRole('AGENT') or hasRole('ADMIN')")
-    public ResponseEntity<List<DemandeEnregistrementDTO>> getDemandesByStatus(
-            @Parameter(description = "Statut de la demande") @PathVariable DemandeStatus status) {
-
-        List<DemandeEnregistrementDTO> demandes = demandeService.getDemandesByStatus(status);
-        return ResponseEntity.ok(demandes);
-    }*/
 
     /**
      * Méthode utilitaire pour extraire l'exportateur du token JWT

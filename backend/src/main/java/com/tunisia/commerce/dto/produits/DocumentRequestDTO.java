@@ -11,6 +11,7 @@ import lombok.AllArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DocumentRequestDTO {
+    private Long productId;
     private String fileName;
     private String fileType;
     private Long fileSize;

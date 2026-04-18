@@ -167,4 +167,20 @@ public class ProductDeclarationException extends RuntimeException {
                 HttpStatus.INTERNAL_SERVER_ERROR
         );
     }
+
+    public static ProductDeclarationException invalidDemandeStatusForUpdate(DemandeStatus currentStatus) {
+        return new ProductDeclarationException(
+                "INVALID_STATUS_FOR_UPDATE",
+                "Impossible de modifier la demande car son statut actuel est '" + currentStatus + "'. Seules les demandes en mode BROUILLON peuvent être modifiées.",
+                HttpStatus.BAD_REQUEST
+        );
+    }
+
+    public static ProductDeclarationException demandeUpdateFailed(String reason) {
+        return new ProductDeclarationException(
+                "UPDATE_FAILED",
+                "Erreur lors de la mise à jour de la demande: " + reason,
+                HttpStatus.INTERNAL_SERVER_ERROR
+        );
+    }
 }

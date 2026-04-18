@@ -10,7 +10,7 @@ import { Product } from '@/types/Product';
 interface EditDeclarationModalProps {
   declaration: any;
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any) => Promise<void>;
 }
 
 const PRODUCT_STATES = [
@@ -42,34 +42,38 @@ const CATEGORIES_INDUSTRIELS = [
 ];
 
 const FOOD_DOCS = [
-  { id: 'sanitary_safety', label: "Certificat d’agrément/enregistrement de sécurité sanitaire", required: true },
-  { id: 'sanitary_cert', label: "Certificat sanitaire", required: true },
-  { id: 'free_sale', label: "Certificat de libre vente", required: true },
-  { id: 'tech_sheet', label: "Fiche technique", required: true },
-  { id: 'bacteriological', label: "Rapport d’analyse bactériologique", required: true },
-  { id: 'physico_chemical', label: "Rapport d’analyse physico-chimique", required: true },
-  { id: 'radioactivity', label: "Rapport d’analyse de radioactivité", required: true },
-  { id: 'fumigation', label: "Fumigation (selon les produits)", required: true },
-  { id: 'official_letter', label: "Lettre officielle", required: true },
-  { id: 'quality_cert', label: "Certificat de qualité", required: false },
-  { id: 'storage_plan', label: "Plan des locaux de stockage", required: false },
-  { id: 'production_plan', label: "Plan des locaux de production", required: false },
-  { id: 'surveillance_plan', label: "Plan de surveillance", required: false },
-  { id: 'product_sheets', label: "Fiches produits", required: true },
-  { id: 'labels', label: "Étiquettes", required: false },
-  { id: 'recommendation_letter', label: "Lettre officielle de recommandation de l’autorité compétente", required: false },
+  { id: 'SANITARY_APPROVAL', label: "Certificat d'agrément/enregistrement de sécurité sanitaire", required: false },
+  { id: 'SANITARY_CERT', label: "Certificat sanitaire", required: false },
+  { id: 'FREE_SALE_CERT', label: "Certificat de libre vente", required: false },
+  { id: 'TECHNICAL_DATA_SHEET', label: "Fiche technique", required: false },
+  { id: 'BACTERIO_ANALYSIS', label: "Rapport d'analyse bactériologique", required: false },
+  { id: 'PHYSICO_CHEM_ANALYSIS', label: "Rapport d'analyse physico-chimique", required: false },
+  { id: 'RADIOACTIVITY_ANALYSIS', label: "Rapport d'analyse de radioactivité", required: false },
+  { id: 'FUMIGATION_CERT', label: "Fumigation (selon les produits)", required: false },
+  { id: 'OFFICIAL_LETTER', label: "Lettre officielle", required: false },
+  { id: 'QUALITY_CERT', label: "Certificat de qualité", required: false },
+  { id: 'STORAGE_FACILITY_PLAN', label: "Plan des locaux de stockage", required: false },
+  { id: 'PRODUCTION_FACILITY_PLAN', label: "Plan des locaux de production", required: false },
+  { id: 'MONITORING_PLAN', label: "Plan de surveillance", required: false },
+  { id: 'BRAND_LICENSE', label: "Licence pour exploiter la marque", required: false },
+  { id: 'PRODUCT_SHEETS', label: "Fiches produits", required: false },
+  { id: 'PRODUCT_LABELS', label: "Étiquettes", required: false },
+  { id: 'COMMISSION_LETTER', label: "Lettre officielle de recommandation de l'autorité compétente", required: false },
 ];
 
 const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration, onClose, onSave }) => {
   const [activeTab, setActiveTab] = useState<'docs' | 'products'>('products');
+  const [isSaving, setIsSaving] = useState(false);
+  
   const [formData, setFormData] = useState({
     products: (declaration.products || []).map((p: any) => ({
       id: p.id,
       productType: p.productType || p.type,
       category: p.category || '',
-      ngp: p.ngp || p.ngpCode || '',
+      hsCode: p.hsCode || p.ngp || '',
       productName: p.productName || '',
       productImage: p.productImage || p.image || null,
+      productImageName: p.productImage ? p.productImage.split('/').pop() : null, // ✅ Extraire le nom de l'URL existante
       isLinkedToBrand: p.isLinkedToBrand ?? false,
       brandName: p.brandName || '',
       isBrandOwner: p.isBrandOwner ?? false,
@@ -80,7 +84,9 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
       annualQuantityUnit: p.annualQuantityUnit || 'Tonnes',
       commercialBrandName: p.commercialBrandName || '',
     })),
-    documents: declaration.documents || {}
+    // ✅ Stocker les nouvelles images séparément (comme dans ProductDeclaration)
+    newProductImages: {} as Record<number, File>,
+    documents: {} as Record<string, File>
   });
 
   const updateProduct = (id: number, updates: Partial<Product>) => {
@@ -95,9 +101,10 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
       id: Date.now(),
       productType: type,
       category: '',
-      ngp: '',
+      hsCode: '',
       productName: '',
       productImage: null,
+      productImageName: null,
       isLinkedToBrand: false,
       brandName: '',
       isBrandOwner: false,
@@ -114,22 +121,172 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
   const removeProduct = (id: number) => {
     setFormData(prev => ({
       ...prev,
-      products: prev.products.filter((p: any) => p.id !== id)
+      products: prev.products.filter((p: any) => p.id !== id),
+      newProductImages: (() => {
+        const newImages = { ...prev.newProductImages };
+        delete newImages[id];
+        return newImages;
+      })()
     }));
   };
 
-  const handleSave = () => {
-    onSave(formData);
-    onClose();
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const mapDocumentType = (docType: string): string => {
+        const mapping: Record<string, string> = {
+          'SANITARY_APPROVAL': 'SANITARY_APPROVAL',
+          'SANITARY_CERT': 'SANITARY_CERT',
+          'FREE_SALE_CERT': 'FREE_SALE_CERT',
+          'TECHNICAL_DATA_SHEET': 'TECHNICAL_DATA_SHEET',
+          'BACTERIO_ANALYSIS': 'BACTERIO_ANALYSIS',
+          'PHYSICO_CHEM_ANALYSIS': 'PHYSICO_CHEM_ANALYSIS',
+          'RADIOACTIVITY_ANALYSIS': 'RADIOACTIVITY_ANALYSIS',
+          'FUMIGATION_CERT': 'FUMIGATION_CERT',
+          'OFFICIAL_LETTER': 'OFFICIAL_LETTER',
+          'QUALITY_CERT': 'QUALITY_CERT',
+          'STORAGE_FACILITY_PLAN': 'STORAGE_FACILITY_PLAN',
+          'PRODUCTION_FACILITY_PLAN': 'PRODUCTION_FACILITY_PLAN',
+          'MONITORING_PLAN': 'MONITORING_PLAN',
+          'BRAND_LICENSE': 'BRAND_LICENSE',
+          'PRODUCT_SHEETS': 'PRODUCT_SHEETS',
+          'PRODUCT_LABELS': 'PRODUCT_LABELS',
+          'COMMISSION_LETTER': 'COMMISSION_LETTER',
+          'CONFORMITY_CERT_ANALYSIS_REPORT': 'CONFORMITY_CERT_ANALYSIS_REPORT',
+        };
+        return mapping[docType] || docType;
+      };
+
+      const documentsWithContent = await Promise.all(
+        Object.entries(formData.documents)
+          .filter(([, value]) => value instanceof File)
+          .map(async ([key, file]) => {
+            const firstUnderscoreIndex = key.indexOf('_');
+            const productId = key.substring(0, firstUnderscoreIndex);
+            const docType = key.substring(firstUnderscoreIndex + 1);
+            
+            const mappedDocType = mapDocumentType(docType);
+            
+            const base64Content = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(file as File);
+            });
+            
+            return {
+              productId: parseInt(productId),
+              documentType: mappedDocType,
+              fileName: (file as File).name,
+              fileContent: base64Content,
+              fileType: (file as File).type
+            };
+          })
+      );
+
+      // ✅ Construire les produits avec les noms d'images (comme dans ProductDeclaration)
+      const updateData = {
+        exportateurId: declaration.exportateurId || declaration.exportateur?.id,
+        products: formData.products.map((p: any) => {
+          const newImageFile = formData.newProductImages[p.id];
+          return {
+            id: p.id,
+            productType: p.productType,
+            category: p.category,
+            hsCode: p.hsCode,
+            productName: p.productName,
+            isLinkedToBrand: p.isLinkedToBrand,
+            brandName: p.brandName || null,
+            isBrandOwner: p.isBrandOwner,
+            hasBrandLicense: p.hasBrandLicense,
+            productState: p.productState,
+            originCountry: p.originCountry,
+            annualQuantityValue: p.annualQuantityValue || null,
+            annualQuantityUnit: p.annualQuantityUnit || null,
+            commercialBrandName: p.commercialBrandName || null,
+            productImage: p.productImage,  // L'aperçu base64 (pour l'affichage)
+            productImageName: newImageFile ? newImageFile.name : p.productImageName  // ✅ Nom original si nouvelle image
+          };
+        }),
+        documents: documentsWithContent,
+        paymentInfo: null
+      };
+
+      await onSave(updateData);
+      onClose();
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
+  // ✅ Gestionnaire pour les images (stocke le fichier et crée l'aperçu)
   const handleImageChange = (id: number, file: File | null) => {
-    if (!file) return;
+    if (!file) {
+      updateProduct(id, { productImage: null, productImageName: null });
+      setFormData(prev => {
+        const newImages = { ...prev.newProductImages };
+        delete newImages[id];
+        return { ...prev, newProductImages: newImages };
+      });
+      return;
+    }
+
+    // Vérifier la taille (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert("L'image ne doit pas dépasser 2MB");
+      return;
+    }
+
+    // Vérifier le type
+    if (!file.type.startsWith('image/')) {
+      alert("Veuillez sélectionner une image valide (JPG, PNG)");
+      return;
+    }
+
+    // ✅ Stocker le fichier dans newProductImages
+    setFormData(prev => ({
+      ...prev,
+      newProductImages: {
+        ...prev.newProductImages,
+        [id]: file
+      }
+    }));
+
+    // ✅ Stocker le nom original
+    updateProduct(id, { productImageName: file.name });
+
+    // Créer un aperçu temporaire en base64 pour l'affichage
     const reader = new FileReader();
     reader.onloadend = () => {
       updateProduct(id, { productImage: reader.result as string });
     };
     reader.readAsDataURL(file);
+  };
+
+  // Gestionnaire pour les fichiers de documents
+  const handleDocumentFileChange = (docKey: string, file: File | null) => {
+    if (!file) return;
+    setFormData(prev => ({
+      ...prev,
+      documents: {
+        ...prev.documents,
+        [docKey]: file
+      }
+    }));
+  };
+
+  // Supprimer un document
+  const handleRemoveDocument = (docKey: string) => {
+    setFormData(prev => {
+      const newDocs = { ...prev.documents };
+      delete newDocs[docKey];
+      return { ...prev, documents: newDocs };
+    });
   };
 
   if (!declaration) return null;
@@ -150,7 +307,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
         exit={{ opacity: 0, y: 20, scale: 0.98 }}
         className="relative w-full max-w-5xl h-[90vh] bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col border border-slate-100"
       >
-        {/* Header */}
+        {/* Header - inchangé */}
         <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
           <div>
             <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Modification de Déclaration</h2>
@@ -166,7 +323,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           </button>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Tab Switcher - inchangé */}
         <div className="px-8 pt-6 flex gap-8 border-b border-slate-50 shrink-0">
           {[
             { id: 'products', label: 'Liste des Produits', icon: Package },
@@ -187,7 +344,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           ))}
         </div>
 
-        {/* Content */}
+        {/* Content - reste identique sauf l'affichage du nom de l'image */}
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <AnimatePresence mode="wait">
             {activeTab === 'products' ? (
@@ -252,10 +409,13 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                               <Plus size={20} className="text-white" />
                             </div>
                           </div>
-                          <p className="text-[8px] font-bold text-slate-400 uppercase text-center tracking-widest">Image Produit</p>
+                          {/* ✅ Afficher le nom de l'image */}
+                          <p className="text-[8px] font-bold text-slate-400 uppercase text-center tracking-widest truncate">
+                            {product.productImageName || 'Image Produit'}
+                          </p>
                         </div>
 
-                        {/* Details */}
+                        {/* Details - reste inchangé */}
                         <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -263,7 +423,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                             </label>
                             <input 
                               type="text" 
-                              value={product.productName}
+                              value={product.productName || ''}
                               onChange={(e) => updateProduct(product.id, { productName: e.target.value })}
                               className="w-full px-4 py-3 rounded-xl border border-slate-200 font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                               placeholder="Nom du produit"
@@ -275,11 +435,11 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                               <Tags size={10} /> Catégorie
                             </label>
                             <select 
-                              value={product.category}
+                              value={product.category || ''}
                               onChange={(e) => {
                                 const list = product.productType === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS;
                                 const cat = list.find(c => c.name === e.target.value);
-                                updateProduct(product.id, { category: e.target.value, ngp: cat?.codes[0] || '' });
+                                updateProduct(product.id, { category: e.target.value, hsCode: cat?.codes[0] || '' });
                               }}
                               className="w-full px-4 py-3 rounded-xl border border-slate-200 font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                             >
@@ -296,8 +456,8 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                             </label>
                             <input 
                               type="text" 
-                              value={product.ngp}
-                              onChange={(e) => updateProduct(product.id, { ngp: e.target.value })}
+                              value={product.hsCode || ''}
+                              onChange={(e) => updateProduct(product.id, { hsCode: e.target.value })}
                               className="w-full px-4 py-3 rounded-xl border border-slate-200 font-mono font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                               placeholder="ex: 0401"
                             />
@@ -308,7 +468,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                               <Globe size={10} /> Pays d'Origine
                             </label>
                             <select 
-                              value={product.originCountry}
+                              value={product.originCountry || ''}
                               onChange={(e) => updateProduct(product.id, { originCountry: e.target.value })}
                               className="w-full px-4 py-3 rounded-xl border border-slate-200 font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                             >
@@ -324,7 +484,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                                   <Layers size={10} /> État Physique
                                 </label>
                                 <select 
-                                  value={product.productState}
+                                  value={product.productState || ''}
                                   onChange={(e) => updateProduct(product.id, { productState: e.target.value })}
                                   className="w-full px-4 py-3 rounded-xl border border-slate-200 font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                                 >
@@ -339,13 +499,13 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                                 <div className="flex gap-2">
                                   <input 
                                     type="number" 
-                                    value={product.annualQuantityValue}
+                                    value={product.annualQuantityValue || ''}
                                     onChange={(e) => updateProduct(product.id, { annualQuantityValue: e.target.value })}
                                     className="flex-1 px-4 py-3 rounded-xl border border-slate-200 font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                                     placeholder="Quantité"
                                   />
                                   <select 
-                                    value={product.annualQuantityUnit}
+                                    value={product.annualQuantityUnit || ''}
                                     onChange={(e) => updateProduct(product.id, { annualQuantityUnit: e.target.value })}
                                     className="w-24 px-2 py-3 rounded-xl border border-slate-200 font-bold bg-white outline-none text-sm"
                                   >
@@ -380,7 +540,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nom de la marque</label>
                                   <input 
                                     type="text" 
-                                    value={product.brandName}
+                                    value={product.brandName || ''}
                                     onChange={(e) => updateProduct(product.id, { brandName: e.target.value })}
                                     className="w-full px-4 py-3 rounded-xl border border-slate-200 font-bold bg-slate-50 focus:border-tunisia-red outline-none text-sm"
                                   />
@@ -388,55 +548,52 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                               )}
                               {product.isLinkedToBrand && (
                                 <div className="md:col-span-2 grid grid-cols-2 gap-8 mt-2 pt-4 border-t border-slate-50">
-                                    {/* Propriétaire de la marque */}
-                                    <div className="space-y-3">
+                                  <div className="space-y-3">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Propriétaire de la marque ? *</p>
                                     <div className="flex gap-6">
-                                        {[
+                                      {[
                                         { value: true, label: "Oui" },
                                         { value: false, label: "Non" }
-                                        ].map(option => (
+                                      ].map(option => (
                                         <label key={String(option.value)} className="flex items-center gap-2 cursor-pointer group">
-                                            <input
+                                          <input
                                             type="radio"
                                             name={`isBrandOwner_${product.id}`}
                                             checked={product.isBrandOwner === option.value}
                                             onChange={() => updateProduct(product.id, { isBrandOwner: option.value })}
                                             className="w-4 h-4 text-tunisia-red focus:ring-tunisia-red"
-                                            />
-                                            <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-900">
+                                          />
+                                          <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-900">
                                             {option.label}
-                                            </span>
+                                          </span>
                                         </label>
-                                        ))}
+                                      ))}
                                     </div>
-                                    </div>
-
-                                    {/* Licence d'exploitation */}
-                                    <div className="space-y-3">
+                                  </div>
+                                  <div className="space-y-3">
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Licence d'exploitation ? *</p>
                                     <div className="flex gap-6">
-                                        {[
+                                      {[
                                         { value: true, label: "Oui" },
                                         { value: false, label: "Non" }
-                                        ].map(option => (
+                                      ].map(option => (
                                         <label key={String(option.value)} className="flex items-center gap-2 cursor-pointer group">
-                                            <input
+                                          <input
                                             type="radio"
                                             name={`hasBrandLicense_${product.id}`}
                                             checked={product.hasBrandLicense === option.value}
                                             onChange={() => updateProduct(product.id, { hasBrandLicense: option.value })}
                                             className="w-4 h-4 text-tunisia-red focus:ring-tunisia-red"
-                                            />
-                                            <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-900">
+                                          />
+                                          <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-900">
                                             {option.label}
-                                            </span>
+                                          </span>
                                         </label>
-                                        ))}
+                                      ))}
                                     </div>
-                                    </div>
+                                  </div>
                                 </div>
-                                )}
+                              )}
                             </div>
                           ) : (
                             <div className="md:col-span-2 space-y-1.5">
@@ -445,7 +602,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                               </label>
                               <input 
                                 type="text" 
-                                value={product.commercialBrandName}
+                                value={product.commercialBrandName || ''}
                                 onChange={(e) => updateProduct(product.id, { commercialBrandName: e.target.value })}
                                 className="w-full px-4 py-3 rounded-xl border border-slate-200 font-bold bg-white focus:border-tunisia-red outline-none transition-all text-sm"
                                 placeholder="ex: Bosch, Samsung..."
@@ -466,6 +623,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6"
               >
+                {/* Section Documents - inchangée */}
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Documents Requis par l'Instance de Validation</h3>
                   <p className="text-[10px] text-amber-600 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-100 uppercase tracking-tight">Vérifiez la validité de vos certificats par article</p>
@@ -484,9 +642,11 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {(product.productType === 'alimentaire' ? FOOD_DOCS : [
-                          { id: 'conformity_cert', label: "Certificat de conformité ou rapport d’analyse", required: true }
+                          { id: 'CONFORMITY_CERT_ANALYSIS_REPORT', label: "Certificat de conformité ou rapport d’analyse", required: true }
                         ]).map((doc) => {
                           const docKey = `${product.id}_${doc.id}`;
+                          const selectedFile = formData.documents[docKey];
+                          
                           return (
                             <div key={doc.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-tunisia-red/20 transition-all group/doc">
                               <div className="flex flex-col gap-3">
@@ -501,11 +661,11 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                                 </div>
                                 
                                 <div className="flex items-center justify-between gap-2">
-                                  {formData.documents[docKey] ? (
+                                  {selectedFile ? (
                                     <div className="flex-1 min-w-0 flex items-center gap-2 p-1.5 bg-emerald-50 rounded-lg border border-emerald-100">
                                       <FileCheck size={12} className="text-emerald-500 shrink-0" />
                                       <span className="text-[9px] font-bold text-emerald-700 truncate">
-                                        {formData.documents[docKey]}
+                                        {selectedFile.name}
                                       </span>
                                     </div>
                                   ) : (
@@ -522,13 +682,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                                         onChange={(e) => {
                                           const file = e.target.files?.[0];
                                           if (file) {
-                                            setFormData(prev => ({
-                                              ...prev,
-                                              documents: {
-                                                ...prev.documents,
-                                                [docKey]: file.name
-                                              }
-                                            }));
+                                            handleDocumentFileChange(docKey, file);
                                           }
                                         }}
                                       />
@@ -536,13 +690,9 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                                         <Upload size={14} />
                                       </div>
                                     </label>
-                                    {formData.documents[docKey] && (
+                                    {selectedFile && (
                                       <button 
-                                        onClick={() => {
-                                          const newDocs = { ...formData.documents };
-                                          delete newDocs[docKey];
-                                          setFormData(prev => ({ ...prev, documents: newDocs }));
-                                        }}
+                                        onClick={() => handleRemoveDocument(docKey)}
                                         className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-red-400 hover:bg-red-50 transition-all"
                                       >
                                         <Trash2 size={14} />
@@ -575,7 +725,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           </AnimatePresence>
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer Actions - inchangé */}
         <div className="px-8 py-6 border-t border-slate-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
@@ -584,16 +734,23 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           <div className="flex gap-4">
             <button 
               onClick={onClose}
+              disabled={isSaving}
               className="px-8 py-3 bg-slate-50 text-slate-400 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 hover:text-slate-600 transition-all border border-slate-100"
             >
               Annuler
             </button>
             <button 
               onClick={handleSave}
-              className="px-8 py-3 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-black transition-all flex items-center gap-2 group"
+              disabled={isSaving}
+              className={`px-8 py-3 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-black transition-all flex items-center gap-2 group ${
+                isSaving ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
-              <Save size={14} className="group-hover:rotate-12 transition-transform" /> 
-              Enregistrer les modifications
+              {isSaving ? (
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Enregistrement...</>
+              ) : (
+                <><Save size={14} className="group-hover:rotate-12 transition-transform" /> Enregistrer les modifications</>
+              )}
             </button>
           </div>
         </div>

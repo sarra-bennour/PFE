@@ -10,4 +10,5 @@ public interface DemandeProduitRepository extends JpaRepository<DemandeProduit, 
     List<DemandeProduit> findByDemandeId(Long demandeId);
     List<DemandeProduit> findByProduitId(Long produitId);
     boolean existsByDemandeIdAndProduitId(Long demandeId, Long produitId);
+    void deleteByDemandeIdAndProduitId(Long demandeId, Long produitId);
 }

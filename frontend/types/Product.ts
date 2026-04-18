@@ -7,7 +7,8 @@ export interface Product {
   backendId?: number;
   price?: string;
   productImage?: string | null;
-  ngp?: string;
+  productImageName?: string | null;
+  hsCode?: string;
   productName?: string;
   annualQuantityValue?: string;
   annualQuantityUnit?: string;

@@ -250,7 +250,7 @@ const ProductDeclaration: React.FC = () => {
           id: Date.now(),
           productType : type,
           category: '',
-          ngp: '',
+          hsCode: '',
           productName: '',
           isLinkedToBrand: false,
           brandName: '',
@@ -423,10 +423,12 @@ const createDemande = async () => {
   
   const demandeData = {
     exportateurId: user.id,
-    products: formData.products.map(p => ({
+    products: formData.products.map(p => {
+      const imageFile = formData.productImages[p.id];
+      return {
       productType: p.productType,
       category: p.category,
-      hsCode: p.ngp,
+      hsCode: p.hsCode,
       productName: p.productName,
       isLinkedToBrand: p.isLinkedToBrand,
       brandName: p.brandName || null,
@@ -436,8 +438,9 @@ const createDemande = async () => {
       originCountry: p.originCountry,
       annualQuantityValue: p.annualQuantityValue || null,
       annualQuantityUnit: p.annualQuantityUnit || null,
-      commercialBrandName: p.commercialBrandName || null
-    })),
+      commercialBrandName: p.commercialBrandName || null,
+      productImageName: imageFile ? imageFile.name : null
+    };}),
     documents: [],
     paymentInfo: null
   };
@@ -1163,7 +1166,7 @@ const submitDemande = async (demandeIdToSubmit: number) => {
                           options={(product.productType === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).map(c => c.name)}
                           onChange={(val) => {
                             const cat = (product.productType === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).find(c => c.name === val);
-                            updateProduct(product.id, { category: val, ngp: cat?.codes[0] || '' });
+                            updateProduct(product.id, { category: val, hsCode: cat?.codes[0] || '' });
                           }}
                           placeholder="Choisir une catégorie..."
                           required
@@ -1172,8 +1175,8 @@ const submitDemande = async (demandeIdToSubmit: number) => {
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Code NGP *</label>
                           <select
-                            value={product.ngp}
-                            onChange={(e) => updateProduct(product.id, { ngp: e.target.value })}
+                            value={product.hsCode}
+                            onChange={(e) => updateProduct(product.id, { hsCode: e.target.value })}
                             className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white focus:border-tunisia-red transition-all outline-none"
                             disabled={isLoading}
                           >

@@ -20,7 +20,7 @@ const DeclarationsList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState<number | null>(null);
+const [showDeleteModal, setShowDeleteModal] = useState<{ id: number; reference: string } | null>(null);
   const [showEditModal, setShowEditModal] = useState<any | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState<DemandeEnregistrement | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -71,13 +71,14 @@ const DeclarationsList: React.FC = () => {
     setTimeout(() => setAlertMessage(null), 5000);
   };
 
-  const handleDeleteDeclaration = async (id: number) => {
+  const handleDeleteDeclaration = async () => {
+  if (!showDeleteModal) return;
+  
   try {
-    // Appel DELETE à l'API
-    await axiosInstance.delete(`/produits/${id}`);
-    showAlert(`La demande ${id} a été supprimée avec succès.`, 'success');
+    await axiosInstance.delete(`/produits/${showDeleteModal.id}`);
+    showAlert(`La demande ${showDeleteModal.reference} a été supprimée avec succès.`, 'success');
     setShowDeleteModal(null);
-    fetchDemandes(); // Recharger la liste
+    fetchDemandes();
   } catch (err: any) {
     const errorMessage = err.response?.data?.message || 'Erreur lors de la suppression';
     showAlert(errorMessage, 'error');
@@ -170,7 +171,7 @@ const DeclarationsList: React.FC = () => {
     if (imagePath.startsWith('/api')) {
       return `http://localhost:8080${imagePath}`;
     }
-    return `http://localhost:8080${imagePath}`;
+    return `http://localhost:8080/api/produits${imagePath}`;
   };
 
   const getStatusStyle = (status: string) => {
@@ -216,7 +217,7 @@ const DeclarationsList: React.FC = () => {
   const filteredDeclarations = declarations.filter(dec => 
     (dec.products?.some(p => 
       p.productName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.ngp?.toLowerCase().includes(searchTerm.toLowerCase())
+      p.hsCode?.toLowerCase().includes(searchTerm.toLowerCase())
     ) || false) || 
     dec.reference?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -372,7 +373,7 @@ const DeclarationsList: React.FC = () => {
                                 <i className="fas fa-edit"></i>
                               </button>
                               <button 
-                                onClick={() => setShowDeleteModal(dec.id)}
+                                onClick={() => setShowDeleteModal({ id: dec.id, reference: dec.reference })}
                                 className="w-10 h-10 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"
                                 title="Supprimer"
                               >
@@ -563,7 +564,7 @@ const DeclarationsList: React.FC = () => {
                                 <div>
                                   <h5 className="text-base font-black text-slate-900 uppercase italic">{product.productName}</h5>
                                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                    NGP: {product.ngp} • {product.category} • {product.originCountry}
+                                    NGP: {product.hsCode} • {product.category} • {product.originCountry}
                                   </p>
                                 </div>
                               </div>
@@ -632,9 +633,8 @@ const DeclarationsList: React.FC = () => {
                         </button>
                         <button 
                           onClick={() => {
-                            const id = selectedDeclaration.id;
                             setSelectedDeclaration(null);
-                            setShowDeleteModal(id);
+                            setShowDeleteModal({ id: selectedDeclaration.id, reference: selectedDeclaration.reference });
                           }}
                           className="px-6 py-4 bg-red-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-red-600 transition-all flex items-center gap-2"
                         >
@@ -734,7 +734,7 @@ const DeclarationsList: React.FC = () => {
               </div>
               <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-4">Êtes-vous sûr ?</h3>
               <p className="text-slate-500 font-medium leading-relaxed mb-8">
-                Vous êtes sur le point de supprimer la demande <span className="font-black text-slate-900">{showDeleteModal}</span>. Cette action est irréversible.
+                Vous êtes sur le point de supprimer la demande <span className="font-black text-slate-900">{showDeleteModal.reference}</span>. Cette action est irréversible.
               </p>
               <div className="grid grid-cols-2 gap-4">
                 <button 
@@ -744,7 +744,7 @@ const DeclarationsList: React.FC = () => {
                   Annuler
                 </button>
                 <button 
-                  onClick={() => handleDeleteDeclaration(showDeleteModal)}
+                  onClick={() => handleDeleteDeclaration()}
                   className="py-4 bg-red-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-red-600 transition-all"
                 >
                   Supprimer
@@ -777,115 +777,113 @@ const DeclarationsList: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-lg"
+              className="relative w-full max-w-md max-h-[90vh] flex flex-col"  // ✅ Ajouter max-h et flex-col
             >
               {!showPaymentForm ? (
                 // Étape 1: Modal de confirmation "Passer au paiement"
-                <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100">
-                  <div className="p-8 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white">
-                    <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-xl shadow-lg">
+                <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100 overflow-y-auto max-h-full">
+                  <div className="p-6 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-lg shadow-lg">
                         <i className="fas fa-file-invoice-dollar"></i>
                       </div>
                       <div>
-                        <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Confirmation</h3>
-                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Prêt pour le paiement</p>
+                        <h3 className="text-lg font-black text-slate-900 uppercase italic tracking-tighter">Confirmation</h3>
+                        <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Prêt pour le paiement</p>
                       </div>
                     </div>
                   </div>
                   
-                  <div className="p-8 space-y-6">
-                    <div className="bg-slate-50 rounded-2xl p-6 text-center">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mb-4">
-                        <i className="fas fa-receipt text-2xl"></i>
+                  <div className="p-6 space-y-4">
+                    <div className="bg-slate-50 rounded-2xl p-5 text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 mb-3">
+                        <i className="fas fa-receipt text-xl"></i>
                       </div>
-                      <h4 className="text-lg font-black text-slate-900 mb-2">{showPaymentModal.reference}</h4>
-                      <p className="text-slate-500 text-sm mb-4">
+                      <h4 className="text-base font-black text-slate-900 mb-1">{showPaymentModal.reference}</h4>
+                      <p className="text-slate-500 text-xs mb-3">
                         Vous allez soumettre cette demande et procéder au paiement.
                       </p>
-                      <div className="bg-white rounded-xl p-4 border border-slate-100">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Montant à payer</span>
-                          <span className="text-2xl font-black text-emerald-600">100 DT</span>
+                      <div className="bg-white rounded-xl p-3 border border-slate-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Montant à payer</span>
+                          <span className="text-xl font-black text-emerald-600">100 DT</span>
                         </div>
-                        <p className="text-[8px] text-slate-400 text-left">
-                          <i className="fas fa-info-circle mr-1"></i> Ce montant inclut les frais de traitement
-                        </p>
                       </div>
                     </div>
 
-                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-                      <div className="flex gap-3">
-                        <i className="fas fa-shield-alt text-amber-600 text-lg"></i>
+                    <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
+                      <div className="flex gap-2">
+                        <i className="fas fa-shield-alt text-amber-600 text-sm"></i>
                         <div>
-                          <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Paiement sécurisé</p>
-                          <p className="text-[9px] text-amber-700 mt-1">
-                            Vos informations bancaires sont cryptées et sécurisées par Stripe.
-                          </p>
+                          <p className="text-[9px] font-black text-amber-800 uppercase tracking-widest">Paiement sécurisé</p>
+                          <p className="text-[8px] text-amber-700">Vos informations sont cryptées par Stripe.</p>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-4">
+                  <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
                     <button
                       onClick={() => {
                         setShowPaymentModal(null);
                         setShowPaymentForm(false);
                       }}
-                      className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 transition-all"
+                      className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-black uppercase tracking-widest text-[9px] hover:bg-slate-100 transition-all"
                     >
                       Annuler
                     </button>
                     <button
                       onClick={handleProceedToPayment}
-                      className="flex-1 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
+                      className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-black uppercase tracking-widest text-[9px] shadow-lg hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
                     >
-                      <i className="fas fa-credit-card"></i>
+                      <i className="fas fa-credit-card text-xs"></i>
                       Passer au paiement
                     </button>
                   </div>
                 </div>
               ) : (
-                // Étape 2: Formulaire de paiement
-                <PaymentForm
-                  amount={100}
-                  onSubmit={handlePaymentSubmit}
-                  onCancel={() => {
-                    if (!paymentLoading) {
-                      setShowPaymentModal(null);
-                      setShowPaymentForm(false);
-                      setPaymentError(null);
-                      setPaymentSuccess(null);
-                    }
-                  }}
-                  onBack={handleBackToConfirmation}
-                  isLoading={paymentLoading}
-                  error={paymentError}
-                  success={paymentSuccess}
-                />
+                // ✅ Étape 2: Formulaire de paiement AVEC SCROLL
+                <div className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-full">
+                  <div className="overflow-y-auto p-5 custom-scrollbar">
+                    <PaymentForm
+                      amount={100}
+                      onSubmit={handlePaymentSubmit}
+                      onCancel={() => {
+                        if (!paymentLoading) {
+                          setShowPaymentModal(null);
+                          setShowPaymentForm(false);
+                          setPaymentError(null);
+                          setPaymentSuccess(null);
+                        }
+                      }}
+                      onBack={handleBackToConfirmation}
+                      isLoading={paymentLoading}
+                      error={paymentError}
+                      success={paymentSuccess}
+                    />
+                  </div>
+                </div>
               )}
-              
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
        {/* Edit Declaration Modal (Simple Form) */}
+        {/* Edit Declaration Modal */}
         <AnimatePresence>
           {showEditModal && (
             <EditDeclarationModal 
-              declaration={showEditModal}  // Maintenant c'est l'objet complet
+              declaration={showEditModal}
               onClose={() => setShowEditModal(null)}
               onSave={async (updatedData) => {
                 try {
-                  // Appel API pour mettre à jour la déclaration
                   await axiosInstance.put(`/produits/${showEditModal.id}`, updatedData);
                   showAlert('Déclaration modifiée avec succès', 'success');
                   setShowEditModal(null);
-                  fetchDemandes(); // Recharger la liste
+                  fetchDemandes();
                 } catch (err: any) {
-                  showAlert(err.response?.data?.message || 'Erreur lors de la modification', 'error');
+                  const errorMessage = err.response?.data?.message || 'Erreur lors de la modification';
+                  showAlert(errorMessage, 'error');
                 }
               }}
             />
