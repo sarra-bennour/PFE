@@ -257,7 +257,7 @@ public class ExportateurDossierService {
     /**
      * Récupérer tous les documents d'un exportateur
      */
-    public List<DocumentDTO> getAllDocumentsByExportateur(Long exportateurId) {
+    /*public List<DocumentDTO> getAllDocumentsByExportateur(Long exportateurId) {
         logger.info("Récupération de tous les documents pour l'exportateur: " + exportateurId);
 
         ExportateurEtranger exportateur = exportateurRepository.findById(exportateurId)
@@ -268,7 +268,7 @@ public class ExportateurDossierService {
         return documents.stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
-    }
+    }*/
 
     /**
      * Récupérer UNIQUEMENT les documents du dossier d'agrément (DOS-)
@@ -325,7 +325,7 @@ public class ExportateurDossierService {
     /**
      * Compléter le Pré-KYC (première étape avant le dossier de conformité)
      */
-    @Transactional
+    /*@Transactional
     public ExportateurEtranger completePreKyc(String email, PreKycRequest request) {
         logger.info("Complétion du Pré-KYC pour l'email: " + email);
 
@@ -381,7 +381,7 @@ public class ExportateurDossierService {
                 ", username: " + username);
 
         return savedExportateur;
-    }
+    }*/
 
     /**
      * Générer des suggestions de username basées sur le nom de l'entreprise
@@ -445,6 +445,60 @@ public class ExportateurDossierService {
         return suggestionsUniques;
     }
 
+    /**
+     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
+     */
+    @Transactional
+    public ExportateurEtranger completePreKyc(String email, PreKycRequest request) {
+        logger.info("Complétion du Pré-KYC pour l'email: " + email);
 
+        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé avec l'email: " + email));
 
+        if (exportateur.isPreKycCompleted()) {
+            throw new RuntimeException("Le Pré-KYC a déjà été complété");
+        }
+
+        // Validation du username
+        String username = request.getUsername();
+        if (username == null || username.trim().isEmpty()) {
+            throw new RuntimeException("Le nom d'utilisateur est requis");
+        }
+
+        username = username.toLowerCase().trim();
+        if (!username.matches("^[a-z0-9_]+$")) {
+            throw new RuntimeException("Le nom d'utilisateur ne peut contenir que des lettres minuscules, chiffres et underscores");
+        }
+
+        if (exportateurRepository.existsByUsername(username)) {
+            List<String> suggestions = suggererUsernames(exportateur.getRaisonSociale(), email);
+            String suggestionsStr = String.join(", ", suggestions);
+            throw new RuntimeException("Ce nom d'utilisateur est déjà pris. Suggestions: " + suggestionsStr);
+        }
+
+        // Numéro officiel d'enregistrement
+        if (request.getNumeroOfficielEnregistrement() != null && !request.getNumeroOfficielEnregistrement().trim().isEmpty()) {
+            exportateur.setNumeroOfficielEnregistrement(request.getNumeroOfficielEnregistrement());
+        }
+
+        // Capacité annuelle - Version simplifiée pour Double
+        if (request.getCapaciteAnnuelle() != null) {
+            exportateur.setCapaciteAnnuelle(request.getCapaciteAnnuelle());
+        }
+
+        // Autres champs
+        exportateur.setUsername(username);
+        exportateur.setSiteType(request.getSiteType());
+        exportateur.setRepresentantRole(request.getRepresentantRole());
+        exportateur.setRepresentantEmail(request.getRepresentantEmail());
+        exportateur.setPreKycCompleted(true);
+        exportateur.setPreKycCompletedAt(LocalDateTime.now());
+        exportateur.setNumeroTVA(request.getNumeroTVA());
+        exportateur.setUserStatut(UserStatus.ACTIF);
+
+        ExportateurEtranger savedExportateur = exportateurRepository.save(exportateur);
+        logger.info("Pré-KYC complété avec succès pour l'exportateur ID: " + savedExportateur.getId());
+
+        return savedExportateur;
+    }
 }

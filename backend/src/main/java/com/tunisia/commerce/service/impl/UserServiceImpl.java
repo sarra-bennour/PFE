@@ -563,6 +563,7 @@ public class UserServiceImpl implements UserService {
     public UserDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
         return mapToUserDTO(user);
     }
 
@@ -598,6 +599,14 @@ public class UserServiceImpl implements UserService {
             dto.setDateAgrement(exportateur.getDateAgrement());
             dto.setEmailVerified(exportateur.isEmailVerified());
             dto.setTwoFactorEnabled(exportateur.isTwoFactorEnabled());
+            dto.setSiteType(exportateur.getSiteType());
+            dto.setNumeroOfficielEnregistrement(exportateur.getNumeroOfficielEnregistrement());
+            dto.setUsername(exportateur.getUsername());
+            dto.setRepresentantRole(exportateur.getRepresentantRole());
+            dto.setRepresentantEmail(exportateur.getRepresentantEmail());
+            dto.setPreKycCompletedAt(exportateur.getPreKycCompletedAt());
+            dto.setPreKycCompleted(exportateur.isPreKycCompleted());
+            dto.setCapaciteAnnuelle(exportateur.getCapaciteAnnuelle());
             dto.setDocumentsCount(exportateur.getDocuments() != null ? exportateur.getDocuments().size() : 0);
         }
 
@@ -759,7 +768,7 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    @Override
+    /*@Override
     @Transactional
     public boolean validateResetToken(String token) {
         logger.info("=== VALIDATION TOKEN RÉINITIALISATION ===");
@@ -773,7 +782,7 @@ public class UserServiceImpl implements UserService {
         }
 
         return true;
-    }
+    }*/
 
     @Override
     @Transactional
@@ -1437,7 +1446,7 @@ public class UserServiceImpl implements UserService {
         return hasPending;
     }
 
-    @Override
+    /*@Override
     public DeactivationRequestAdminDTO getDeactivationRequestById(Long requestId) {
         logger.info("=== RÉCUPÉRATION DEMANDE DE DÉSACTIVATION ID: "+ requestId+" ===");
 
@@ -1445,7 +1454,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new RuntimeException("Demande de désactivation non trouvée avec l'id: " + requestId));
 
         return mapToDeactivationRequestAdminDTO(request);
-    }
+    }*/
 
     @Override
     @Transactional
@@ -1568,7 +1577,7 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    @Override
+    /*@Override
     @Transactional
     public String generateAndSendPassword(Long userId) {
         logger.info("=== GÉNÉRATION ET ENVOI MOT DE PASSE ID: "+ userId+" ===");
@@ -1592,7 +1601,7 @@ public class UserServiceImpl implements UserService {
         logger.info("✅ Nouveau mot de passe généré et envoyé pour: "+ user.getEmail());
 
         return newPassword;
-    }
+    }*/
 
     private void sendNewPasswordEmail(User user, String newPassword) {
         try {
@@ -1797,31 +1806,31 @@ public class UserServiceImpl implements UserService {
         return mapToUserDTO(saved);
     }
 
-    @Override
+    /*@Override
     public List<UserDTO> getAllInstanceValidations() {
         logger.info("=== RÉCUPÉRATION DE TOUTES LES INSTANCES DE VALIDATION ===");
         return instanceValidationRepository.findAll().stream()
                 .map(this::mapToUserDTO)
                 .collect(Collectors.toList());
-    }
+    }*/
 
-    @Override
+    /*@Override
     public UserDTO getInstanceValidationById(Long id) {
         logger.info("=== RÉCUPÉRATION INSTANCE ID: "+ id+" ===");
         InstanceValidation instance = instanceValidationRepository.findById(id)
                 .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
         return mapToUserDTO(instance);
-    }
+    }*/
 
-    @Override
+    /*@Override
     public UserDTO getInstanceValidationByEmail(String email) {
         logger.info("=== RÉCUPÉRATION INSTANCE PAR EMAIL: "+ email+" ===");
         InstanceValidation instance = instanceValidationRepository.findByEmail(email)
                 .orElseThrow(() -> InstanceValidationException.instanceNotFoundByEmail(email));
         return mapToUserDTO(instance);
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional
     public void updateInstanceValidationStatus(Long id, String status) {
         logger.info("=== MISE À JOUR STATUT INSTANCE ID: "+ id+" ===");
@@ -1841,9 +1850,9 @@ public class UserServiceImpl implements UserService {
         } catch (IllegalArgumentException e) {
             throw InstanceValidationException.invalidStatus(status);
         }
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional
     public void deleteInstanceValidation(Long id) {
         logger.info("=== SUPPRESSION LOGIQUE INSTANCE ID: "+ id+" ===");
@@ -1856,9 +1865,9 @@ public class UserServiceImpl implements UserService {
         instanceValidationRepository.save(instance);
 
         logger.info("Instance désactivée: "+ instance.getEmail());
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional
     public void hardDeleteInstanceValidation(Long id) {
         logger.info("=== SUPPRESSION PHYSIQUE INSTANCE ID: "+ id+" ===");
@@ -1868,7 +1877,7 @@ public class UserServiceImpl implements UserService {
 
         instanceValidationRepository.delete(instance);
         logger.info("Instance supprimée définitivement: "+ instance.getEmail());
-    }
+    }*/
 
 
     // ==================== PRIVATE METHODS ====================
@@ -1928,7 +1937,7 @@ public class UserServiceImpl implements UserService {
         return dto;
     }
 
-    @Override
+    /*@Override
     @Transactional
     public boolean verifyInstanceValidationEmail(String token) {
         logger.info("=== VÉRIFICATION EMAIL INSTANCE VALIDATION ===");
@@ -1948,5 +1957,5 @@ public class UserServiceImpl implements UserService {
         instanceValidationRepository.save(instance);
 
         return true;
-    }
+    }*/
 }

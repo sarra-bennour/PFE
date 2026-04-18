@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import ProductDeclarationForm from './ProductDeclarationForm';
-import { Exporter } from '../../types/Exporter';
+import { User } from '../../types/User';
 import { Product } from '../../types/Product';
 import { useAuth } from '../../App';
 import { notificationService } from '../../services/notificationService';
 import { ProductAdditionData } from '../../types/ProductAdditionData';
+import {ExporterDirectoryProps} from '../../types/User';
 
-interface ExporterDirectoryProps {
-  externalSearchQuery?: string;
-  onClearSearch?: () => void;
-}
+
+const coverImages = [
+  'https://images.unsplash.com/photo-1566576721346-d4a3b4eaeb55?w=800', // Agriculture
+  'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800', // Industrie
+  'https://images.unsplash.com/photo-1441974231531-c622288dbd74?w=800', // Nature
+  'https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800', // Export
+  'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800', // Champs
+  'https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=800', // Usine
+  'https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?w=800', // Conteneurs
+  'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=800', // Marché
+];
+
+const randomImage = coverImages[Math.floor(Math.random() * coverImages.length)];
 
 const CATEGORIES_ALIMENTAIRES = [
   { name: "Produits laitiers", codes: ["0401", "0402", "0403", "0404", "0405", "0406"] },
@@ -29,18 +39,20 @@ const CATEGORIES_INDUSTRIELS = [
 const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQuery, onClearSearch }) => {
   const { user } = useAuth();
 
-  const [selectedExporter, setSelectedExporter] = useState<Exporter | null>(null);
+  const [selectedExporter, setSelectedExporter] = useState<User | null>(null);
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
-  const [exporters, setExporters] = useState<Exporter[]>([]);
+  const [exporters, setExporters] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDeclarationForm, setShowDeclarationForm] = useState(false);
-  const [selectedProductForForm, setSelectedProductForForm] = useState<(Product & { exporter: Exporter }) | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<(Product & { exporter: Exporter }) | null>(null);
+  const [selectedProductForForm, setSelectedProductForForm] = useState<(Product & { exporter: User }) | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<(Product & { exporter: User }) | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [acceptedProductIds, setAcceptedProductIds] = useState<Set<number>>(new Set());
   const [pendingProductIds, setPendingProductIds] = useState<Set<number>>(new Set());
   const [submittedProductIds, setSubmittedProductIds] = useState<Set<number>>(new Set());
+  const [pendingDeclarationId, setPendingDeclarationId] = useState<number | null>(null);
+
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
 
@@ -120,10 +132,10 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
   const fetchAndShowProductDetails = async (productId: number) => {
     setLoading(true);
     try {
-      let foundProduct: (Product & { exporter: Exporter }) | null = null;
+      let foundProduct: (Product & { exporter: User }) | null = null;
 
       for (const exporter of exporters) {
-        const product = exporter.products.find(p => Number(p.id) === productId);
+        const product = exporter.products?.find(p => Number(p.id) === productId);
         if (product) {
           foundProduct = { ...product, exporter };
           break;
@@ -162,21 +174,15 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         const productItem = products.find((p: any) => Number(p.id) === productId);
 
         if (productItem) {
-          const exporter: Exporter = {
+          const exporter: User = {
             id: exporterItem.id?.toString() || '',
-            name: exporterItem.raisonSociale || exporterItem.companyName || '',
+            nom: exporterItem.raisonSociale || exporterItem.companyName || '',
+            role: 'EXPORTATEUR',
             companyName: exporterItem.raisonSociale || exporterItem.companyName || '',
-            country: exporterItem.paysOrigine || exporterItem.country || '',
             paysOrigine: exporterItem.paysOrigine || exporterItem.country || '',
-            category: exporterItem.siteType || exporterItem.category || 'Non spécifié',
-            description: exporterItem.description || '',
-            registration: exporterItem.numeroRegistreCommerce || '',
             numeroRegistreCommerce: exporterItem.numeroRegistreCommerce || '',
             email: exporterItem.email || '',
-            phone: exporterItem.telephone || exporterItem.phone || '',
-            telephone: exporterItem.telephone || '',
-            coverPhoto: exporterItem.coverPhoto || '',
-            profilePic: exporterItem.profilePic || '',
+            telephone: exporterItem.telephone || exporterItem.phone || '',
             statutAgrement: exporterItem.statutAgrement || '',
             numeroAgrement: exporterItem.numeroAgrement || '',
             siteType: exporterItem.siteType || '',
@@ -188,15 +194,13 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
           const product: Product = {
             id: productItem.id?.toString() || Math.random().toString(),
-            name: productItem.productName || productItem.name || 'Produit sans nom',
             productName: productItem.productName || '',
             price: productItem.price || 'Prix sur demande',
-            image: productItem.image || null,
+            productImage: productItem.productImage || null,
             ngp: productItem.hsCode || productItem.ngp || '',
-            hsCode: productItem.hsCode || '',
             annualQuantityValue: productItem.annualQuantityValue,
             annualQuantityUnit: productItem.annualQuantityUnit,
-            category: productItem.category || exporter.category || 'Non spécifié'
+            category: productItem.category || 'Non spécifié'
           };
 
           setAcceptedProductIds(prev => {
@@ -306,11 +310,11 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         exporterId,
         exporterName,
         productId: Number(product.id),
-        productName: product.name,
+        productName: product.productName || 'Produit sans nom',
         productPrice: product.price || 'Prix sur demande',
         productNgp: product.ngp || '',
         declarationId,
-        message: `${importerName} souhaite ajouter votre produit "${product.name}" à sa déclaration d'importation.`
+        message: `${importerName} souhaite ajouter votre produit "${product.productName}" à sa déclaration d'importation.`
       };
 
       const response = await notificationService.createProductAdditionNotification(notificationData);
@@ -320,7 +324,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
     }
   };
 
-  const handleAddProduct = async (product: Product & { exporter: Exporter }) => {
+  const handleAddProduct = async (product: Product & { exporter: User }) => {
     if (!user) {
       return;
     }
@@ -355,7 +359,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         user.id,
         importerName,
         exporterId,
-        product.exporter.name,
+        product.exporter.nom || product.exporter.companyName || '',
         product,
         0
       );
@@ -402,7 +406,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
       const data = await response.json();
 
-      const transformedData: Exporter[] = data.map((item: any) => {
+      const transformedData: User[] = data.map((item: any) => {
         return {
           id: item.id?.toString() || '',
           name: item.raisonSociale || item.companyName || '',
@@ -461,16 +465,16 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
     fetchExporters(searchQuery);
   }, [searchQuery]);
 
-  const getFilteredProducts = (): (Product & { exporter: Exporter })[] => {
+  const getFilteredProducts = (): (Product & { exporter: User })[] => {
     if (!searchQuery || searchQuery.trim() === '') return [];
 
     const query = searchQuery.toLowerCase().trim();
-    const allProducts: (Product & { exporter: Exporter })[] = [];
+    const allProducts: (Product & { exporter: User })[] = [];
 
     exporters.forEach(exporter => {
-      exporter.products.forEach(product => {
-        const productName = (product.name || product.productName || '').toLowerCase();
-        const productNgp = (product.ngp || product.hsCode || '').toLowerCase();
+      exporter.products?.forEach(product => {
+        const productName = (product.productName || '').toLowerCase();
+        const productNgp = (product.ngp || '').toLowerCase();
 
         if (productName.includes(query) || productNgp.includes(query)) {
           allProducts.push({
@@ -487,7 +491,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
   const filteredProducts = getFilteredProducts();
   const filteredExporters = exporters;
 
-  const renderProductButton = (product: Product & { exporter: Exporter }) => {
+  const renderProductButton = (product: Product & { exporter: User }) => {
     const productIdNum = Number(product.id);
     const isSubmitted = submittedProductIds.has(productIdNum);
     const isAccepted = acceptedProductIds.has(productIdNum);
@@ -585,7 +589,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         <div className="animate-fade-in-scale space-y-6">
           <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
             <div className="h-64 md:h-80 bg-slate-200 relative">
-              <img src={selectedExporter.coverPhoto} alt="Cover" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <img src={randomImage} alt="Cover" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               <button
                 onClick={() => setSelectedExporter(null)}
                 className="absolute top-6 left-6 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/40 transition-all"
@@ -598,7 +602,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
               <div className="flex flex-col md:flex-row items-end gap-6 -mt-16 md:-mt-20 relative z-10">
                 <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-[6px] border-white overflow-hidden shadow-2xl bg-white">
                   <img
-                    src={getFlagUrl(selectedExporter.country)}
+                    src={getFlagUrl(selectedExporter.paysOrigine || 'UN')}
                     alt="Flag"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
@@ -606,10 +610,12 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 </div>
                 <div className="flex-grow pb-4 text-center md:text-left">
                   <div className="flex items-center justify-center md:justify-start gap-3">
-                    <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase italic">{selectedExporter.name}</h2>
+                    <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tighter uppercase italic">{selectedExporter.nom && selectedExporter.prenom 
+                      ? `${selectedExporter.nom} ${selectedExporter.prenom}` 
+                      : selectedExporter.companyName || 'Exporter sans nom'}</h2>
                     <i className="fas fa-check-circle text-blue-500 text-xl"></i>
                   </div>
-                  <p className="text-slate-500 font-bold mt-1">{selectedExporter.category} &bull; {selectedExporter.country}</p>
+                  <p className="text-slate-500 font-bold mt-1">{selectedExporter.role} &bull; {selectedExporter.paysOrigine || 'Pays non spécifié'}</p>
                 </div>
               </div>
 
@@ -626,15 +632,15 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
             <div className="space-y-6">
               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100">
                 <h3 className="text-lg font-black text-slate-900 uppercase italic tracking-tighter mb-6">Intro</h3>
-                <p className="text-sm text-slate-600 font-medium leading-relaxed mb-6">{selectedExporter.description}</p>
+                <p className="text-sm text-slate-600 font-medium leading-relaxed mb-6">{selectedExporter.representantLegal}</p>
                 <div className="space-y-4">
                   <div className="flex items-center gap-4 text-slate-500">
                     <i className="fas fa-briefcase w-5 text-slate-400"></i>
-                    <span className="text-xs font-bold uppercase tracking-tight">Enregistrement: <span className="text-slate-900">{selectedExporter.registration}</span></span>
+                    <span className="text-xs font-bold uppercase tracking-tight">Site Web: <span className="text-slate-900">{selectedExporter.siteWeb}</span></span>
                   </div>
                   <div className="flex items-center gap-4 text-slate-500">
                     <i className="fas fa-location-dot w-5 text-slate-400"></i>
-                    <span className="text-xs font-bold uppercase tracking-tight">Basé en <span className="text-slate-900">{selectedExporter.country}</span></span>
+                    <span className="text-xs font-bold uppercase tracking-tight">Basé en <span className="text-slate-900">{selectedExporter.paysOrigine || 'Pays non spécifié'}</span></span>
                   </div>
                   <div className="flex items-center gap-4 text-slate-500">
                     <i className="fas fa-envelope w-5 text-slate-400"></i>
@@ -642,7 +648,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                   </div>
                   <div className="flex items-center gap-4 text-slate-500">
                     <i className="fas fa-phone w-5 text-slate-400"></i>
-                    <span className="text-xs font-bold text-slate-900">{selectedExporter.phone}</span>
+                    <span className="text-xs font-bold text-slate-900">{selectedExporter.telephone}</span>
                   </div>
                 </div>
               </div>
@@ -668,20 +674,20 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-slate-100">
                 <div className="flex justify-between items-center mb-8">
                   <h3 className="text-lg font-black text-slate-900 uppercase italic tracking-tighter">
-                    Catalogue Produits ({selectedExporter.products.length})
+                    Catalogue Produits ({selectedExporter.products?.length})
                   </h3>
                   <button className="text-tunisia-red font-black uppercase text-[10px] tracking-widest">Voir tout</button>
                 </div>
 
-                {selectedExporter.products.length === 0 ? (
+                {selectedExporter.products?.length === 0 ? (
                   <div className="text-center py-12 bg-slate-50 rounded-2xl">
                     <i className="fas fa-box-open text-slate-300 text-5xl mb-4"></i>
                     <p className="text-slate-400 font-bold">Aucun produit disponible</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {selectedExporter.products.map((product, idx) => {
-                      const placeholder = getProductPlaceholder(product.category || selectedExporter.category, product.ngp);
+                    {selectedExporter.products?.map((product, idx) => {
+                      const placeholder = getProductPlaceholder(product.category || 'Catégorie non spécifiée', product.ngp);
                       const productWithExporter = { ...product, exporter: selectedExporter };
                       return (
                         <div
@@ -690,10 +696,10 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                           onClick={() => setSelectedProduct(productWithExporter)}
                         >
                           <div className="h-48 bg-slate-100 overflow-hidden relative flex items-center justify-center">
-                            {product.image ? (
+                            {product.productImage ? (
                               <img
-                                src={product.image}
-                                alt={product.name}
+                                src={product.productImage}
+                                alt={product.productName}
                                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                 referrerPolicy="no-referrer"
                                 onError={(e) => {
@@ -709,7 +715,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                             )}
                           </div>
                           <div className="p-4 flex-grow flex flex-col">
-                            <h5 className="font-black text-slate-900 uppercase tracking-tight mb-1">{product.name}</h5>
+                            <h5 className="font-black text-slate-900 uppercase tracking-tight mb-1">{product.productName}</h5>
                             {product.ngp && (
                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">
                                 NGP: {product.ngp}
@@ -736,12 +742,12 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
             <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] animate-fade-in-scale">
               <div className="md:w-1/2 h-64 md:h-auto bg-slate-100 relative flex items-center justify-center">
-                {selectedProduct.image ? (
-                  <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                {selectedProduct.productImage ? (
+                  <img src={selectedProduct.productImage} alt={selectedProduct.productName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || selectedProduct.exporter?.category || '', selectedProduct.ngp).color}`}>
-                    <i className={`fas ${getProductPlaceholder(selectedProduct.category || selectedProduct.exporter?.category || '', selectedProduct.ngp).icon} text-6xl mb-4`}></i>
-                    <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || selectedProduct.exporter?.category || '', selectedProduct.ngp).label}</span>
+                  <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).color}`}>
+                    <i className={`fas ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).icon} text-6xl mb-4`}></i>
+                    <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).label}</span>
                   </div>
                 )}
                 <button
@@ -761,7 +767,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                       En Stock
                     </span>
                   </div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">{selectedProduct.name}</h2>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">{selectedProduct.productName}</h2>
                   <p className="text-xl font-black text-tunisia-red italic">{selectedProduct.price}</p>
                 </div>
 
@@ -776,15 +782,17 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                   >
                     <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md bg-white">
                       <img
-                        src={getFlagUrl(selectedProduct.exporter.country)}
+                        src={getFlagUrl(selectedProduct.exporter.paysOrigine || 'UN')}
                         alt="Flag"
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
                       />
                     </div>
                     <div>
-                      <h5 className="font-black text-slate-900 uppercase tracking-tight group-hover:text-tunisia-red transition-colors">{selectedProduct.exporter.name}</h5>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct.exporter.country}</p>
+                      <h5 className="font-black text-slate-900 uppercase tracking-tight group-hover:text-tunisia-red transition-colors">{selectedProduct.exporter.nom && selectedProduct.exporter.prenom 
+                        ? `${selectedProduct.exporter.nom} ${selectedProduct.exporter.prenom}` 
+                        : selectedProduct.exporter.companyName || 'Exporter sans nom'}</h5>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct.exporter.paysOrigine || 'Pays non spécifié'}</p>
                     </div>
                   </div>
                 </div>
@@ -804,33 +812,40 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
           <ProductDeclarationForm
             product={{
               id: selectedProductForForm.id,
-              name: selectedProductForForm.name,
+              productName: selectedProductForForm.productName,
               price: selectedProductForForm.price || 'Prix sur demande',
-              category: selectedProductForForm.category || selectedProductForForm.exporter?.category || 'Autre',
-              image: selectedProductForForm.image || undefined,
+              category: selectedProductForForm.category || 'Autre',
+              productImage: selectedProductForForm.productImage || undefined,
               ngp: selectedProductForForm.ngp
             }}
             exporter={{
-              name: selectedProductForForm.exporter.name,
-              profilePic: selectedProductForForm.exporter.profilePic,
-              country: selectedProductForForm.exporter.country,
-              id: Number(selectedProductForForm.exporter.id)
+              nom: selectedProductForForm.exporter.nom,
+              prenom: selectedProductForForm.exporter.prenom,
+              paysOrigine: selectedProductForForm.exporter.paysOrigine || 'UN',
+              id: Number(selectedProductForForm.exporter.id),
+              role: selectedProductForForm.exporter.role,
+              companyName: selectedProductForForm.exporter.companyName,
+              email: selectedProductForForm.exporter.email,
+              telephone: selectedProductForForm.exporter.telephone,
+              products: []
             }}
             onClose={() => {
               setShowDeclarationForm(false);
               setSelectedProductForForm(null);
             }}
-            onSuccess={async (declarationId: number) => {
-              if (user && selectedProductForForm) {
+            onSuccess={async() => {
+              // Maintenant onSuccess n'a pas de paramètre
+              // Mais on a accès à pendingDeclarationId qui a été défini avant
+              if (user && selectedProductForForm && pendingDeclarationId) {
                 setIsSubmitting(true);
                 try {
                   await sendProductAdditionNotification(
                     user.id,
                     `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email,
                     Number(selectedProductForForm.exporter.id),
-                    selectedProductForForm.exporter.name,
+                    selectedProductForForm.exporter.nom || selectedProductForForm.exporter.companyName || '',
                     selectedProductForForm,
-                    declarationId
+                    pendingDeclarationId // Utiliser l'ID stocké
                   );
 
                   setAcceptedProductIds(prev => {
@@ -845,15 +860,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                   });
 
                 } catch (error) {
+                  console.error('Error:', error);
                 } finally {
                   setIsSubmitting(false);
                   setShowDeclarationForm(false);
                   setSelectedProductForForm(null);
+                  setPendingDeclarationId(null); // Réinitialiser
                 }
               } else {
                 setShowDeclarationForm(false);
                 setSelectedProductForForm(null);
               }
+            }}
+            onDeclarationCreated={(declarationId: number) => {
+              // Cette prop stocke l'ID avant que onSuccess soit appelé
+              setPendingDeclarationId(declarationId);
             }}
           />
         )}
@@ -889,7 +910,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
             <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter px-4">Produits correspondants</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {filteredProducts.map((product, idx) => {
-                const placeholder = getProductPlaceholder(product.category || product.exporter?.category || '', product.ngp);
+                const placeholder = getProductPlaceholder(product.category || '', product.ngp);
                 return (
                   <div
                     key={idx}
@@ -897,10 +918,10 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                     onClick={() => setSelectedProduct(product)}
                   >
                     <div className="h-40 bg-slate-100 overflow-hidden relative flex items-center justify-center">
-                      {product.image ? (
+                      {product.productImage ? (
                         <img
-                          src={product.image}
-                          alt={product.name}
+                          src={product.productImage}
+                          alt={product.productName}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
@@ -915,12 +936,14 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                         </div>
                       )}
                       <div className="absolute top-2 right-2 px-2 py-1 bg-white/90 backdrop-blur-sm rounded-lg text-[8px] font-black uppercase tracking-widest text-slate-500">
-                        {product.exporter?.name}
+                        {product.exporter.nom && product.exporter.prenom 
+                      ? `${product.exporter.nom} ${product.exporter.prenom}` 
+                      : product.exporter.companyName || 'Exporter sans nom'}
                       </div>
                     </div>
                     <div className="p-4 flex-grow flex flex-col">
                       <h5 className="font-black text-slate-900 uppercase tracking-tight mb-1">
-                        {product.name}
+                        {product.productName}
                       </h5>
                       <div className="flex justify-between items-center mb-4">
                         <span className="text-xs font-black text-tunisia-red italic">{product.price || 'Prix sur demande'}</span>
@@ -947,14 +970,14 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 className="bg-white rounded-[2rem] shadow-lg border border-slate-100 overflow-hidden group cursor-pointer hover:shadow-2xl transition-all hover:-translate-y-1"
               >
                 <div className="h-32 bg-slate-200 relative overflow-hidden">
-                  <img src={exporter.coverPhoto} alt="Cover" className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
+                  <img src={randomImage} alt="Cover" className="w-full h-full object-cover opacity-80 group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                 </div>
                 <div className="p-6 relative">
                   <div className="absolute -top-10 left-6">
                     <div className="w-16 h-16 rounded-2xl border-4 border-white overflow-hidden shadow-lg bg-white">
                       <img
-                        src={getFlagUrl(exporter.country)}
+                        src={getFlagUrl(exporter.paysOrigine || 'UN')}
                         alt="Flag"
                         className="w-full h-full object-cover"
                         referrerPolicy="no-referrer"
@@ -963,11 +986,13 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                   </div>
                   <div className="mt-8">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-lg font-black text-slate-900 tracking-tighter uppercase italic">{exporter.name}</h4>
+                      <h4 className="text-lg font-black text-slate-900 tracking-tighter uppercase italic">{exporter.nom && exporter.prenom 
+                      ? `${exporter.nom} ${exporter.prenom}` 
+                      : exporter.companyName || 'Exporter sans nom'}</h4>
                       <i className="fas fa-check-circle text-blue-500 text-xs"></i>
                     </div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{exporter.category} &bull; {exporter.country}</p>
-                    <p className="text-xs text-slate-500 line-clamp-2 font-medium leading-relaxed">{exporter.description}</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{exporter.role} &bull; {exporter.paysOrigine}</p>
+                    <p className="text-xs text-slate-500 line-clamp-2 font-medium leading-relaxed">{exporter.siteWeb}</p>
                   </div>
                   <div className="mt-6 pt-6 border-t border-slate-50 flex justify-between items-center">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
@@ -1006,12 +1031,12 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] animate-fade-in-scale">
             <div className="md:w-1/2 h-64 md:h-auto bg-slate-100 relative flex items-center justify-center">
-              {selectedProduct.image ? (
-                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              {selectedProduct.productImage ? (
+                <img src={selectedProduct.productImage} alt={selectedProduct.productName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || selectedProduct.exporter?.category || '', selectedProduct.ngp).color}`}>
-                  <i className={`fas ${getProductPlaceholder(selectedProduct.category || selectedProduct.exporter?.category || '', selectedProduct.ngp).icon} text-6xl mb-4`}></i>
-                  <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || selectedProduct.exporter?.category || '', selectedProduct.ngp).label}</span>
+                <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).color}`}>
+                  <i className={`fas ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).icon} text-6xl mb-4`}></i>
+                  <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).label}</span>
                 </div>
               )}
               <button
@@ -1031,7 +1056,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                     En Stock
                   </span>
                 </div>
-                <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">{selectedProduct.name}</h2>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic">{selectedProduct.productName}</h2>
                 <p className="text-xl font-black text-tunisia-red italic">{selectedProduct.price}</p>
               </div>
 
@@ -1046,15 +1071,15 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 >
                   <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md bg-white">
                     <img
-                      src={getFlagUrl(selectedProduct.exporter.country)}
+                      src={getFlagUrl(selectedProduct.exporter.paysOrigine || 'UN')}
                       alt="Flag"
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
                     />
                   </div>
                   <div>
-                    <h5 className="font-black text-slate-900 uppercase tracking-tight group-hover:text-tunisia-red transition-colors">{selectedProduct.exporter.name}</h5>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct.exporter.country}</p>
+                    <h5 className="font-black text-slate-900 uppercase tracking-tight group-hover:text-tunisia-red transition-colors">{selectedProduct.exporter.nom}</h5>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{selectedProduct.exporter.paysOrigine}</p>
                   </div>
                 </div>
               </div>
@@ -1073,33 +1098,39 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
       {showDeclarationForm && selectedProductForForm && (
         <ProductDeclarationForm
           product={{
-            name: selectedProductForForm.name,
+            id: selectedProductForForm.id,
+            productName: selectedProductForForm.productName,
             price: selectedProductForForm.price || 'Prix sur demande',
-            category: selectedProductForForm.category || selectedProductForForm.exporter?.category || 'Autre',
-            image: selectedProductForForm.image || undefined,
+            category: selectedProductForForm.category || 'Autre',
+            productImage: selectedProductForForm.productImage || undefined,
             ngp: selectedProductForForm.ngp
           }}
           exporter={{
-            name: selectedProductForForm.exporter.name,
-            profilePic: selectedProductForForm.exporter.profilePic,
-            country: selectedProductForForm.exporter.country,
-            id: Number(selectedProductForForm.exporter.id)
+            nom: selectedProductForForm.exporter.nom || selectedProductForForm.exporter.companyName || '',
+            paysOrigine: selectedProductForForm.exporter.paysOrigine || 'UN',
+            id: Number(selectedProductForForm.exporter.id),
+            role: selectedProductForForm.exporter.role,
+            email: selectedProductForForm.exporter.email,
+            telephone: selectedProductForForm.exporter.telephone,
+            products: []
           }}
           onClose={() => {
             setShowDeclarationForm(false);
             setSelectedProductForForm(null);
           }}
-          onSuccess={async (declarationId: number) => {
-            if (user && selectedProductForForm) {
+          onSuccess={async () => {
+            // Maintenant onSuccess n'a pas de paramètre
+            // On utilise pendingDeclarationId qui a été défini par onDeclarationCreated
+            if (user && selectedProductForForm && pendingDeclarationId) {
               setIsSubmitting(true);
               try {
                 await sendProductAdditionNotification(
                   user.id,
                   `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email,
                   Number(selectedProductForForm.exporter.id),
-                  selectedProductForForm.exporter.name,
+                  selectedProductForForm.exporter.nom || selectedProductForForm.exporter.companyName || '',
                   selectedProductForForm,
-                  declarationId
+                  pendingDeclarationId // Utiliser l'ID stocké
                 );
 
                 setAcceptedProductIds(prev => {
@@ -1114,15 +1145,21 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 });
 
               } catch (error) {
+                console.error('Error:', error);
               } finally {
                 setIsSubmitting(false);
                 setShowDeclarationForm(false);
                 setSelectedProductForForm(null);
+                setPendingDeclarationId(null); // Réinitialiser l'ID
               }
             } else {
               setShowDeclarationForm(false);
               setSelectedProductForForm(null);
             }
+          }}
+          onDeclarationCreated={(declarationId: number) => {
+            // Cette prop stocke l'ID avant que onSuccess soit appelé
+            setPendingDeclarationId(declarationId);
           }}
         />
       )}

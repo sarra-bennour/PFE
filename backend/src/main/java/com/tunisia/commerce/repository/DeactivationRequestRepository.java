@@ -18,40 +18,6 @@ public interface DeactivationRequestRepository extends JpaRepository<Deactivatio
 
     // Trouver toutes les demandes d'un utilisateur
     List<DeactivationRequest> findByUserIdOrderByRequestDateDesc(Long userId);
-
-    // Trouver la dernière demande d'un utilisateur
-    Optional<DeactivationRequest> findFirstByUserIdOrderByRequestDateDesc(Long userId);
-
-    // Trouver toutes les demandes en attente
-    List<DeactivationRequest> findByStatusOrderByRequestDateAsc(DeactivationStatus status);
-
-    // Trouver les demandes urgentes en attente
-    List<DeactivationRequest> findByStatusAndIsUrgentTrueOrderByRequestDateAsc(DeactivationStatus status);
-
-    // Compter les demandes en attente
-    long countByStatus(DeactivationStatus status);
-
     // Vérifier si un utilisateur a une demande en cours
     boolean existsByUserIdAndStatusIn(Long userId, List<DeactivationStatus> statuses);
-
-    // Trouver les demandes par période
-    @Query("SELECT d FROM DeactivationRequest d WHERE d.requestDate BETWEEN :startDate AND :endDate")
-    List<DeactivationRequest> findByDateRange(@Param("startDate") LocalDateTime startDate,
-                                              @Param("endDate") LocalDateTime endDate);
-
-    // Trouver les demandes non traitées depuis plus de X jours
-    @Query("SELECT d FROM DeactivationRequest d WHERE d.status = 'PENDING' AND d.requestDate < :date")
-    List<DeactivationRequest> findPendingRequestsOlderThan(@Param("date") LocalDateTime date);
-
-    // Statistiques par mois
-    @Query("SELECT FUNCTION('MONTH', d.requestDate), COUNT(d) FROM DeactivationRequest d " +
-            "WHERE FUNCTION('YEAR', d.requestDate) = :year GROUP BY FUNCTION('MONTH', d.requestDate)")
-    List<Object[]> getMonthlyStats(@Param("year") int year);
-
-    @Modifying
-    @Query("UPDATE DeactivationRequest d SET d.status = :status, d.processedDate = CURRENT_TIMESTAMP, d.processedBy = :adminId, d.adminComment = :comment WHERE d.id = :requestId")
-    int updateRequestStatus(@Param("requestId") Long requestId,
-                            @Param("status") DeactivationStatus status,
-                            @Param("adminId") Long adminId,
-                            @Param("comment") String comment);
 }

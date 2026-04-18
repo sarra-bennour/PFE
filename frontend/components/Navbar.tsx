@@ -5,6 +5,32 @@ import { useAuth } from '../App';
 import Notification from './Notification';
 
 
+// Liste des pays
+const countries = [
+  { code: 'FR', name: 'France', dial: '+33' },
+  { code: 'IT', name: 'Italie', dial: '+39' },
+  { code: 'TR', name: 'Turquie', dial: '+90' },
+  { code: 'CN', name: 'Chine', dial: '+86' },
+  { code: 'ES', name: 'Espagne', dial: '+34' },
+  { code: 'DE', name: 'Allemagne', dial: '+49' },
+  { code: 'US', name: 'États-Unis', dial: '+1' },
+  { code: 'AE', name: 'Émirats Arabes Unis', dial: '+971' },
+  { code: 'DZ', name: 'Algérie', dial: '+213' },
+  { code: 'LY', name: 'Libye', dial: '+218' },
+  { code: 'SA', name: 'Arabie Saoudite', dial: '+966' },
+  { code: 'MA', name: 'Maroc', dial: '+212' },
+  { code: 'BE', name: 'Belgique', dial: '+32' },
+  { code: 'CH', name: 'Suisse', dial: '+41' },
+  { code: 'UK', name: 'Royaume-Uni', dial: '+44' },
+];
+
+// Fonction pour obtenir le nom du pays à partir du code
+const getCountryName = (countryCode: string | null | undefined): string => {
+  if (!countryCode) return 'Non défini';
+  const country = countries.find(c => c.code === countryCode);
+  return country ? country.name : countryCode;
+};
+
 const Navbar: React.FC = () => {
   const { t, i18n } = useTranslation();
   const location = useLocation();
@@ -32,7 +58,7 @@ const Navbar: React.FC = () => {
 
   const filteredNotifications = mockNotifications.filter(n => !n.role || (user && n.role === user.role));
 
-  const isAdminPanel = location.pathname === '/admin' && user?.role === 'admin';
+  const isAdminPanel = location.pathname === '/admin' && user?.role === 'ADMIN';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -263,9 +289,9 @@ const Navbar: React.FC = () => {
                           <div className="text-[9px] font-black text-slate-900 uppercase tracking-widest truncate max-w-[150px]" title={user.email}>
                             {user.email}
                           </div>
-                          {user.country && (
+                          {user.paysOrigine && (
                             <div className="text-[7px] text-slate-400 font-medium mt-1">
-                              {user.country} {user.city ? `- ${user.city}` : ''}
+                              {getCountryName(user.paysOrigine)} {user.ville ? `- ${user.ville}` : ''}
                             </div>
                           )}
                         </div>

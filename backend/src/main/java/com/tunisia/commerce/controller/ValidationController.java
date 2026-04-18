@@ -71,7 +71,7 @@ public class ValidationController {
         }
     }
 
-    @GetMapping("/demandes/dossier-conformite")
+    /*@GetMapping("/demandes/dossier-conformite")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer les dossiers de conformité", description = "Retourne la liste des demandes d'enregistrement exportateur (préfixe DOS-)")
     public ResponseEntity<?> getDossierConformiteDemandes(
@@ -97,9 +97,9 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }
+    }*/
 
-    @GetMapping("/demandes/declaration-produits")
+    /*@GetMapping("/demandes/declaration-produits")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer les déclarations de produits", description = "Retourne la liste des demandes de déclaration de produits (préfixe DEM-)")
     public ResponseEntity<?> getDeclarationProduitsDemandes(
@@ -125,9 +125,9 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }
+    }*/
 
-    @GetMapping("/demandes/importation")
+    /*@GetMapping("/demandes/importation")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer les demandes d'importation", description = "Retourne la liste des demandes d'importation (préfixe IMP-)")
     public ResponseEntity<?> getImportationDemandes(
@@ -153,9 +153,9 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }
+    }*/
 
-    @GetMapping("/demandes/{id}")
+    /*@GetMapping("/demandes/{id}")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Récupérer une demande par ID", description = "Retourne les détails complets d'une demande spécifique")
     public ResponseEntity<?> getDemandeById(
@@ -179,7 +179,7 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
         }
-    }
+    }*/
 
     // ==================== ENDPOINTS POUR LES DÉCISIONS ====================
 
@@ -321,7 +321,7 @@ public class ValidationController {
 
     // ==================== ENDPOINTS POUR LES STATISTIQUES ====================
 
-    @GetMapping("/summary")
+    /*@GetMapping("/summary")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Résumé des validations", description = "Retourne les statistiques globales des validations")
     public ResponseEntity<?> getValidationSummary() {
@@ -344,9 +344,9 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }
+    }*/
 
-    @GetMapping("/documents/{documentId}/telecharger")
+    /*@GetMapping("/documents/{documentId}/telecharger")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Télécharger un document", description = "Télécharge le fichier d'un document spécifique")
     public ResponseEntity<?> downloadDocument(
@@ -385,9 +385,9 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }
+    }*/
 
-    @GetMapping("/documents/{documentId}")
+    /*@GetMapping("/documents/{documentId}")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
     @Operation(summary = "Informations d'un document")
     public ResponseEntity<?> getDocumentInfo(
@@ -411,9 +411,9 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
         }
-    }
+    }*/
 
-    private String determineContentType(String fileType) {
+    /*private String determineContentType(String fileType) {
         if (fileType == null) return "application/octet-stream";
 
         String type = fileType.toLowerCase();
@@ -423,7 +423,7 @@ public class ValidationController {
         if (type.contains("gif")) return "image/gif";
 
         return "application/octet-stream";
-    }
+    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 

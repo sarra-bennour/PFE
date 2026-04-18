@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import FormAlert from '../../components/FormAlert';
-
-interface CreateUserFormProps {
-  onSuccess?: () => void;
-  onCancel?: () => void;
-}
+import { CreateUserFormProps } from '../../types/CreateUserFormProps';
 
 const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) => {
   const [loading, setLoading] = useState(false);

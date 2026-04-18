@@ -12,16 +12,7 @@ import java.util.Optional;
 public interface InstanceValidationRepository extends JpaRepository<InstanceValidation, Long> {
 
     Optional<InstanceValidation> findByEmail(String email);
-
-    Optional<InstanceValidation> findByCodeMinistere(String codeMinistere);
-
-    List<InstanceValidation> findByTypeAutorite(InstanceValidationType typeAutorite);
-
-    List<InstanceValidation> findByUserStatut(com.tunisia.commerce.enums.UserStatus statut);
-
     boolean existsByCodeMinistere(String codeMinistere);
-
-    boolean existsByEmail(String email);
     Optional<InstanceValidation> findByVerificationToken(String verificationToken);
 
 }

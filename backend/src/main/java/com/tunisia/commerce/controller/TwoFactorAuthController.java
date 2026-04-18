@@ -158,13 +158,24 @@ public class TwoFactorAuthController {
 
                 String token = jwtUtil.generateToken(request.getEmail(), user.getRole().name());
 
-                TwoFactorVerifyResponse response = TwoFactorVerifyResponse.builder()
-                        .success(true)
-                        .token(token)
-                        .email(user.getEmail())
-                        .role(user.getRole())
-                        .message("Code 2FA valide")
-                        .build();
+                // Créer un DTO pour éviter les problèmes de sérialisation
+                Map<String, Object> response = new HashMap<>();
+                response.put("success", true);
+                response.put("token", token);
+                response.put("email", user.getEmail());
+                response.put("role", user.getRole());
+
+                // Créer un objet utilisateur simplifié sans relations problématiques
+                Map<String, Object> userMap = new HashMap<>();
+                userMap.put("id", user.getId());
+                userMap.put("email", user.getEmail());
+                userMap.put("role", user.getRole());
+                userMap.put("nom", user.getNom());
+                userMap.put("prenom", user.getPrenom());
+                userMap.put("telephone", user.getTelephone());
+
+                response.put("user", userMap);
+                response.put("message", "Code 2FA valide");
 
                 return ResponseEntity.ok(response);
             } else {
@@ -182,6 +193,7 @@ public class TwoFactorAuthController {
                     ));
         }
     }
+
 
     @PostMapping("/resend")
     public ResponseEntity<?> resend2FACode(

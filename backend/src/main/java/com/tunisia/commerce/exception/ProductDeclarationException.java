@@ -151,4 +151,20 @@ public class ProductDeclarationException extends RuntimeException {
                 reason
         );
     }
+
+    public static ProductDeclarationException invalidDemandeStatusForDeletion(DemandeStatus currentStatus) {
+        return new ProductDeclarationException(
+                "INVALID_STATUS_FOR_DELETION",
+                "Impossible de supprimer la demande car son statut actuel est '" + currentStatus + "'. Seules les demandes en mode BROUILLON peuvent être supprimées.",
+                HttpStatus.BAD_REQUEST
+        );
+    }
+
+    public static ProductDeclarationException demandeDeletionFailed(String reason) {
+        return new ProductDeclarationException(
+                "DELETION_FAILED",
+                "Erreur lors de la suppression de la demande: " + reason,
+                HttpStatus.INTERNAL_SERVER_ERROR
+        );
+    }
 }

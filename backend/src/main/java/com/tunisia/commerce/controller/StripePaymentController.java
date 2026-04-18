@@ -101,7 +101,7 @@ public class StripePaymentController {
     /**
      * Confirmer le paiement après redirection (pour l'approche avec redirection Stripe)
      */
-    @GetMapping("/confirm")
+    /*@GetMapping("/confirm")
     public ResponseEntity<PaymentResponseDTO> confirmPaymentRedirect(
             @RequestParam("payment_intent") String paymentIntentId,
             @RequestParam(value = "payment_intent_client_secret", required = false) String clientSecret,
@@ -122,12 +122,12 @@ public class StripePaymentController {
                             .message(e.getMessage())
                             .build());
         }
-    }
+    }*/
 
     /**
      * Webhook Stripe (appelé par Stripe)
      */
-    @PostMapping("/webhook")
+    /*@PostMapping("/webhook")
     public ResponseEntity<String> handleWebhook(
             @RequestBody String payload,
             @RequestHeader("Stripe-Signature") String sigHeader) {
@@ -139,7 +139,7 @@ public class StripePaymentController {
             log.error("❌ Erreur webhook", e);
             return ResponseEntity.badRequest().body("Erreur webhook: " + e.getMessage());
         }
-    }
+    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 

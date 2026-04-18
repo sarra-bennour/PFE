@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { useAuth, UserRole } from '../App';
+import { useAuth } from '../App';
+import { UserRole } from '../types/User';
 import { useNavigate } from 'react-router-dom';
 
 interface SidebarItem {

@@ -1,15 +1,26 @@
-import { Exporter } from "./Exporter";
+import { User } from "./User";
+export type ProductType = 'alimentaire' | 'industriel' | 'ALIMENTAIRE' | 'INDUSTRIEL';
+
 
 export interface Product {
-  id?: number;
-  name: string;
+  id: number ;
+  backendId?: number;
   price?: string;
-  image?: string | null;
+  productImage?: string | null;
   ngp?: string;
   productName?: string;
-  hsCode?: string;
   annualQuantityValue?: string;
   annualQuantityUnit?: string;
   category?: string;
-  exporter?: Exporter;
+  productType?: ProductType;
+  isLinkedToBrand?: boolean;
+  brandName?: string;
+  isBrandOwner?: boolean;
+  hasBrandLicense?: boolean;
+  productState?: string;
+  originCountry?: string;
+  commercialBrandName?: string;
+  processingType?: string;
+  annualExportCapacity?: string;
+  exporter?: User;
 }

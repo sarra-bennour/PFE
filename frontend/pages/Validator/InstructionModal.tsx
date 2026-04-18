@@ -1,6 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
+import { Product } from '@/types/Product';
+import { ImportDetails } from '@/types/DemandeEnregistrement';
 
 export type DocStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'NOT_SURE';
 
@@ -13,30 +15,6 @@ export interface AttachedDocument {
   documentType?: string;
 }
 
-export interface Product {
-  type: 'ALIMENTAIRE' | 'INDUSTRIEL';
-  category: string;
-  hscode: string;
-  name: string;
-  originCountry: string;
-  commercialBrand: string;
-  productState?: string;
-  brandName?: string;
-  annualQuantity?: string;
-  unit?: string;
-}
-
-export interface ImportDetails {
-  invoiceNum: string;
-  invoiceDate: string;
-  amount: string;
-  currency: string;
-  incoterm: 'EXW' | 'FOB' | 'CIF';
-  transportMode: 'AIR' | 'SEA' | 'ROAD';
-  departurePort: string;
-  arrivalPort: string;
-  arrivalDate: string;
-}
 
 export type RequestType = 'REGISTRATION' | 'PRODUCT_DECLARATION' | 'IMPORT';
 
@@ -334,12 +312,12 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                       <div key={idx} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-tunisia-red px-2 py-0.5 bg-red-50 rounded-full">{p.type}</span>
-                            <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight mt-1 italic">{p.name}</h5>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-tunisia-red px-2 py-0.5 bg-red-50 rounded-full">{p.productType}</span>
+                            <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight mt-1 italic">{p.productName}</h5>
                           </div>
                           <div className="text-right">
                             <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">HSCODE</div>
-                            <div className="text-xs font-bold text-slate-900">{p.hscode}</div>
+                            <div className="text-xs font-bold text-slate-900">{p.ngp}</div>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-[10px]">
@@ -353,9 +331,9 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                           </div>
                           <div>
                             <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Marque Commerciale</span>
-                            <span className="font-bold text-slate-700">{p.commercialBrand}</span>
+                            <span className="font-bold text-slate-700">{p.brandName}</span>
                           </div>
-                          {p.type === 'ALIMENTAIRE' && (
+                          {p.productType === 'ALIMENTAIRE' && (
                             <>
                               <div>
                                 <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">État Produit</span>
@@ -363,7 +341,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                               </div>
                               <div>
                                 <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Quantité Annuelle</span>
-                                <span className="font-bold text-slate-700">{p.annualQuantity} {p.unit}</span>
+                                <span className="font-bold text-slate-700">{p.annualQuantityValue} {p.annualQuantityUnit}</span>
                               </div>
                             </>
                           )}

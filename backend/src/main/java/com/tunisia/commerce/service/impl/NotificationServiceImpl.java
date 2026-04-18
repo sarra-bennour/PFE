@@ -84,7 +84,7 @@ public class NotificationServiceImpl implements NotificationService {
         return NotificationResponseDTO.fromEntity(savedNotification);
     }
 
-    @Override
+    /*@Override
     public NotificationResponseDTO createNotification(NotificationRequestDTO requestDTO) {
         log.info("Création d'une notification générique");
 
@@ -112,7 +112,7 @@ public class NotificationServiceImpl implements NotificationService {
         log.info("Notification créée avec succès: ID {}", savedNotification.getId());
 
         return NotificationResponseDTO.fromEntity(savedNotification);
-    }
+    }*/
 
     @Override
     @Transactional(readOnly = true)
@@ -168,7 +168,7 @@ public class NotificationServiceImpl implements NotificationService {
         log.info("Notification {} marquée comme lue", notificationId);
     }
 
-    @Override
+    /*@Override
     public void markAllAsRead(Long userId) {
         log.info("Marquage de toutes les notifications comme lues pour l'utilisateur: {}", userId);
 
@@ -184,7 +184,7 @@ public class NotificationServiceImpl implements NotificationService {
                 NotificationStatus.NON_LU
         );
         log.info("Toutes les notifications de l'utilisateur {} ont été marquées comme lues", userId);
-    }
+    }*/
 
     @Override
     public void handleNotificationAction(NotificationActionDTO actionDTO) {
@@ -288,7 +288,7 @@ public class NotificationServiceImpl implements NotificationService {
         return "le produit";
     }
 
-    @Override
+    /*@Override
     public void deleteNotification(Long notificationId) {
         log.info("Suppression de la notification: {}", notificationId);
 
@@ -298,18 +298,18 @@ public class NotificationServiceImpl implements NotificationService {
 
         notificationRepository.deleteById(notificationId);
         log.info("Notification {} supprimée", notificationId);
-    }
+    }*/
 
-    @Override
+    /*@Override
     public void archiveOldNotifications(int daysOld) {
         log.info("Archivage des notifications plus anciennes que {} jours", daysOld);
 
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(daysOld);
         int deletedCount = notificationRepository.deleteByCreatedAtBefore(cutoffDate);
         log.info("{} notifications ont été archivées", deletedCount);
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional
     public void sendPendingEmailNotifications() {
         log.info("Envoi des notifications par email en attente");
@@ -335,18 +335,18 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         log.info("{} emails ont été envoyés", sentCount);
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional(readOnly = true)
     public NotificationResponseDTO getNotificationById(Long notificationId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new RuntimeException("Notification non trouvée avec ID: " + notificationId));
 
         return NotificationResponseDTO.fromEntity(notification);
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional(readOnly = true)
     public List<NotificationResponseDTO> getNotificationsByTargetEntity(String entityType, Long entityId) {
         log.debug("Récupération des notifications pour l'entité: {} - {}", entityType, entityId);
@@ -355,9 +355,9 @@ public class NotificationServiceImpl implements NotificationService {
                 .stream()
                 .map(NotificationResponseDTO::fromEntity)
                 .collect(Collectors.toList());
-    }
+    }*/
 
-    @Override
+    /*@Override
     public void updateNotificationAction(Long notificationId, NotificationAction action) {
         log.info("Mise à jour de l'action de la notification: {} -> {}", notificationId, action);
 
@@ -367,9 +367,9 @@ public class NotificationServiceImpl implements NotificationService {
 
         notificationRepository.updateAction(notificationId, action);
         log.info("Action de la notification {} mise à jour vers {}", notificationId, action);
-    }
+    }*/
 
-    @Override
+    /*@Override
     @Transactional(readOnly = true)
     public List<NotificationResponseDTO> getNotificationsByProduct(Long productId) {
         log.debug("Récupération des notifications pour le produit: {}", productId);
@@ -378,5 +378,5 @@ public class NotificationServiceImpl implements NotificationService {
                 .stream()
                 .map(NotificationResponseDTO::fromEntity)
                 .collect(Collectors.toList());
-    }
+    }*/
 }

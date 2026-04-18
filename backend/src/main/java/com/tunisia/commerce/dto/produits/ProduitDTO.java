@@ -34,4 +34,6 @@ public class ProduitDTO {
     private String unit;
     private BigDecimal totalValue;
     private String storagePoints;
+    private String productImage;
+
 }

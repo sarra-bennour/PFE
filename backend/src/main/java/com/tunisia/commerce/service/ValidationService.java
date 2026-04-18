@@ -17,12 +17,12 @@ public interface ValidationService {
     /**
      * Récupérer les demandes par préfixe de référence (DOS-, DEM-, IMP-)
      */
-    List<DemandeEnregistrementDTO> getDemandesByReferencePrefix(String prefix, String status);
+    //List<DemandeEnregistrementDTO> getDemandesByReferencePrefix(String prefix, String status);
 
     /**
      * Récupérer une demande par son ID
      */
-    DemandeEnregistrementDTO getDemandeById(Long id);
+    //DemandeEnregistrementDTO getDemandeById(Long id);
 
     /**
      * Approuver une demande
@@ -47,15 +47,15 @@ public interface ValidationService {
     /**
      * Récupérer les statistiques de validation
      */
-    ValidationSummaryDTO getValidationSummary();
+    //ValidationSummaryDTO getValidationSummary();
 
     /**
      * Récupérer le fichier d'un document
      */
-    org.springframework.core.io.Resource getDocumentFile(Long documentId, Long agentId);
+    //org.springframework.core.io.Resource getDocumentFile(Long documentId, Long agentId);
 
     /**
      * Récupérer les informations d'un document
      */
-    DocumentDTO getDocumentDTOById(Long documentId, Long agentId);
+    //DocumentDTO getDocumentDTOById(Long documentId, Long agentId);
 }

@@ -19,35 +19,35 @@ public interface ImportateurService {
      * @param pays pays d'origine
      * @return liste des exportateurs validés du pays spécifié
      */
-    List<UserDTO> rechercherParPays(String pays);
+    //List<UserDTO> rechercherParPays(String pays);
 
     /**
      * Recherche des exportateurs validés par raison sociale
      * @param raisonSociale nom de l'entreprise
      * @return liste des exportateurs validés correspondant au nom
      */
-    List<UserDTO> rechercherParRaisonSociale(String raisonSociale);
+    //List<UserDTO> rechercherParRaisonSociale(String raisonSociale);
 
     /**
      * Recherche des exportateurs validés par produit
      * @param produit nom du produit
      * @return liste des exportateurs validés proposant ce produit
      */
-    List<UserDTO> rechercherParProduit(String produit);
+    //List<UserDTO> rechercherParProduit(String produit);
 
     /**
      * Recherche des exportateurs validés par code NGP
      * @param codeNGP code NGP du produit
      * @return liste des exportateurs validés proposant des produits avec ce code NGP
      */
-    List<UserDTO> rechercherParCodeNGP(String codeNGP);
+    //List<UserDTO> rechercherParCodeNGP(String codeNGP);
 
     /**
      * Récupère les détails d'un exportateur validé par son ID
      * @param exportateurId ID de l'exportateur
      * @return détails de l'exportateur
      */
-    UserDTO getExportateurValideById(Long exportateurId);
+    //UserDTO getExportateurValideById(Long exportateurId);
 
     /**
      * Liste tous les exportateurs validés
@@ -63,6 +63,6 @@ public interface ImportateurService {
     /**
      * Vérifie le statut d'un produit spécifique
      */
-    String getProduitStatut(Long importateurId, Long productId);
+    //String getProduitStatut(Long importateurId, Long productId);
 
 }

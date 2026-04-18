@@ -57,7 +57,7 @@ public class TwoFactorAuthService {
     /**
      * Génère un QR code en Base64 pour l'affichage
      */
-    public String generateQrCodeBase64(String secret, String email, String issuer) {
+    /*public String generateQrCodeBase64(String secret, String email, String issuer) {
         try {
             QrData data = new QrData.Builder()
                     .label(email)
@@ -75,7 +75,7 @@ public class TwoFactorAuthService {
             log.error("Erreur lors de la génération du QR code", e);
             return null;
         }
-    }
+    }*/
 
     /**
      * Génère un QR code en utilisant ZXing directement (alternative)
@@ -185,7 +185,7 @@ public class TwoFactorAuthService {
     /**
      * Génère les codes pour les périodes adjacentes (utile pour le débogage)
      */
-    public Map<String, String> generateAdjacentCodes(String secret) {
+    /*public Map<String, String> generateAdjacentCodes(String secret) {
         try {
             TimeProvider timeProvider = new SystemTimeProvider();
             long currentTime = timeProvider.getTime();
@@ -202,5 +202,5 @@ public class TwoFactorAuthService {
             log.error("Erreur lors de la génération des codes adjacents", e);
             return Collections.emptyMap();
         }
-    }
+    }*/
 }

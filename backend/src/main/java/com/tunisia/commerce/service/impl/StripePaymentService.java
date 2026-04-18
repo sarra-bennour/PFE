@@ -182,7 +182,7 @@ public class StripePaymentService {
 
                 // Mettre à jour le statut de la demande
                 demande.setPaymentStatus(PaymentStatus.REUSSI);
-                demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
+                //demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
                 demande.setPaymentReference(paymentIntent.getId());
                 demande.setPaymentAmount(BigDecimal.valueOf(paymentIntent.getAmount() / 100.0));
                 demandeRepository.save(demande);
@@ -275,7 +275,7 @@ public class StripePaymentService {
     /**
      * Confirmer le paiement après redirection (pour l'approche avec redirection Stripe)
      */
-    public PaymentResponseDTO confirmPaymentRedirect(String paymentIntentId) {
+    /*public PaymentResponseDTO confirmPaymentRedirect(String paymentIntentId) {
         try {
             PaymentIntent paymentIntent = PaymentIntent.retrieve(paymentIntentId);
 
@@ -320,12 +320,12 @@ public class StripePaymentService {
             log.error("Erreur Stripe lors de la confirmation", e);
             throw new RuntimeException("Erreur lors de la confirmation: " + e.getMessage());
         }
-    }
+    }*/
 
     /**
      * Gérer les webhooks Stripe
      */
-    public String handleWebhook(String payload, String sigHeader) {
+    /*public String handleWebhook(String payload, String sigHeader) {
         try {
             Event event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
             log.info("Webhook reçu: type={}", event.getType());
@@ -353,7 +353,7 @@ public class StripePaymentService {
             log.error("Erreur lors du traitement du webhook Stripe", e);
             throw new RuntimeException("Erreur webhook: " + e.getMessage());
         }
-    }
+    }*/
 
     private void handlePaymentIntentSucceeded(Event event) {
         PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
@@ -366,7 +366,7 @@ public class StripePaymentService {
 
             if (demande != null) {
                 demande.setPaymentStatus(PaymentStatus.REUSSI);
-                demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
+                //demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
                 demandeRepository.save(demande);
 
                 log.info("Paiement réussi pour la demande: {}", demandeId);
@@ -384,7 +384,7 @@ public class StripePaymentService {
         }
     }
 
-    private void handlePaymentIntentFailed(Event event) {
+    /*private void handlePaymentIntentFailed(Event event) {
         PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
         if (paymentIntent == null) return;
 
@@ -406,9 +406,9 @@ public class StripePaymentService {
                 sendPaymentFailureEmail(demande.getExportateur(), demande, errorMessage);
             }
         }
-    }
+    }*/
 
-    private void handlePaymentIntentCanceled(Event event) {
+    /*private void handlePaymentIntentCanceled(Event event) {
         PaymentIntent paymentIntent = getPaymentIntentFromEvent(event);
         if (paymentIntent == null) return;
 
@@ -424,7 +424,7 @@ public class StripePaymentService {
                 log.info("Paiement annulé pour la demande: {}", demandeId);
             }
         }
-    }
+    }*/
 
     /**
      * Extraire PaymentIntent de l'événement
@@ -443,7 +443,7 @@ public class StripePaymentService {
     /**
      * Récupérer le message d'erreur du PaymentIntent
      */
-    private String getErrorMessage(PaymentIntent paymentIntent) {
+    /*private String getErrorMessage(PaymentIntent paymentIntent) {
         if (paymentIntent.getLastPaymentError() != null) {
             String message = paymentIntent.getLastPaymentError().getMessage();
             if (message != null && !message.isEmpty()) {
@@ -455,7 +455,7 @@ public class StripePaymentService {
             }
         }
         return "Transaction refusée";
-    }
+    }*/
 
     // ==================== MÉTHODES D'ENVOI D'EMAIL ====================
 

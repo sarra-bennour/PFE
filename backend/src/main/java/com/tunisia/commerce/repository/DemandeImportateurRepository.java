@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.Map;
 
 public interface DemandeImportateurRepository extends JpaRepository<DemandeImportateur, Long> {
-    List<DemandeImportateur> findByImportateurId(Long importateurId);
-    List<DemandeImportateur> findByStatus(DemandeStatus status);
 
     @Query("SELECT d.id as id, " +
             "d.reference as reference, " +

@@ -187,10 +187,10 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({
     const demandeRequest = {
       produitId: product.id,
       exportateurId: exporter.id,
-      exportateurName: exporter.name,
-      exportateurCountry: exporter.country,
-      productName: product.name,
-      hsCode: product.hsCode,
+      exportateurName: exporter.nom || exporter.companyName || 'Exportateur',
+      exportateurCountry: exporter.paysOrigine || 'UN',
+      productName: product.productName,
+      hsCode: product.ngp,
       category: product.category,
       invoiceNumber: formData.invoiceNumber,
       invoiceDate: formData.invoiceDate,
@@ -299,7 +299,7 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-2xl overflow-hidden shadow-md flex items-center justify-center ${!product.image ? placeholder.color : 'bg-slate-100'}`}>
               {product.image ? (
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img src={product.image} alt={product.productName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <i className={`fas ${placeholder.icon} text-2xl`}></i>
               )}
@@ -307,12 +307,12 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({
             <div>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg overflow-hidden border-2 border-white shadow-sm bg-white">
-                  <img src={getFlagUrl(exporter.country)} alt="Flag" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={getFlagUrl(exporter.paysOrigine || 'UN')} alt="Flag" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Déclaration d'Importation</h3>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    {product.name} &bull; {exporter.name}
+                    {product.productName} &bull; {exporter.nom || exporter.companyName || 'Exportateur'} &bull; {exporter.paysOrigine || 'Pays Inconnu'}
                   </p>
                 </div>
               </div>

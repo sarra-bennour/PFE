@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface FormAlertProps {
-  message: string;
+  message: string | React.ReactNode;
   type: 'success' | 'error';
   onClose?: () => void;
 }

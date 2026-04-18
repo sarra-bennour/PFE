@@ -200,19 +200,18 @@ public class ExportateurController {
         }
     }
 
-    @GetMapping("/debug/document-types")
+    /*@GetMapping("/debug/document-types")
     public ResponseEntity<List<String>> getDocumentTypes() {
         return ResponseEntity.ok(
                 Arrays.stream(DocumentType.values())
                         .map(Enum::name)
                         .collect(Collectors.toList())
         );
-    }
+    }*/
 
     /**
      * Télécharger un document pour le dossier
      */
-    // Dans ExportateurController.java, modifiez uploadDocument :
 
     @PostMapping("/dossier/{demandeId}/documents")
     public ResponseEntity<?> uploadDocument(
@@ -316,7 +315,7 @@ public class ExportateurController {
     /**
      * Récupérer la liste des documents requis
      */
-    @GetMapping("/documents-requis")
+    /*@GetMapping("/documents-requis")
     public ResponseEntity<DocumentsRequisResponseDTO> getDocumentsRequis() {
         return ResponseEntity.ok(DocumentsRequisResponseDTO.builder()
                 .documents(List.of(
@@ -340,13 +339,13 @@ public class ExportateurController {
                                 .build()
                 ))
                 .build());
-    }
+    }*/
 
 
     /**
      * Récupérer un document spécifique par son ID
      */
-    @GetMapping("/documents/{documentId}")
+    /*@GetMapping("/documents/{documentId}")
     public ResponseEntity<?> getDocument(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long documentId) {
@@ -369,12 +368,12 @@ public class ExportateurController {
                             "error", e.getMessage()
                     ));
         }
-    }
+    }*/
 
     /**
      * Compléter le Pré-KYC (première étape avant le dossier de conformité)
      */
-    @PostMapping("/pre-kyc/completer")
+    /*@PostMapping("/pre-kyc/completer")
     public ResponseEntity<?> completePreKyc(
             @RequestHeader("Authorization") String authHeader,
             @RequestBody PreKycRequest request) {
@@ -409,7 +408,7 @@ public class ExportateurController {
             errorResponse.put("error", "Erreur interne: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }
+    }*/
 
     /**
      * Suggérer des noms d'utilisateur basés sur le nom de l'entreprise
@@ -543,6 +542,47 @@ public class ExportateurController {
                     ));
         }
     }
+
+    /**
+     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
+     */
+    @PostMapping("/pre-kyc/completer")
+    public ResponseEntity<?> completePreKyc(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody PreKycRequest request) {
+
+        try {
+            // Récupérer l'exportateur à partir du token
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            // Appeler le service spécialisé
+            ExportateurEtranger updatedExportateur = dossierService.completePreKyc(exportateur.getEmail(), request);
+
+            // Convertir en DTO pour la réponse
+            ExportateurInfoDTO exportateurInfo = ExportateurInfoDTO.fromEntity(updatedExportateur);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Informations préalables enregistrées avec succès");
+            response.put("exportateur", exportateurInfo);
+            response.put("preKycCompleted", updatedExportateur.isPreKycCompleted());
+            response.put("timestamp", LocalDateTime.now());
+
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+            logger.severe("Erreur lors du Pré-KYC: " + e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        } catch (Exception e) {
+            logger.severe("Erreur interne lors du Pré-KYC: " + e);
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "Erreur interne: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
 
     // ==================== MÉTHODES PRIVÉES CORRIGÉES ====================
 

@@ -43,7 +43,7 @@ public class UserDTO {
     private SiteType siteType;
     private String representantRole;
     private String representantEmail;
-    private String capaciteAnnuelle;
+    private Double capaciteAnnuelle;
     private boolean preKycCompleted;
     private LocalDateTime preKycCompletedAt;
 

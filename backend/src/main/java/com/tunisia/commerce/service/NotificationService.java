@@ -16,7 +16,7 @@ public interface NotificationService {
     /**
      * Créer une notification générique
      */
-    NotificationResponseDTO createNotification(NotificationRequestDTO requestDTO);
+    //NotificationResponseDTO createNotification(NotificationRequestDTO requestDTO);
 
     /**
      * Récupérer toutes les notifications d'un utilisateur
@@ -41,7 +41,7 @@ public interface NotificationService {
     /**
      * Marquer toutes les notifications d'un utilisateur comme lues
      */
-    void markAllAsRead(Long userId);
+    //void markAllAsRead(Long userId);
 
     /**
      * Traiter une action sur une notification (accepter/rejeter)
@@ -51,35 +51,35 @@ public interface NotificationService {
     /**
      * Supprimer une notification
      */
-    void deleteNotification(Long notificationId);
+    //void deleteNotification(Long notificationId);
 
     /**
      * Archiver les anciennes notifications
      */
-    void archiveOldNotifications(int daysOld);
+    //void archiveOldNotifications(int daysOld);
 
     /**
      * Envoyer les notifications par email (job programmé)
      */
-    void sendPendingEmailNotifications();
+    //void sendPendingEmailNotifications();
 
     /**
      * Récupérer une notification par son ID
      */
-    NotificationResponseDTO getNotificationById(Long notificationId);
+    //NotificationResponseDTO getNotificationById(Long notificationId);
 
     /**
      * Récupérer les notifications par entité cible
      */
-    List<NotificationResponseDTO> getNotificationsByTargetEntity(String entityType, Long entityId);
+    //List<NotificationResponseDTO> getNotificationsByTargetEntity(String entityType, Long entityId);
 
     /**
      * Mettre à jour l'action d'une notification
      */
-    void updateNotificationAction(Long notificationId, com.tunisia.commerce.enums.NotificationAction action);
+    //void updateNotificationAction(Long notificationId, com.tunisia.commerce.enums.NotificationAction action);
 
     /**
      * Récupérer les notifications pour un produit spécifique
      */
-    List<NotificationResponseDTO> getNotificationsByProduct(Long productId);
+    //List<NotificationResponseDTO> getNotificationsByProduct(Long productId);
 }

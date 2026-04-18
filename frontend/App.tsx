@@ -15,7 +15,7 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 import ProductDeclaration from './pages/Exportateur/ProductDeclaration';
-import DeclarationsList from './pages/DeclarationsList';
+import DeclarationsList from './pages/Exportateur/DeclarationsList';
 import { DossierStatus } from './types/DossierStatus';
 import { User, UserRole } from './types/User';
 

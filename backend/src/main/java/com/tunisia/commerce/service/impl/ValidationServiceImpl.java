@@ -93,7 +93,7 @@ public class ValidationServiceImpl implements ValidationService {
     /**
      * Récupérer les demandes par type (DOS-, DEM-, IMP-)
      */
-    @Override
+    /*@Override
     public List<DemandeEnregistrementDTO> getDemandesByReferencePrefix(String prefix, String status) {
         log.info("Récupération des demandes avec préfixe: {}, status: {}", prefix, status);
 
@@ -119,12 +119,12 @@ public class ValidationServiceImpl implements ValidationService {
         return demandes.stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
-    }
+    }*/
 
     /**
      * Récupérer une demande par son ID
      */
-    @Override
+    /*@Override
     public DemandeEnregistrementDTO getDemandeById(Long id) {
         log.info("Récupération de la demande ID: {}", id);
 
@@ -132,7 +132,7 @@ public class ValidationServiceImpl implements ValidationService {
                 .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée avec l'ID: " + id));
 
         return mapToDTO(demande);
-    }
+    }*/
 
     /**
      * Approuver une demande
@@ -306,7 +306,7 @@ public class ValidationServiceImpl implements ValidationService {
     /**
      * Récupérer les statistiques de validation
      */
-    @Override
+    /*@Override
     public ValidationSummaryDTO getValidationSummary() {
         log.info("Récupération du résumé des validations");
 
@@ -357,7 +357,7 @@ public class ValidationServiceImpl implements ValidationService {
                 .declarationProduits(declarationProduits)
                 .demandeImportation(demandeImportation)
                 .build();
-    }
+    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 
@@ -493,7 +493,7 @@ public class ValidationServiceImpl implements ValidationService {
                 .build();
     }
 
-    @Override
+    /*@Override
     public org.springframework.core.io.Resource getDocumentFile(Long documentId, Long agentId) {
         log.info("Récupération du fichier du document ID: {} pour l'agent ID: {}", documentId, agentId);
 
@@ -515,9 +515,9 @@ public class ValidationServiceImpl implements ValidationService {
         } catch (Exception e) {
             throw new ValidationException("FILE_READ_ERROR", "Erreur lors de la lecture du fichier: " + e.getMessage());
         }
-    }
+    }*/
 
-    @Override
+    /*@Override
     public DocumentDTO getDocumentDTOById(Long documentId, Long agentId) {
         log.info("Récupération des infos du document ID: {} pour l'agent ID: {}", documentId, agentId);
 
@@ -525,7 +525,7 @@ public class ValidationServiceImpl implements ValidationService {
                 .orElseThrow(() -> new ValidationException("DOCUMENT_NOT_FOUND", "Document non trouvé avec l'ID: " + documentId));
 
         return convertToDocumentDTO(document);
-    }
+    }*/
 
     private DocumentDTO convertToDocumentDTO(Document document) {
         if (document == null) return null;

@@ -35,12 +35,12 @@ public class NotificationController {
     /**
      * Créer une notification générique
      */
-    @PostMapping
+    /*@PostMapping
     public ResponseEntity<NotificationResponseDTO> createNotification(
             @RequestBody NotificationRequestDTO requestDTO) {
         NotificationResponseDTO notification = notificationService.createNotification(requestDTO);
         return ResponseEntity.ok(notification);
-    }
+    }*/
 
     /**
      * Récupérer toutes les notifications d'un utilisateur
@@ -85,11 +85,11 @@ public class NotificationController {
     /**
      * Marquer toutes les notifications comme lues
      */
-    @PutMapping("/user/{userId}/read-all")
+    /*@PutMapping("/user/{userId}/read-all")
     public ResponseEntity<Void> markAllAsRead(@PathVariable Long userId) {
         notificationService.markAllAsRead(userId);
         return ResponseEntity.ok().build();
-    }
+    }*/
 
     /**
      * Traiter une action sur une notification (accepter/rejeter)
@@ -106,38 +106,38 @@ public class NotificationController {
     /**
      * Supprimer une notification
      */
-    @DeleteMapping("/{notificationId}")
+    /*@DeleteMapping("/{notificationId}")
     public ResponseEntity<Void> deleteNotification(@PathVariable Long notificationId) {
         notificationService.deleteNotification(notificationId);
         return ResponseEntity.ok().build();
-    }
+    }*/
 
     /**
      * Récupérer une notification par son ID
      */
-    @GetMapping("/{notificationId}")
+    /*@GetMapping("/{notificationId}")
     public ResponseEntity<NotificationResponseDTO> getNotificationById(@PathVariable Long notificationId) {
         NotificationResponseDTO notification = notificationService.getNotificationById(notificationId);
         return ResponseEntity.ok(notification);
-    }
+    }*/
 
     /**
      * Récupérer les notifications par produit
      */
-    @GetMapping("/product/{productId}")
+    /*@GetMapping("/product/{productId}")
     public ResponseEntity<List<NotificationResponseDTO>> getNotificationsByProduct(@PathVariable Long productId) {
         List<NotificationResponseDTO> notifications = notificationService.getNotificationsByProduct(productId);
         return ResponseEntity.ok(notifications);
-    }
+    }*/
 
     /**
      * Récupérer les notifications par entité cible
      */
-    @GetMapping("/target")
+    /*@GetMapping("/target")
     public ResponseEntity<List<NotificationResponseDTO>> getNotificationsByTargetEntity(
             @RequestParam String entityType,
             @RequestParam Long entityId) {
         List<NotificationResponseDTO> notifications = notificationService.getNotificationsByTargetEntity(entityType, entityId);
         return ResponseEntity.ok(notifications);
-    }
+    }*/
 }

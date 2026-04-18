@@ -406,15 +406,13 @@ const Login: React.FC = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        const userData = {
-          email: data.email,
-          role: data.role,
-        };
-
+        
+        const completeUserData = data.user; 
+        
         localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem('user', JSON.stringify(completeUserData));
 
-        login(userData, data.token);
+        login(completeUserData, data.token);
 
         showAlert('✅ Code 2FA validé avec succès ! Redirection...', 'success');
 

@@ -2,13 +2,8 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, Link } from 'react-router-dom';
 import FormAlert from '../../components/FormAlert';
+import { ExporterSignUpProps } from '../../types/ExporterSignUpProps';
 
-interface ExporterSignUpProps {
-  onBack?: () => void;
-  embedded?: boolean;
-  onError?: (message: string) => void;
-  onSuccess?: () => void;
-}
 
 const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
   onBack,
@@ -208,7 +203,6 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
 
       if (response.ok) {
         const userData = await response.json();
-        console.log('Inscription réussie:', userData);
         setSuccess(true);
         showAlert('Inscription réussie !', 'success');
         if (onSuccess) onSuccess();
@@ -424,7 +418,11 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
                 </div>
               </div>
 
-              <button type="submit" disabled={loading || strength.score < 2 || !isMatch || (emailError && showEmailError)} className={`w-full py-4 ${loading || strength.score < 2 || !isMatch || (emailError && showEmailError) ? 'bg-slate-300' : 'bg-tunisia-red hover:bg-red-700'} text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 mt-2`}>
+              <button 
+                type="submit" 
+                disabled={loading || strength.score < 2 || !isMatch || (emailError !== '' && showEmailError)} 
+                className={`w-full py-4 ${loading || strength.score < 2 || !isMatch || (emailError !== '' && showEmailError) ? 'bg-slate-300' : 'bg-tunisia-red hover:bg-red-700'} text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 mt-2`}
+              >
                 {loading ? 'Traitement...' : t('register_btn')}
               </button>
             </form>

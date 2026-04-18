@@ -91,7 +91,7 @@ public class ImportateurController {
         }
     }
 
-    @Operation(
+    /*@Operation(
             summary = "Recherche d'exportateurs validés par pays",
             description = "Récupère la liste des exportateurs validés filtrée par pays d'origine"
     )
@@ -119,9 +119,9 @@ public class ImportateurController {
             log.error("ERREUR lors de la recherche par pays '{}': {}", pays, e.getMessage());
             return handleImportateurException(e);
         }
-    }
+    }*/
 
-    @Operation(
+    /*@Operation(
             summary = "Recherche d'exportateurs validés par raison sociale",
             description = "Récupère la liste des exportateurs validés filtrée par raison sociale (nom de l'entreprise)"
     )
@@ -149,9 +149,9 @@ public class ImportateurController {
             log.error("ERREUR lors de la recherche par raison sociale '{}': {}", raisonSociale, e.getMessage());
             return handleImportateurException(e);
         }
-    }
+    }*/
 
-    @Operation(
+    /*@Operation(
             summary = "Recherche d'exportateurs validés par produit",
             description = "Récupère la liste des exportateurs validés qui proposent un produit spécifique"
     )
@@ -179,9 +179,9 @@ public class ImportateurController {
             log.error("ERREUR lors de la recherche par produit '{}': {}", produit, e.getMessage());
             return handleImportateurException(e);
         }
-    }
+    }*/
 
-    @Operation(
+    /*@Operation(
             summary = "Recherche d'exportateurs validés par code NGP",
             description = "Récupère la liste des exportateurs validés qui proposent des produits avec un code NGP spécifique"
     )
@@ -209,9 +209,9 @@ public class ImportateurController {
             log.error("ERREUR lors de la recherche par code NGP '{}': {}", codeNGP, e.getMessage());
             return handleImportateurException(e);
         }
-    }
+    }*/
 
-    @Operation(
+    /*@Operation(
             summary = "Récupérer un exportateur validé par ID",
             description = "Récupère les détails complets d'un exportateur validé par son identifiant"
     )
@@ -240,7 +240,7 @@ public class ImportateurController {
             log.error("ERREUR lors de la recherche par ID {}: {}", id, e.getMessage());
             return handleImportateurException(e);
         }
-    }
+    }*/
 
     @Operation(
             summary = "Lister tous les exportateurs validés",
@@ -449,7 +449,7 @@ public class ImportateurController {
     /**
      * Récupérer une demande d'importation spécifique par son ID
      */
-    @Operation(
+    /*@Operation(
             summary = "Détails d'une demande d'importation",
             description = "Récupère les détails complets d'une demande d'importation spécifique"
     )
@@ -482,12 +482,12 @@ public class ImportateurController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
         }
-    }
+    }*/
 
     /**
      * Télécharger un document d'une demande d'importation
      */
-    @Operation(
+    /*@Operation(
             summary = "Télécharger un document",
             description = "Télécharge le fichier d'un document spécifique"
     )
@@ -522,7 +522,7 @@ public class ImportateurController {
             log.error("Erreur lors du téléchargement du document: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
-    }
+    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 
@@ -550,7 +550,7 @@ public class ImportateurController {
     /**
      * Sauvegarder un document
      */
-    private DocumentDTO saveDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr)
+    /*private DocumentDTO saveDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr)
             throws IOException {
 
         // Créer le répertoire
@@ -577,12 +577,12 @@ public class ImportateurController {
                 .uploadedAt(java.time.LocalDateTime.now())
                 .downloadUrl("/api/importateur/demandes/documents/" + System.currentTimeMillis() + "/telecharger")
                 .build();
-    }
+    }*/
 
     /**
      * Déterminer le content type en fonction de l'extension du fichier
      */
-    private String determineContentType(String fileType) {
+    /*private String determineContentType(String fileType) {
         if (fileType == null) return "application/octet-stream";
 
         String type = fileType.toLowerCase();
@@ -592,7 +592,7 @@ public class ImportateurController {
         if (type.contains("gif")) return "image/gif";
 
         return "application/octet-stream";
-    }
+    }*/
 
     // ==================== GESTION DES EXCEPTIONS ====================
 
@@ -624,9 +624,9 @@ public class ImportateurController {
     }
 
     // Méthode utilitaire pour récupérer la requête HTTP courante
-    private HttpServletRequest getCurrentHttpRequest() {
+    /*private HttpServletRequest getCurrentHttpRequest() {
         return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-    }
+    }*/
 
     // ==================== ENDPOINTS POUR LES STATUTS DES PRODUITS ====================
 
@@ -654,7 +654,7 @@ public class ImportateurController {
         }
     }
 
-    @GetMapping("/produits/{produitId}/statut")
+    /*@GetMapping("/produits/{produitId}/statut")
     @PreAuthorize("hasRole('IMPORTATEUR')")
     public ResponseEntity<?> getProduitStatut(
             @PathVariable Long produitId,
@@ -678,6 +678,6 @@ public class ImportateurController {
             log.error("ERREUR inattendue: {}", e.getMessage());
             return handleGenericException(e);
         }
-    }
+    }*/
 
 }

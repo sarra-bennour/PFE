@@ -33,17 +33,17 @@ public class AuthController {
 
 
     // Méthode privée pour extraire l'email depuis le token
-    private String extractEmailFromAuthHeader(String authHeader) {
+    /*private String extractEmailFromAuthHeader(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return null;
         }
 
         String token = authHeader.substring(7); // Supprimer "Bearer "
         return jwtUtil.extractUsername(token);
-    }
+    }*/
 
     // Méthode pour valider l'authentification
-    private ResponseEntity<?> validateAuthentication(String authHeader) {
+    /*private ResponseEntity<?> validateAuthentication(String authHeader) {
         String email = extractEmailFromAuthHeader(authHeader);
 
         if (email == null) {
@@ -52,7 +52,7 @@ public class AuthController {
         }
 
         return null; // null signifie que l'authentification est valide
-    }
+    }*/
 
     @PostMapping("/signup/exporter")
     public ResponseEntity<?> signup(@RequestBody ExportateurSignupRequest request) {
@@ -280,7 +280,7 @@ public class AuthController {
         }
     }
 
-    @GetMapping("/validate-reset-token")
+    /*@GetMapping("/validate-reset-token")
     public ResponseEntity<?> validateResetToken(@RequestParam String token) {
         try {
             boolean isValid = userService.validateResetToken(token);
@@ -293,7 +293,7 @@ public class AuthController {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", e.getMessage()));
         }
-    }
+    }*/
 
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@RequestBody PasswordResetRequest request) {
@@ -431,7 +431,7 @@ public class AuthController {
         }
     }
 
-    @GetMapping("/deactivation-requests")
+    /*@GetMapping("/deactivation-requests")
     public ResponseEntity<?> getMyDeactivationRequests(
             @RequestHeader("Authorization") String authHeader) {
         try {
@@ -458,9 +458,9 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }
-    }
+    }*/
 
-    @PostMapping("/deactivation-requests/{requestId}/cancel")
+    /*@PostMapping("/deactivation-requests/{requestId}/cancel")
     public ResponseEntity<?> cancelDeactivationRequest(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long requestId) {
@@ -491,7 +491,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }
-    }
+    }*/
 
     @GetMapping("/deactivation-request/status")
     public ResponseEntity<?> getDeactivationRequestStatus(@RequestHeader("Authorization") String authHeader) {

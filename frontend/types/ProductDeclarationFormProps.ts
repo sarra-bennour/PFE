@@ -1,9 +1,10 @@
 import { Product } from "./Product";
-import { Exporter } from "./Exporter";
+import { User } from "./User";
 
 export interface ProductDeclarationFormProps {
   product: Product;
-  exporter: Exporter;
+  exporter: User;
   onClose: () => void;
   onSuccess: () => void;
+  onDeclarationCreated?: (declarationId: number) => void;
 }

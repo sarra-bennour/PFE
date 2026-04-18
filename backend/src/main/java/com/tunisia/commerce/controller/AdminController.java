@@ -59,7 +59,7 @@ public class AdminController {
     /**
      * Récupérer un utilisateur par son ID
      */
-    @GetMapping("/users/{id}")
+    /*@GetMapping("/users/{id}")
     public ResponseEntity<?> getUserById(
             @PathVariable Long id,
             @RequestHeader("Authorization") String authHeader) {
@@ -80,7 +80,7 @@ public class AdminController {
                     "error", e.getMessage()
             ));
         }
-    }
+    }*/
 
     /**
      * Récupérer toutes les demandes de désactivation en attente
@@ -282,7 +282,7 @@ public class AdminController {
     }
 
     // Dans AuthController.java ou UserController.java
-    @GetMapping("/verify-email")
+    /*@GetMapping("/verify-email")
     public ResponseEntity<?> verifyEmail(@RequestParam String token) {
         try {
             boolean verified = userService.verifyInstanceValidationEmail(token);
@@ -303,7 +303,7 @@ public class AdminController {
                     "message", e.getMessage()
             ));
         }
-    }
+    }*/
 
     // ==================== INSTANCE VALIDATION ENDPOINTS ====================
 
@@ -334,7 +334,7 @@ public class AdminController {
         }
     }
 
-    @GetMapping("/instance-validation/all")
+    /*@GetMapping("/instance-validation/all")
     public ResponseEntity<?> getAllInstanceValidations(@RequestHeader("Authorization") String authHeader) {
         try {
             log.info("=== RÉCUPÉRATION DE TOUTES LES INSTANCES DE VALIDATION ===");
@@ -354,9 +354,9 @@ public class AdminController {
                     "error", e.getMessage()
             ));
         }
-    }
+    }*/
 
-    @GetMapping("/instance-validation/{id}")
+    /*@GetMapping("/instance-validation/{id}")
     public ResponseEntity<?> getInstanceValidationById(
             @PathVariable Long id,
             @RequestHeader("Authorization") String authHeader) {
@@ -384,9 +384,9 @@ public class AdminController {
                     "error", "Une erreur technique est survenue"
             ));
         }
-    }
+    }*/
 
-    @GetMapping("/instance-validation/email/{email}")
+    /*@GetMapping("/instance-validation/email/{email}")
     public ResponseEntity<?> getInstanceValidationByEmail(
             @PathVariable String email,
             @RequestHeader("Authorization") String authHeader) {
@@ -414,9 +414,9 @@ public class AdminController {
                     "error", "Une erreur technique est survenue"
             ));
         }
-    }
+    }*/
 
-    @PutMapping("/instance-validation/{id}/status")
+    /*@PutMapping("/instance-validation/{id}/status")
     public ResponseEntity<?> updateInstanceValidationStatus(
             @PathVariable Long id,
             @RequestBody Map<String, String> request,
@@ -453,9 +453,9 @@ public class AdminController {
                     "error", "Une erreur technique est survenue"
             ));
         }
-    }
+    }*/
 
-    @DeleteMapping("/instance-validation/{id}")
+    /*@DeleteMapping("/instance-validation/{id}")
     public ResponseEntity<?> deleteInstanceValidation(
             @PathVariable Long id,
             @RequestHeader("Authorization") String authHeader) {
@@ -483,9 +483,9 @@ public class AdminController {
                     "error", "Une erreur technique est survenue"
             ));
         }
-    }
+    }*/
 
-    @DeleteMapping("/instance-validation/{id}/hard")
+    /*@DeleteMapping("/instance-validation/{id}/hard")
     public ResponseEntity<?> hardDeleteInstanceValidation(
             @PathVariable Long id,
             @RequestHeader("Authorization") String authHeader) {
@@ -513,7 +513,7 @@ public class AdminController {
                     "error", "Une erreur technique est survenue"
             ));
         }
-    }
+    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 

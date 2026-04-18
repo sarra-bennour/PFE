@@ -1,38 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { DeactivationRequest } from '../../types/DeactivationRequest';
+import { User } from '../../types/User';
+import { UserManagementProps } from '../../types/UserManagementProps';
 
-interface UserManagementProps {
-  onResetPassword: (user: any) => void;
-}
-
-interface User {
-  id: number;
-  email: string;
-  nom: string;
-  prenom: string;
-  telephone: string;
-  role: string;
-  statut: string;
-  dateCreation: string;
-  lastLogin: string;
-  raisonSociale?: string;
-  paysOrigine?: string;
-  numeroRegistreCommerce?: string;
-  emailVerified?: boolean;
-}
-
-interface DeactivationRequest {
-  id: number;
-  userId: number;
-  userName: string;
-  userEmail: string;
-  companyName: string;
-  reason: string;
-  requestType: string;
-  status: string;
-  requestDate: string;
-  urgent: boolean;
-}
 
 // Composant séparé pour chaque carte de demande
 const DeactivationRequestCard: React.FC<{

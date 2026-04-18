@@ -1,30 +1,78 @@
+import { Product } from "./Product";
+
 export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'INSTANCE_VALIDATION' | 'ADMIN';
 
 export interface User {
+  id: number;
   email: string;
   role: UserRole;
-  companyName?: string;
-  legalRep?: string;
-  phone?: string;
-  isTwoFactorEnabled?: boolean;
-  submissionDate?: string;
+  
+  // Champs de base
+  nom?: string | null;
+  prenom?: string | null;
+  telephone?: string | null;
+  statut?: 'ACTIF' | 'INACTIF' | 'EN_ATTENTE' | string | null;
+  
   // Champs spécifiques aux exportateurs
-  raisonSociale?: string;
-  paysOrigine?: string;
-  numeroRegistreCommerce?: string;
-  adresseLegale?: string;
-  ville?: string;
-  siteWeb?: string;
-  representantLegal?: string;
-  numeroTVA?: string;
+  raisonSociale?: string | null;
+  companyName?: string | null;  // Pour compatibilité avec le front
+  paysOrigine?: string | null;
+  numeroRegistreCommerce?: string | null;
+  adresseLegale?: string | null;
+  ville?: string | null;
+  siteWeb?: string | null;
+  representantLegal?: string | null;
+  numeroTVA?: string | null;
+  
+  // Champs d'agrément
+  statutAgrement?: string | null;
+  dateAgrement?: string | null;
+  numeroAgrement?: string | null;
+  numeroOfficielEnregistrement?: string | null;
+  
+  // Dates
+  dateCreation?: string;
+  lastLogin?: string;
+  updatedAt?: string | null;
+  
+  // Sécurité
+  twoFactorEnabled?: boolean;
+  isTwoFactorEnabled?: boolean;  // Pour compatibilité
   emailVerified?: boolean;
-  // Champs spécifiques aux importateurs
-  mobileIdMatricule?: string;
-  mobileIdPin?: string;
-  // Champs spécifiques aux instances de validation
-  nomOfficiel?: string;
-  codeMinistere?: string;
-  typeAutorite?: string;
-  slaTraitementJours?: number;
-  id?: number;
+  
+  // Documents
+  documentsCount?: number;
+  preKycCompleted?: boolean;
+  preKycCompletedAt?: string | null;
+  
+  // Champs optionnels
+  submissionDate?: string;
+  userStatut?: 'ACTIF' | 'INACTIF' | 'EN_ATTENTE';
+  
+  // Champs spécifiques aux instances (null pour exportateur)
+  nomOfficiel?: string | null;
+  codeMinistere?: string | null;
+  typeAutorite?: string | null;
+  slaTraitementJours?: number | null;
+  products?: Product[];
+  
+  
+  // Champs importateur (null pour exportateur)
+  mobileIdMatricule?: string | null;
+  mobileIdPin?: string | null;
+  
+  // Autres
+  capaciteAnnuelle?: number | null;
+  produits?: any | null;
+  siteType?: string | null;
+  representantEmail?: string | null;
+  representantRole?: string | null;
+  username?: string | null;
+  verificationToken?: string | null;
+  verificationTokenExpiry?: string | null;
+}
+
+export interface ExporterDirectoryProps {
+  externalSearchQuery?: string;
+  onClearSearch?: () => void;
 }

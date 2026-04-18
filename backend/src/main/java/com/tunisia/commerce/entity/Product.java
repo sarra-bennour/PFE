@@ -59,6 +59,9 @@ public class Product {
     @Column(name = "commercial_brand_name")
     private String commercialBrandName;
 
+    @Column(name = "product_image", columnDefinition = "TEXT")
+    private String productImage;
+
     @OneToMany(mappedBy = "produit", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<DemandeProduit> demandeProduits = new ArrayList<>();

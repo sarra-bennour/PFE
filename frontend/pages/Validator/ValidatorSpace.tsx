@@ -4,7 +4,9 @@ import { AnimatePresence } from 'motion/react';
 import axios from 'axios';
 import { useAuth } from '../../App';
 import Sidebar from '../../components/Sidebar';
-import InstructionModal, { ValidationRequest, RequestType, Product, ImportDetails, AttachedDocument } from './InstructionModal';
+import InstructionModal, { ValidationRequest, RequestType, AttachedDocument } from './InstructionModal';
+import { Product } from '@/types/Product';
+import { ImportDetails } from '@/types/DemandeEnregistrement';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 

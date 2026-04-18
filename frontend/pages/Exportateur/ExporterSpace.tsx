@@ -6,67 +6,10 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import FormAlert from '../../components/FormAlert';
 import PaymentForm from '../../components/PaymentForm';
-
-// Définition de l'interface pour les données KYC
-interface KycData {
-  rcCert: File | null;
-  rcTranslation: File | null;
-  rcLegalization: File | null;
-  statutes: File | null;
-  statutesTranslation: File | null;
-  tinCert: File | null;
-  passport: File | null;
-  designationPV: File | null;
-  solvencyCert: File | null;
-  annualAccounts: File | null;
-  externalAudit: File | null;
-}
-
-interface PreKycData {
-  username: string;
-  officialRegistrationNumber: string;
-  siteType: 'Siège' | 'Usine' | 'entrepôt' | 'distributeur' | '';
-  representativeRole: string;
-  representativeEmail: string;
-  annualCapacity: string;
-}
-
-// Interface pour la réponse du dossier
-interface DossierResponse {
-  success: boolean;
-  message: string;
-  timestamp: string;
-  hasDossier: boolean;
-  demandeId?: number;
-  status?: string;
-  paymentStatus?: string;
-  reference?: string;
-  submittedAt?: string;
-  requiresCompletion?: boolean;
-  prochainesEtapes?: string[];
-  exportateurInfo?: any;
-  documentsCount?: number;
-}
-
-// Interface pour la réponse de création de PaymentIntent
-interface CreatePaymentIntentResponse {
-  clientSecret: string;
-  paymentIntentId: string;
-  demandeId: number;
-  amount: number;
-  currency: string;
-  requiresAction: boolean;
-}
-
-// Interface pour la réponse de paiement
-interface PaymentResult {
-  success: boolean;
-  message: string;
-  transactionId?: string;
-  paymentReference?: string;
-  amount?: number;
-  status?: string;
-}
+import { PreKycData } from '../../types/PreKycData';
+import { KycData } from '../../types/KycData';
+import { DossierResponse } from '../../types/DemandeEnregistrement';
+import { PaymentResult } from '../../types/PaymentResult';
 
 // Composant de nœud de pipeline style Jenkins
 const PipelineNode = ({ label, status, isLast = false }: {
@@ -167,6 +110,7 @@ const ExporterSpace: React.FC = () => {
   const [showTerminal, setShowTerminal] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   // États pour les alertes de paiement
   const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
@@ -181,6 +125,7 @@ const ExporterSpace: React.FC = () => {
     representativeRole: '',
     representativeEmail: user?.email || '',
     annualCapacity: '',
+    numeroTVA: '',
   });
 
   // États pour la gestion du username (déplacés ici au niveau racine)
@@ -791,47 +736,92 @@ useEffect(() => {
           </div>
 
           <form
-            onSubmit={(e) => { e.preventDefault(); setIsPreKycDone(true); }}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setLoading(true);
+              setFormError('');
+              
+              try {
+                const token = localStorage.getItem('token');
+                const dataToSend = {
+                  username: preKycData.username,
+                  numeroOfficielEnregistrement: preKycData.officialRegistrationNumber,
+                  siteType: preKycData.siteType,
+                  representantRole: preKycData.representativeRole,
+                  representantEmail: preKycData.representativeEmail,
+                  capaciteAnnuelle: preKycData.annualCapacity,
+                  numeroTVA: preKycData.numeroTVA
+                };
+
+                const response = await axios.post(
+                  'http://localhost:8080/api/exportateur/pre-kyc/completer',
+                  dataToSend,
+                  {
+                    headers: {
+                      'Authorization': `Bearer ${token}`,
+                      'Content-Type': 'application/json'
+                    }
+                  }
+                );
+                console.log('✅ Réponse Pré-KYC:', response.data);
+                if (response.data.success) {
+                  // Mettre à jour l'utilisateur dans le contexte
+                  updateUser({
+                    ...user,
+                    username: preKycData.username,
+                    preKycCompleted: true
+                  });
+                  
+                  setIsPreKycDone(true);
+                  setSuccessMessage('Informations enregistrées avec succès !');
+                }
+              } catch (error: any) {
+                console.error('Erreur Pré-KYC:', error);
+                setFormError(error.response?.data?.error || 'Erreur lors de l\'enregistrement');
+              } finally {
+                setLoading(false);
+              }
+            }}
             className="p-10 space-y-10"
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Section 1: Identifiants */}
               <div className="space-y-6">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Identifiants Système</h3>
-
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">
+                  Accès au Portail
+                </h3>
                 <div className="space-y-2">
                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Nom d'utilisateur (Identifiant)
                     {checkingUsername && <i className="fas fa-spinner fa-spin ml-2"></i>}
                   </label>
                   <div className="relative">
-                    <input
-                      type="text"
+                    <input 
+                      type="text" 
                       required
                       value={preKycData.username}
-                      onChange={(e) => {
-                        setPreKycData({ ...preKycData, username: e.target.value });
-                      }}
-                      className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 transition-all font-bold text-sm ${usernameAvailable === true
+                      onChange={(e) => setPreKycData({...preKycData, username: e.target.value})}
+                      className={`w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 transition-all font-bold text-sm ${
+                        usernameAvailable === true
                           ? 'border-emerald-500 focus:border-emerald-500'
                           : usernameAvailable === false
                             ? 'border-red-500 focus:border-red-500'
                             : 'border-transparent focus:border-tunisia-red'
-                        }`}
+                      }`}
                       placeholder="ex: company_export_tn"
                     />
                     <i className="fas fa-at absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
                   </div>
-
+                  
                   {/* Message de disponibilité */}
                   {usernameMessage && (
-                    <p className={`text-[8px] font-black uppercase tracking-widest mt-1 ${usernameAvailable ? 'text-emerald-600' : 'text-red-600'
-                      }`}>
+                    <p className={`text-[8px] font-black uppercase tracking-widest mt-1 ${
+                      usernameAvailable ? 'text-emerald-600' : 'text-red-600'
+                    }`}>
                       <i className={`fas ${usernameAvailable ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-1`}></i>
                       {usernameMessage}
                     </p>
                   )}
-
+                  
                   {/* Suggestions de username */}
                   <div className="flex flex-wrap gap-2 mt-2">
                     {usernameSuggestions.map(suggestion => (
@@ -839,7 +829,7 @@ useEffect(() => {
                         key={suggestion}
                         type="button"
                         onClick={() => {
-                          setPreKycData({ ...preKycData, username: suggestion });
+                          setPreKycData({...preKycData, username: suggestion});
                           checkUsernameAvailability(suggestion);
                         }}
                         className="text-[8px] font-black uppercase tracking-widest px-3 py-1.5 bg-slate-100 text-slate-500 rounded-full hover:bg-tunisia-red hover:text-white transition-all"
@@ -849,108 +839,140 @@ useEffect(() => {
                     ))}
                   </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro Officiel d'Enregistrement</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={preKycData.officialRegistrationNumber}
-                      onChange={(e) => setPreKycData({ ...preKycData, officialRegistrationNumber: e.target.value })}
-                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                      placeholder="ex: RC-TN-2024-XXXX"
-                    />
-                    <i className="fas fa-hashtag absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                {/* Section 2: Identifiants Légaux */}
+                <div className="space-y-6">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">
+                    Identifiants Légaux
+                  </h3>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Numéro Officiel d'Enregistrement
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={preKycData.officialRegistrationNumber}
+                        onChange={(e) => setPreKycData({...preKycData, officialRegistrationNumber: e.target.value})}
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                        placeholder="ex: RC-TN-2024-XXXX"
+                      />
+                      <i className="fas fa-hashtag absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Numéro TVA
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={preKycData.numeroTVA}
+                        onChange={(e) => setPreKycData({...preKycData, numeroTVA: e.target.value})}
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                        placeholder="ex: 1234567/A/M/000"
+                      />
+                      <i className="fas fa-receipt absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Détails du Site */}
+                <div className="space-y-6">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">
+                    Localisation & Capacité
+                  </h3>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Type de site de l'entreprise
+                    </label>
+                    <div className="relative">
+                      <select 
+                        required
+                        value={preKycData.siteType}
+                        onChange={(e) => setPreKycData({...preKycData, siteType: e.target.value as any})}
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer"
+                      >
+                        <option value="">Sélectionner un type...</option>
+                        <option value="SIEGE">Siège Social</option>
+                        <option value="USINE">Usine de Production</option>
+                        <option value="ENTREPOT">Entrepôt Logistique</option>
+                        <option value="DISTRIBUTEUR">Centre de Distribution</option>
+                      </select>
+                      <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Capacité / Volume annuel estimé
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={preKycData.annualCapacity}
+                        onChange={(e) => setPreKycData({...preKycData, annualCapacity: e.target.value})}
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                        placeholder="ex: 500 Tonnes / an"
+                      />
+                      <i className="fas fa-chart-line absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Section 2: Détails du Site */}
-              <div className="space-y-6">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 border-b border-slate-100 pb-2">Localisation & Type</h3>
-
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Type de site de l'entreprise</label>
-                  <div className="relative">
-                    <select
-                      required
-                      value={preKycData.siteType}
-                      onChange={(e) => setPreKycData({ ...preKycData, siteType: e.target.value as any })}
-                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm appearance-none cursor-pointer"
-                    >
-                      <option value="">Sélectionner un type...</option>
-                      <option value="Siège">Siège Social</option>
-                      <option value="Usine">Usine de Production</option>
-                      <option value="entrepôt">Entrepôt Logistique</option>
-                      <option value="distributeur">Centre de Distribution</option>
-                    </select>
-                    <i className="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
-                  </div>
+              {/* Section 4: Représentant Légal */}
+              <div className="space-y-6 pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                    Représentant Légal
+                  </h3>
+                  {user?.legalRep && (
+                    <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-widest">
+                      Identifié : {user.legalRep}
+                    </span>
+                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Capacité / Volume annuel estimé</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={preKycData.annualCapacity}
-                      onChange={(e) => setPreKycData({ ...preKycData, annualCapacity: e.target.value })}
-                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                      placeholder="ex: 500 Tonnes / an"
-                    />
-                    <i className="fas fa-chart-line absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Fonction {user?.legalRep ? `de ${user.legalRep}` : ''}
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        value={preKycData.representativeRole}
+                        onChange={(e) => setPreKycData({...preKycData, representativeRole: e.target.value})}
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                        placeholder="ex: Gérant, Directeur Général..."
+                      />
+                      <i className="fas fa-user-tie absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Section 3: Représentant Légal */}
-            <div className="space-y-6 pt-4 border-t border-slate-100">
-              <div className="flex items-center gap-3">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Représentant Légal</h3>
-                {user?.legalRep && (
-                  <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[8px] font-black uppercase tracking-widest">
-                    Identifié : {user.legalRep}
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Fonction {user?.legalRep ? `de ${user.legalRep}` : ''}
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={preKycData.representativeRole}
-                      onChange={(e) => setPreKycData({ ...preKycData, representativeRole: e.target.value })}
-                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                      placeholder="ex: Gérant, Directeur Général..."
-                    />
-                    <i className="fas fa-user-tie absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Email de contact direct</label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      required
-                      value={preKycData.representativeEmail}
-                      onChange={(e) => setPreKycData({ ...preKycData, representativeEmail: e.target.value })}
-                      className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
-                      placeholder="directeur@entreprise.tn"
-                    />
-                    <i className="fas fa-envelope absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Email de contact direct
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="email" 
+                        value={preKycData.representativeEmail}
+                        onChange={(e) => setPreKycData({...preKycData, representativeEmail: e.target.value})}
+                        className="w-full px-5 py-4 rounded-2xl bg-slate-50 border-2 border-transparent focus:border-tunisia-red outline-none transition-all font-bold text-sm"
+                        placeholder="directeur@entreprise.tn"
+                      />
+                      <i className="fas fa-envelope absolute right-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-
             <div className="pt-6">
               <button
                 type="submit"
@@ -1116,8 +1138,10 @@ useEffect(() => {
   // MODIFICATION: Nouvelle logique simplifiée pour la bannière
   // La bannière s'affiche si le dossier est soumis (SOUMISE) et que le paiement n'est pas encore fait
   const shouldShowPaymentBanner =
-    dossierInfo?.hasDossier &&
-    dossierInfo?.status === 'SOUMISE';
+    dossierInfo?.paymentStatus !== 'REUSSI' &&
+    dossierInfo?.status !== 'SOUMISE';
+
+    console.log('Dossier Info:', dossierInfo);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-scale">
@@ -1239,7 +1263,7 @@ useEffect(() => {
               La gestion des lots de marchandises sera disponible après la validation de votre dossier par le comité.
             </p>
             <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">
-              Statut actuel : {dossierInfo?.status === 'EN_COURS_VALIDATION' ? 'En cours de validation' : 'En attente de paiement'}
+              Statut actuel : {dossierInfo?.status === 'SOUMISE' ? 'En cours de validation' : 'En attente de paiement'}
             </p>
           </div>
         </div>

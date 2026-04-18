@@ -10,12 +10,7 @@ import java.util.Optional;
 
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, Long> {
-    List<Document> findByExportateurIdAndStatus(Long exportateurId, DocumentStatus status);
     List<Document> findByDemandeId(Long demandeId);
-    Optional<Document> findByIdAndExportateurId(Long id, Long exportateurId);
-    int countByExportateurId(Long exportateurId);
-    List<Document> findByExportateurId(Long exportateurId);
-    List<Document> findByDemandeIdAndProductId(Long demandeId, Long productId);
     // Dans DocumentRepository.java
     List<Document> findByDemandeIdAndStatus(Long demandeId, DocumentStatus status);
 }

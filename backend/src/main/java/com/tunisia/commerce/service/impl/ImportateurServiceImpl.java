@@ -4,10 +4,7 @@ import com.tunisia.commerce.dto.importateur.ImportateurStatutsDTO;
 import com.tunisia.commerce.dto.produits.ProduitDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.entity.*;
-import com.tunisia.commerce.enums.DemandeStatus;
-import com.tunisia.commerce.enums.NotificationAction;
-import com.tunisia.commerce.enums.NotificationStatus;
-import com.tunisia.commerce.enums.StatutAgrement;
+import com.tunisia.commerce.enums.*;
 import com.tunisia.commerce.exception.ImportateurException;
 import com.tunisia.commerce.repository.*;
 import com.tunisia.commerce.service.ImportateurService;
@@ -44,15 +41,13 @@ public class ImportateurServiceImpl implements ImportateurService {
 
             String searchTermLower = searchTerm.toLowerCase().trim();
 
-            // Recherche dans les exportateurs
+            // Recherche dans les exportateurs avec conditions sur les demandes
             List<ExportateurEtranger> exportateurs = exportateurRepository
-                    .findBySearchCriteria(
-                            searchTermLower
-                    );
+                    .findBySearchCriteriaWithValidDemandes(searchTermLower);
 
             log.info("Exportateurs trouvés par recherche directe: {}", exportateurs.size());
 
-            // Si pas de résultats, recherche dans les produits via DemandeProduit
+            // Si pas de résultats, recherche dans les produits via demandes validées
             if (exportateurs.isEmpty()) {
                 List<Product> produits = productRepository.findByProductNameContainingIgnoreCaseOrHsCodeContaining(
                         searchTermLower
@@ -63,7 +58,10 @@ public class ImportateurServiceImpl implements ImportateurService {
                 exportateurs = produits.stream()
                         .flatMap(product -> demandeProduitRepository.findByProduitId(product.getId()).stream())
                         .map(DemandeProduit::getDemande)
-                        .filter(demande -> demande != null && demande.getExportateur() != null)
+                        .filter(demande -> demande != null &&
+                                demande.getExportateur() != null &&
+                                demande.getStatus() == DemandeStatus.VALIDEE &&
+                                demande.getPaymentStatus() == PaymentStatus.REUSSI)
                         .map(DemandeEnregistrement::getExportateur)
                         .filter(exportateur ->
                                 exportateur != null &&
@@ -90,7 +88,7 @@ public class ImportateurServiceImpl implements ImportateurService {
         }
     }
 
-    @Override
+    /*@Override
     public List<UserDTO> rechercherParPays(String pays) {
         log.info("Recherche par pays: {}", pays);
 
@@ -113,9 +111,9 @@ public class ImportateurServiceImpl implements ImportateurService {
             log.error("Erreur lors de la recherche par pays: {}", e.getMessage());
             throw new ImportateurException("Erreur lors de la recherche par pays: " + pays, e);
         }
-    }
+    }*/
 
-    @Override
+    /*@Override
     public List<UserDTO> rechercherParRaisonSociale(String raisonSociale) {
         log.info("Recherche par raison sociale: {}", raisonSociale);
 
@@ -138,9 +136,9 @@ public class ImportateurServiceImpl implements ImportateurService {
             log.error("Erreur lors de la recherche par raison sociale: {}", e.getMessage());
             throw new ImportateurException("Erreur lors de la recherche par raison sociale: " + raisonSociale, e);
         }
-    }
+    }*/
 
-    @Override
+    /*@Override
     public List<UserDTO> rechercherParProduit(String produit) {
         log.info("Recherche par produit: {}", produit);
 
@@ -176,9 +174,9 @@ public class ImportateurServiceImpl implements ImportateurService {
             log.error("Erreur lors de la recherche par produit: {}", e.getMessage());
             throw new ImportateurException("Erreur lors de la recherche par produit: " + produit, e);
         }
-    }
+    }*/
 
-    @Override
+    /*@Override
     public List<UserDTO> rechercherParCodeNGP(String codeNGP) {
         log.info("Recherche par code NGP: {}", codeNGP);
 
@@ -214,9 +212,9 @@ public class ImportateurServiceImpl implements ImportateurService {
             log.error("Erreur lors de la recherche par code NGP: {}", e.getMessage());
             throw new ImportateurException("Erreur lors de la recherche par code NGP: " + codeNGP, e);
         }
-    }
+    }*/
 
-    @Override
+    /*@Override
     public UserDTO getExportateurValideById(Long exportateurId) {
         log.info("Récupération de l'exportateur par ID: {}", exportateurId);
 
@@ -240,7 +238,7 @@ public class ImportateurServiceImpl implements ImportateurService {
             log.error("Erreur lors de la récupération de l'exportateur {}: {}", exportateurId, e.getMessage());
             throw new ImportateurException("Erreur lors de la récupération de l'exportateur avec l'ID: " + exportateurId, e);
         }
-    }
+    }*/
 
     @Override
     public List<UserDTO> getAllExportateursValides() {
@@ -501,7 +499,7 @@ public class ImportateurServiceImpl implements ImportateurService {
      * @param productId L'ID du produit
      * @return Le statut du produit
      */
-    @Override
+    /*@Override
     @Transactional(readOnly = true)
     public String getProduitStatut(Long importateurId, Long productId) {
         log.info("Vérification du statut du produit ID: {} pour importateur ID: {}", productId, importateurId);
@@ -546,5 +544,5 @@ public class ImportateurServiceImpl implements ImportateurService {
 
         log.info("Produit {}: AUCUNE", productId);
         return "AUCUNE";
-    }
+    }*/
 }

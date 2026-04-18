@@ -65,7 +65,7 @@ public class ExportateurEtranger extends User {
     private String representantEmail;
 
     @Column(name = "capacite_annuelle")
-    private String capaciteAnnuelle;
+    private Double capaciteAnnuelle;
 
     @Column(name = "pre_kyc_completed")
     @Builder.Default

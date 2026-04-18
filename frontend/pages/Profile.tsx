@@ -5,24 +5,115 @@ import ResetPasswordForm from '../components/ResetPasswordForm';
 import { useNavigate } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { UserRole } from '@/types/User';
+import { Document } from '@/types/Document';
+import { DemandeEnregistrement } from '@/types/DemandeEnregistrement';
+import { User } from '@/types/User';
 
-// Types pour les données du dossier
-interface Document {
-  id: number;
-  fileName: string;
-  documentType: string;
-  status: string;
-  uploadedAt: string;
-  validatedAt?: string;
-  fileType: string;
-}
+// Liste des pays
+const countries = [
+  { code: 'FR', name: 'France', dial: '+33' },
+  { code: 'IT', name: 'Italie', dial: '+39' },
+  { code: 'TR', name: 'Turquie', dial: '+90' },
+  { code: 'CN', name: 'Chine', dial: '+86' },
+  { code: 'ES', name: 'Espagne', dial: '+34' },
+  { code: 'DE', name: 'Allemagne', dial: '+49' },
+  { code: 'US', name: 'États-Unis', dial: '+1' },
+  { code: 'AE', name: 'Émirats Arabes Unis', dial: '+971' },
+  { code: 'DZ', name: 'Algérie', dial: '+213' },
+  { code: 'LY', name: 'Libye', dial: '+218' },
+  { code: 'SA', name: 'Arabie Saoudite', dial: '+966' },
+  { code: 'MA', name: 'Maroc', dial: '+212' },
+  { code: 'BE', name: 'Belgique', dial: '+32' },
+  { code: 'CH', name: 'Suisse', dial: '+41' },
+  { code: 'UK', name: 'Royaume-Uni', dial: '+44' },
+];
 
-interface DemandeInfo {
-  id: number;
-  reference: string;
-  status: string;
-  submittedAt?: string;
-}
+// Fonction pour obtenir le nom du pays à partir du code
+const getCountryName = (countryCode: string | null | undefined): string => {
+  if (!countryCode) return 'Non défini';
+  const country = countries.find(c => c.code === countryCode);
+  return country ? country.name : countryCode;
+};
+
+// Fonction pour obtenir l'URL du drapeau
+const getFlagUrl = (countryCode: string): string => {
+  if (!countryCode) return '';
+  return `https://flagcdn.com/w160/${countryCode.toLowerCase()}.png`;
+};
+
+// Fonction pour mapper les données du backend vers l'interface User
+const mapBackendUserToFrontendUser = (backendUser: any): User => {
+  return {
+    id: backendUser.id,
+    email: backendUser.email,
+    role: backendUser.role as UserRole,
+    
+    // Champs de base
+    nom: backendUser.nom,
+    prenom: backendUser.prenom,
+    telephone: backendUser.telephone,
+    statut: backendUser.statut,
+    
+    // Champs exportateur (avec fallback pour la compatibilité)
+    raisonSociale: backendUser.raisonSociale,
+    companyName: backendUser.raisonSociale,  // Map raisonSociale -> companyName
+    paysOrigine: backendUser.paysOrigine,
+    numeroRegistreCommerce: backendUser.numeroRegistreCommerce,
+    adresseLegale: backendUser.adresseLegale,
+    ville: backendUser.ville,
+    siteWeb: backendUser.siteWeb,
+    representantLegal: backendUser.representantLegal,
+    legalRep: backendUser.representantLegal,  // Map representantLegal -> legalRep
+    numeroTVA: backendUser.numeroTVA,
+
+    // Champs d'agrément
+    statutAgrement: backendUser.statutAgrement,
+    dateAgrement: backendUser.dateAgrement,
+    numeroAgrement: backendUser.numeroAgrement,
+    numeroOfficielEnregistrement: backendUser.numeroOfficielEnregistrement,
+    
+    // Dates
+    dateCreation: backendUser.dateCreation,
+    lastLogin: backendUser.lastLogin,
+    updatedAt: backendUser.updatedAt,
+    
+    // Sécurité
+    twoFactorEnabled: backendUser.twoFactorEnabled,
+    isTwoFactorEnabled: backendUser.twoFactorEnabled,  // Pour compatibilité
+    emailVerified: backendUser.emailVerified,
+    
+    // Documents
+    documentsCount: backendUser.documentsCount,
+    preKycCompleted: backendUser.preKycCompleted,
+    preKycCompletedAt: backendUser.preKycCompletedAt,
+    
+    // Pour les composants existants qui utilisent ces champs
+    submissionDate: backendUser.dateCreation,  // ou une autre date pertinente
+    userStatut: backendUser.statut === 'ACTIF' ? 'ACTIF' : 
+                backendUser.statut === 'INACTIF' ? 'INACTIF' : 'EN_ATTENTE',
+    
+    // Champs instances (null pour exportateur)
+    nomOfficiel: backendUser.nomOfficiel,
+    codeMinistere: backendUser.codeMinistere,
+    typeAutorite: backendUser.typeAutorite,
+    slaTraitementJours: backendUser.slaTraitementJours,
+    
+    // Champs importateur (null pour exportateur)
+    mobileIdMatricule: backendUser.mobileIdMatricule,
+    mobileIdPin: backendUser.mobileIdPin,
+    
+    // Autres
+    capaciteAnnuelle: backendUser.capaciteAnnuelle,
+    produits: backendUser.produits,
+    siteType: backendUser.siteType,
+    representantEmail: backendUser.representantEmail,
+    representantRole: backendUser.representantRole,
+    username: backendUser.username,
+    verificationToken: backendUser.verificationToken,
+    verificationTokenExpiry: backendUser.verificationTokenExpiry
+  };
+};
 
 const Profile: React.FC = () => {
   const { t } = useTranslation();
@@ -43,7 +134,7 @@ const Profile: React.FC = () => {
   
   // États pour les données du dossier
   const [dossierStatusLocal, setDossierStatusLocal] = useState<any>(null);
-  const [demandeInfo, setDemandeInfo] = useState<DemandeInfo | null>(null);
+  const [demandeInfo, setDemandeInfo] = useState<DemandeEnregistrement | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loadingDossier, setLoadingDossier] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<{ name: string, url: string, type: 'pdf' | 'image' } | null>(null);
@@ -69,13 +160,18 @@ const Profile: React.FC = () => {
 
   const [formData, setFormData] = useState({
     companyName: user?.companyName || user?.raisonSociale || '',
-    phone: user?.telephone || user?.phone || '',
-    address: user?.address || user?.adresseLegale || '',
-    country: user?.country || user?.paysOrigine || '',
-    city: user?.city || user?.ville || '',
-    tinNumber: user?.tinNumber || user?.numeroRegistreCommerce || '',
-    website: user?.website || user?.siteWeb || '',
-    legalRep: user?.legalRep || user?.representantLegal || ''
+    phone: user?.telephone || '',
+    address: user?.adresseLegale || '',
+    country:  user?.paysOrigine || '',
+    city: user?.ville || '',
+    tinNumber: user?.numeroRegistreCommerce || '',
+    website: user?.siteWeb || '',
+    legalRep: user?.legalRep || '',
+    numeroOfficielEnregistrement: user?.numeroOfficielEnregistrement || '',
+    capaciteAnnuelle: user?.capaciteAnnuelle || '',
+    siteType: user?.siteType || '',
+    representantRole: user?.representantRole || '',
+    numeroTVA: user?.numeroTVA || ''
   });
 
   // Nettoyage des URLs Blob
@@ -89,63 +185,66 @@ const Profile: React.FC = () => {
 
   // ========== CHARGEMENT DES DONNÉES DU DOSSIER ==========
   useEffect(() => {
-    if (user && (user.role === 'EXPORTATEUR' || user.role === 'exporter')) {
+    if (user && (user.role === 'EXPORTATEUR')) {
       fetchDossierStatus();
     }
   }, [user]);
 
   // ========== CHARGEMENT DES DONNÉES DU PROFIL ==========
   useEffect(() => {
-    const fetchProfileData = async () => {
-      if (!user?.email) return;
+  const fetchProfileData = async () => {
+    if (!user?.email) return;
+    
+    setLoadingProfile(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:8080/api/auth/profile`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       
-      setLoadingProfile(true);
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`http://localhost:8080/api/auth/profile`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+      const data = await response.json();
+      
+      if (data.success && data.user) {
+        // Mapper les données backend vers le format attendu par le front
+        const mappedUser = mapBackendUserToFrontendUser(data.user);
+        
+        // Mettre à jour formData
+        setFormData({
+          companyName: mappedUser.companyName || '',
+          phone: mappedUser.telephone || '',
+          address: mappedUser.adresseLegale || '',
+          country: mappedUser.paysOrigine || '',
+          city: mappedUser.ville || '',
+          tinNumber: mappedUser.numeroRegistreCommerce || '',
+          website: mappedUser.siteWeb || '',
+          legalRep: mappedUser.legalRep || '',
+          numeroOfficielEnregistrement: mappedUser.numeroOfficielEnregistrement || '',  // ← Utiliser mappedUser
+          capaciteAnnuelle: mappedUser.capaciteAnnuelle ? String(mappedUser.capaciteAnnuelle) : '',  // ← Utiliser mappedUser
+          siteType: mappedUser.siteType || '',  // ← Utiliser mappedUser
+          representantRole: mappedUser.representantRole || '',  // ← Utiliser mappedUser
+          numeroTVA: mappedUser.numeroTVA || ''  
         });
         
-        const data = await response.json();
-        
-        if (data.success) {
-          const userData = data.user;
-          
-          // Mettre à jour formData avec les données chargées
-          setFormData({
-            companyName: userData.companyName || userData.raisonSociale || '',
-            phone: userData.telephone || userData.phone || '',
-            address: userData.address || userData.adresseLegale || '',
-            country: userData.country || userData.paysOrigine || '',
-            city: userData.city || userData.ville || '',
-            tinNumber: userData.tinNumber || userData.numeroRegistreCommerce || '',
-            website: userData.website || userData.siteWeb || '',
-            legalRep: userData.legalRep || userData.representantLegal || ''
-          });
-          
-          // Mettre à jour l'utilisateur dans le contexte avec les données complètes
-          updateUser({
-            ...user,
-            ...userData
-          });
-        }
-      } catch (err) {
-        console.error('Erreur chargement profil:', err);
-      } finally {
-        setLoadingProfile(false);
+        // Mettre à jour l'utilisateur dans le contexte
+        updateUser(mappedUser);
       }
-    };
-    
-    fetchProfileData();
-  }, [user?.email]);
+    } catch (err) {
+      console.error('Erreur chargement profil:', err);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+  
+  fetchProfileData();
+}, [user?.email]);
 
   // Vérification du statut 2FA (uniquement pour exportateur)
   useEffect(() => {
     const check2FAStatus = async () => {
-      if (user?.email && (user.role === 'EXPORTATEUR' || user.role === 'exporter')) {
+      if (user?.email && (user.role === 'EXPORTATEUR')) {
         try {
           const token = localStorage.getItem('token');
           const response = await fetch(`http://localhost:8080/api/auth/2fa/status/${user.email}`, {
@@ -160,8 +259,8 @@ const Profile: React.FC = () => {
           }
           
           const data = await response.json();
-          if (data.success && data.enabled !== user.twoFactorEnabled) {
-            updateUser({ twoFactorEnabled: data.enabled });
+          if (data.success && data.enabled !== user.isTwoFactorEnabled) {
+            updateUser({ isTwoFactorEnabled: data.enabled });
           }
         } catch (err) {
           console.error('Erreur vérification statut 2FA:', err);
@@ -174,7 +273,7 @@ const Profile: React.FC = () => {
 
   // ========== VÉRIFICATION DE L'ÉTAT DE LA DEMANDE DE DÉSACTIVATION ==========
   const checkDeactivationRequestStatus = async () => {
-    if (!user || (user.role !== 'EXPORTATEUR' && user.role !== 'exporter')) return;
+    if (!user || (user.role !== 'EXPORTATEUR')) return;
     
     try {
       const token = localStorage.getItem('token');
@@ -208,7 +307,7 @@ const Profile: React.FC = () => {
 
   // Appeler la vérification au chargement du composant
   useEffect(() => {
-    if (user && (user.role === 'EXPORTATEUR' || user.role === 'exporter')) {
+    if (user && (user.role === 'EXPORTATEUR')) {
       checkDeactivationRequestStatus();
     }
   }, [user]);
@@ -526,19 +625,12 @@ const Profile: React.FC = () => {
         companyName: formData.companyName,
         raisonSociale: formData.companyName,
         telephone: formData.phone,
-        phone: formData.phone,
-        address: formData.address,
         adresseLegale: formData.address,
-        country: formData.country,
         paysOrigine: formData.country,
-        city: formData.city,
         ville: formData.city,
-        tinNumber: formData.tinNumber,
         numeroRegistreCommerce: formData.tinNumber,
-        website: formData.website,
         siteWeb: formData.website,
         legalRep: formData.legalRep,
-        representantLegal: formData.legalRep
       });
 
       setSuccessMessage('Profil mis à jour avec succès');
@@ -564,7 +656,7 @@ const Profile: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       
-      if (!user.twoFactorEnabled) {
+      if (!user.isTwoFactorEnabled) {
         const setupResponse = await fetch('http://localhost:8080/api/auth/2fa/setup', {
           method: 'POST',
           headers: {
@@ -580,7 +672,7 @@ const Profile: React.FC = () => {
         }
 
         if (setupData.data.alreadyEnabled) {
-          updateUser({ twoFactorEnabled: true });
+          updateUser({ isTwoFactorEnabled: true });
           setSuccessMessage('2FA déjà activé');
           return;
         }
@@ -625,7 +717,7 @@ const Profile: React.FC = () => {
         throw new Error(data.error || 'Code de vérification invalide');
       }
 
-      updateUser({ twoFactorEnabled: true });
+      updateUser({ isTwoFactorEnabled: true });
       localStorage.setItem(`2fa_${user.email}`, 'true');
       
       setSuccessMessage('2FA activé avec succès !');
@@ -664,7 +756,7 @@ const Profile: React.FC = () => {
         throw new Error(data.error || 'Code de vérification invalide');
       }
 
-      updateUser({ twoFactorEnabled: false });
+      updateUser({ isTwoFactorEnabled: false });
       localStorage.removeItem(`2fa_${user.email}`);
       
       setSuccessMessage('2FA désactivé avec succès !');
@@ -739,8 +831,8 @@ const Profile: React.FC = () => {
   };
 
   const getRemainingDays = () => {
-    if (!user?.dateCreation) return 15;
-    const start = new Date(user.dateCreation).getTime();
+    if (!user?.submissionDate) return 15;
+    const start = new Date(user.submissionDate).getTime();
     const now = new Date().getTime();
     const diff = Math.ceil((start + 15 * 24 * 60 * 60 * 1000 - now) / (1000 * 60 * 60 * 24));
     return Math.max(0, diff);
@@ -749,18 +841,15 @@ const Profile: React.FC = () => {
   const roleColors = {
     EXPORTATEUR: 'bg-tunisia-red',
     IMPORTATEUR: 'bg-emerald-600',
-    VALIDATOR: 'bg-blue-600',
+    INSTANCE_VALIDATION: 'bg-blue-600',
     ADMIN: 'bg-slate-900',
-    exporter: 'bg-tunisia-red',
-    importer: 'bg-emerald-600',
-    validator: 'bg-blue-600',
-    admin: 'bg-slate-900'
   };
 
   const userStatusBadge = () => {
-    if (user.role === 'EXPORTATEUR' || user.role === 'exporter') {
+    if (user.role === 'EXPORTATEUR') {
       const demandeStatus = dossierStatus?.demandeStatus || dossierStatusLocal?.status;
       const paymentStatus = dossierStatus?.paymentStatus || dossierStatusLocal?.paymentStatus;
+      
       
       if (demandeStatus === 'SOUMISE' && paymentStatus === 'EN_ATTENTE') {
         return (
@@ -770,10 +859,10 @@ const Profile: React.FC = () => {
         );
       }
       
-      if (demandeStatus === 'EN_COURS_VALIDATION' && paymentStatus === 'REUSSI') {
+      if (demandeStatus === 'SOUMISE' && paymentStatus === 'REUSSI') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">
-            VALIDATION EN COURS
+            EN ATTENTE DE VALIDATION
           </span>
         );
       }
@@ -810,8 +899,8 @@ const Profile: React.FC = () => {
         );
       }
       
-      const status = user.statut || user.status;
-      if (status === 'INACTIF' || status === 'PENDING_VERIFICATION') {
+      const status = user.userStatut;
+      if (status === 'INACTIF' || status === 'EN_ATTENTE') {
         return (
           <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-50 text-amber-600 border border-amber-200">
             EN ATTENTE
@@ -828,7 +917,7 @@ const Profile: React.FC = () => {
           {status || 'EN ATTENTE'}
         </span>
       );
-    } else if (user.role === 'IMPORTATEUR' || user.role === 'importer') {
+    } else if (user.role === 'IMPORTATEUR') {
       return (
         <span className="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-50 text-emerald-600 border border-emerald-200">
           MOBILE ID VÉRIFIÉ
@@ -844,23 +933,23 @@ const Profile: React.FC = () => {
   };
 
   const shouldShowPaymentBanner = 
-    (user.role === 'EXPORTATEUR' || user.role === 'exporter') &&
+    (user.role === 'EXPORTATEUR') &&
     (dossierStatus?.demandeStatus === 'SOUMISE' || dossierStatusLocal?.status === 'SOUMISE') && 
     (dossierStatus?.paymentStatus === 'EN_ATTENTE' || dossierStatusLocal?.paymentStatus === 'EN_ATTENTE');
 
-  const isVerifiedExporter = (user.role === 'EXPORTATEUR' || user.role === 'exporter') && 
-                            (user.statut === 'ACTIF' || user.emailVerified === true);
+  const isVerifiedExporter = (user.role === 'EXPORTATEUR') && 
+                            (user.userStatut === 'ACTIF' || user.emailVerified === true);
   const remainingDays = getRemainingDays();
 
   const certData = {
     enTete: "RÉPUBLIQUE TUNISIENNE - MINISTÈRE DU COMMERCE",
     titre: "CERTIFICAT D'ENREGISTREMENT D'EXPORTATEUR ÉTRANGER",
     infos: {
-      numeroCertificat: user.numeroAgrement || demandeInfo?.reference || "CERT-NEE-2024-001234",
-      nee: user.numeroAgrement || demandeInfo?.reference || "NEE-TUN-2024-05789-XD",
+      numeroCertificat: demandeInfo?.reference || "CERT-NEE-2024-001234",
+      nee: demandeInfo?.reference || "NEE-TUN-2024-05789-XD",
       societe: user.companyName || user.raisonSociale || "ABC Electronics GmbH",
-      pays: user.country || user.paysOrigine || "Allemagne",
-      representant: user.legalRep || user.representantLegal || "Hans Müller",
+      pays: user.paysOrigine || "Allemagne",
+      representant: user.legalRep || "Hans Müller",
       dateEmission: user.dateAgrement || "15/03/2024",
       dateExpiration: "14/03/2027",
       qrCode: "https://verify.gov.tn/nee/NEE-TUN-2024-05789-XD"
@@ -934,7 +1023,7 @@ const Profile: React.FC = () => {
   };
 
   const getRoleColor = () => {
-    const role = user.role?.toUpperCase() || 'EXPORTATEUR';
+    const role = (user.role?.toUpperCase() || 'EXPORTATEUR') as UserRole;
     return roleColors[role] || roleColors['EXPORTATEUR'];
   };
 
@@ -1129,7 +1218,7 @@ const Profile: React.FC = () => {
                 {userStatusBadge()}
               </div>
               <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">{user.email}</p>
-              {(user.role === 'IMPORTATEUR' || user.role === 'importer') && user.mobileIdMatricule && (
+              {(user.role === 'IMPORTATEUR') && user.mobileIdMatricule && (
                 <p className="text-emerald-600 font-bold text-xs tracking-widest mt-1">
                   <i className="fas fa-mobile-alt mr-2"></i>
                   Matricule Mobile ID: {user.mobileIdMatricule}
@@ -1151,7 +1240,7 @@ const Profile: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="space-y-8">
-           {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && isVerifiedExporter && (
+           {(user.role === 'EXPORTATEUR') && isVerifiedExporter && (
               <div className="bg-emerald-600 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden group">
                  <div className="absolute -top-10 -right-10 opacity-10 group-hover:scale-110 transition-transform">
                     <i className="fas fa-award text-9xl"></i>
@@ -1170,7 +1259,7 @@ const Profile: React.FC = () => {
               </div>
            )}
 
-           {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+           {(user.role === 'IMPORTATEUR') && (
              <div className="bg-emerald-600 text-white p-8 rounded-[2.5rem] shadow-xl relative overflow-hidden">
                <div className="absolute -top-10 -right-10 opacity-10">
                  <i className="fas fa-mobile-alt text-9xl"></i>
@@ -1195,7 +1284,7 @@ const Profile: React.FC = () => {
               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Sécurité & Compte</h3>
               <div className="space-y-4">
                  
-                 {(user.role === 'EXPORTATEUR' || user.role === 'exporter' || user.role === 'admin') && (
+                 {(user.role === 'EXPORTATEUR' || user.role === 'ADMIN') && (
                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
                      <div className="flex items-center gap-3">
                        <i className="fas fa-key text-slate-400"></i>
@@ -1210,13 +1299,13 @@ const Profile: React.FC = () => {
                    </div>
                  )}
                  
-                 {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+                 {(user.role === 'EXPORTATEUR') && (
                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
                      <div className="flex items-center gap-3">
                        <i className="fas fa-shield-alt text-slate-400"></i>
                        <div>
                          <span className="text-sm font-bold text-slate-700">Connexion 2FA</span>
-                         {user.twoFactorEnabled && (
+                         {user.isTwoFactorEnabled && (
                            <p className="text-[8px] text-emerald-600 font-black uppercase tracking-widest">
                              Sécurité renforcée
                            </p>
@@ -1227,19 +1316,19 @@ const Profile: React.FC = () => {
                        onClick={toggle2FA}
                        disabled={isLoading}
                        className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none ${
-                         user.twoFactorEnabled ? 'bg-emerald-500' : 'bg-slate-300'
+                         user.isTwoFactorEnabled ? 'bg-emerald-500' : 'bg-slate-300'
                        } ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                      >
                        <span
                          className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform shadow-lg ${
-                           user.twoFactorEnabled ? 'translate-x-7' : 'translate-x-1'
+                           user.isTwoFactorEnabled ? 'translate-x-7' : 'translate-x-1'
                          }`}
                        />
                      </button>
                    </div>
                  )}
 
-                 {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+                 {(user.role === 'IMPORTATEUR') && (
                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                      <div className="flex items-center gap-3">
                        <i className="fas fa-info-circle text-emerald-600"></i>
@@ -1388,20 +1477,40 @@ const Profile: React.FC = () => {
                   />
                 </div>
 
-                {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Adresse du siège
+                  </label>
+                  <input 
+                    type="text" 
+                    value={formData.address} 
+                    onChange={(e) => setFormData({...formData, address: e.target.value})}
+                    disabled={isLoading}
+                    className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                    placeholder="ex: 123 rue de l'entreprise, 75001 Paris"
+                  />
+                </div>
+
+                {(user.role === 'EXPORTATEUR') && (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                          Pays
+                          {t('country')}
                         </label>
-                        <input 
-                          type="text" 
-                          value={formData.country} 
+                        <select
+                          value={formData.country}
                           onChange={(e) => setFormData({...formData, country: e.target.value})}
                           disabled={isLoading}
-                          className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
-                        />
+                          className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Sélectionner un pays</option>
+                          {countries.map(country => (
+                            <option key={country.code} value={country.code}>
+                              {country.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
@@ -1432,6 +1541,33 @@ const Profile: React.FC = () => {
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                          N° TVA
+                        </label>
+                        <input 
+                          type="text" 
+                          value={formData.numeroTVA} 
+                          onChange={(e) => setFormData({...formData, numeroTVA: e.target.value})}
+                          disabled={isLoading}
+                          className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                          N° Officiel d'Enregistrement
+                        </label>
+                        <input 
+                          type="text" 
+                          value={formData.numeroOfficielEnregistrement} 
+                          onChange={(e) => setFormData({...formData, numeroOfficielEnregistrement: e.target.value})}
+                          disabled={isLoading}
+                          className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                           Site Web
                         </label>
                         <input 
@@ -1441,6 +1577,39 @@ const Profile: React.FC = () => {
                           disabled={isLoading}
                           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                          Capacité Annuelle
+                        </label>
+                        <input 
+                          type="text" 
+                          value={formData.capaciteAnnuelle} 
+                          onChange={(e) => setFormData({...formData, capaciteAnnuelle: e.target.value})}
+                          disabled={isLoading}
+                          className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                          placeholder="ex: 500 Tonnes/an"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                          Type de Site
+                        </label>
+                        <select
+                          value={formData.siteType}
+                          onChange={(e) => setFormData({...formData, siteType: e.target.value})}
+                          disabled={isLoading}
+                          className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="">Sélectionner un type...</option>
+                          <option value="SIEGE">Siège Social</option>
+                          <option value="USINE">Usine de Production</option>
+                          <option value="ENTREPOT">Entrepôt Logistique</option>
+                          <option value="DISTRIBUTEUR">Centre de Distribution</option>
+                        </select>
                       </div>
                     </div>
 
@@ -1454,6 +1623,20 @@ const Profile: React.FC = () => {
                         onChange={(e) => setFormData({...formData, legalRep: e.target.value})}
                         disabled={isLoading}
                         className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                        Rôle du Représentant
+                      </label>
+                      <input 
+                        type="text" 
+                        value={formData.representantRole} 
+                        onChange={(e) => setFormData({...formData, representantRole: e.target.value})}
+                        disabled={isLoading}
+                        className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                        placeholder="Ex: Gérant, Directeur Général..."
                       />
                     </div>
                   </>
@@ -1483,15 +1666,61 @@ const Profile: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-10 gap-x-12">
                   
-                  {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
-                    <div>
-                      <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
-                        {t('company_name')}
-                      </span>
-                      <span className="text-lg font-black text-slate-800">
-                        {user.companyName || user.raisonSociale || 'Non défini'}
-                      </span>
-                    </div>
+                  {(user.role === 'EXPORTATEUR') && (
+                    <>
+                      <div>
+                        <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                          {t('company_name')}
+                        </span>
+                        <span className="text-lg font-black text-slate-800">
+                          {user.companyName || user.raisonSociale || 'Non défini'}
+                        </span>
+                      </div>
+                      
+                      {user.numeroOfficielEnregistrement && (
+                        <div>
+                          <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                            N° Officiel d'Enregistrement
+                          </span>
+                          <span className="text-lg font-black text-slate-800">
+                            {user.numeroOfficielEnregistrement}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {user.numeroTVA && (
+                        <div>
+                          <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                            N° TVA
+                          </span>
+                          <span className="text-lg font-black text-slate-800">
+                            {user.numeroTVA}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {user.capaciteAnnuelle && (
+                        <div>
+                          <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                            Capacité Annuelle
+                          </span>
+                          <span className="text-lg font-black text-slate-800">
+                            {user.capaciteAnnuelle.toLocaleString()} tonnes
+                          </span>
+                        </div>
+                      )}
+                      
+                      {user.siteType && (
+                        <div>
+                          <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
+                            Type de Site
+                          </span>
+                          <span className="text-lg font-black text-slate-800">
+                            {user.siteType}
+                          </span>
+                        </div>
+                      )}
+                    </>
                   )}
                   
                   <div>
@@ -1499,7 +1728,7 @@ const Profile: React.FC = () => {
                       {t('phone_number')}
                     </span>
                     <span className="text-lg font-black text-slate-800">
-                      {user.telephone || user.phone || '+216 -- --- ---'}
+                      { user.telephone || '+216 -- --- ---'}
                     </span>
                   </div>
                   
@@ -1512,30 +1741,40 @@ const Profile: React.FC = () => {
                     </span>
                   </div>
                   
-                  {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+                  {(user.role === 'EXPORTATEUR') && (
                     <>
                       <div>
                         <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                           {t('tin_number')}
                         </span>
                         <span className="text-lg font-black text-slate-800 tracking-tighter">
-                          {user.tinNumber || user.numeroRegistreCommerce || 'Non défini'}
+                          {user.numeroRegistreCommerce || 'Non défini'}
                         </span>
                       </div>
                       <div>
                         <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                           {t('country')}
                         </span>
-                        <span className="text-lg font-black text-slate-800">
-                          {user.country || user.paysOrigine || 'Non défini'}
-                        </span>
+                        <div className="flex items-center gap-3">
+                          {user.paysOrigine && (
+                            <img 
+                              src={getFlagUrl(user.paysOrigine)} 
+                              alt={getCountryName(user.paysOrigine)}
+                              className="w-6 h-4 rounded-sm object-cover shadow-sm border border-slate-200"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          )}
+                          <span className="text-lg font-black text-slate-800">
+                            {getCountryName(user.paysOrigine)}
+                          </span>
+                        </div>
                       </div>
                       <div>
                         <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-2">
                           Ville
                         </span>
                         <span className="text-lg font-black text-slate-800">
-                          {user.city || user.ville || 'Non défini'}
+                          {user.ville || 'Non défini'}
                         </span>
                       </div>
                       <div>
@@ -1543,7 +1782,7 @@ const Profile: React.FC = () => {
                           Site Web
                         </span>
                         <span className="text-lg font-black text-slate-800">
-                          {user.website || user.siteWeb || 'Non défini'}
+                          {user.siteWeb || 'Non défini'}
                         </span>
                       </div>
                       <div className="md:col-span-2">
@@ -1551,7 +1790,7 @@ const Profile: React.FC = () => {
                           Représentant Légal
                         </span>
                         <span className="text-lg font-black text-slate-800">
-                          {user.legalRep || user.representantLegal || 'Non défini'}
+                          {user.legalRep || 'Non défini'}
                         </span>
                       </div>
                       
@@ -1560,13 +1799,13 @@ const Profile: React.FC = () => {
                           Adresse du siège
                         </span>
                         <span className="text-sm font-bold text-slate-600 italic">
-                          {user.address || user.adresseLegale || 'Non défini'}
+                          { user.adresseLegale || 'Non défini'}
                         </span>
                       </div>
                     </>
                   )}
 
-                  {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+                  {(user.role === 'IMPORTATEUR') && (
                     <>
                       <div className="md:col-span-2 pt-4">
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
@@ -1583,7 +1822,7 @@ const Profile: React.FC = () => {
             )}
           </div>
 
-          {(user.role === 'EXPORTATEUR' || user.role === 'exporter') && (
+          {(user.role === 'EXPORTATEUR') && (
             <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
               <div className="flex items-center justify-between mb-8 pb-4 border-b border-slate-50">
                 <div className="flex items-center gap-3">
@@ -1671,7 +1910,7 @@ const Profile: React.FC = () => {
             </div>
           )}
 
-          {(user.role === 'IMPORTATEUR' || user.role === 'importer') && (
+          {(user.role === 'IMPORTATEUR') && (
             <div className="mt-8 bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 border border-emerald-100">
@@ -1726,7 +1965,7 @@ const Profile: React.FC = () => {
                         <div 
                           key={j} 
                           onClick={doc.onClick || (() => {})}
-                          className={`flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-50 hover:border-slate-200 transition-all ${doc.onClick ? 'cursor-pointer' : 'cursor-default'}`}
+                          className={`flex items-center justify-between p-4 bg-slate-50/50 rounded-2xl border border-slate-50 hover:border-slate-200 transition-all ${doc.onClick !== undefined ? 'cursor-pointer' : 'cursor-default'}`}
                         >
                           <div className="flex items-center gap-3">
                             <i className={`fas ${doc.icon} text-slate-400 w-5 text-center`}></i>
@@ -1738,7 +1977,7 @@ const Profile: React.FC = () => {
                             }`}>
                               {doc.status}
                             </span>
-                            {doc.onClick && (
+                            {doc.onClick !== undefined && (
                               <i className="fas fa-eye text-slate-300 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"></i>
                             )}
                           </div>

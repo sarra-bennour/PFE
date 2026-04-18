@@ -10,5 +10,6 @@ public class PreKycRequest {
     private SiteType siteType;
     private String representantRole;
     private String representantEmail;
-    private String capaciteAnnuelle;
+    private Double capaciteAnnuelle;
+    private String numeroTVA;
 }

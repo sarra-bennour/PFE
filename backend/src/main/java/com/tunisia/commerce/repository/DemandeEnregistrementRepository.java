@@ -18,46 +18,15 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
     // Nouvelle méthode pour trouver la demande de conformité (KYC)
     @Query("SELECT d FROM DemandeEnregistrement d WHERE d.exportateur.id = :exportateurId AND d.reference LIKE 'DOS-%' ORDER BY d.id DESC")
     Optional<DemandeEnregistrement> findDossierConformiteByExportateurId(@Param("exportateurId") Long exportateurId);
-
     // Nouvelle méthode pour trouver la dernière demande de produits
     @Query("SELECT d FROM DemandeEnregistrement d WHERE d.exportateur.id = :exportateurId AND d.reference LIKE 'DEM-%' ORDER BY d.id DESC")
     List<DemandeEnregistrement> findDeclarationsProduitsByExportateurId(@Param("exportateurId") Long exportateurId);
-
-    // Méthode pour trouver toutes les demandes d'un exportateur (si besoin)
-    List<DemandeEnregistrement> findAllByExportateurIdOrderByIdDesc(Long exportateurId);
-
     List<DemandeEnregistrement> findByExportateurId(Long exportateurId);
-    Optional<DemandeEnregistrement> findByReference(String reference);
-    List<DemandeEnregistrement> findByStatus(DemandeStatus status);
-    List<DemandeEnregistrement> findByAssignedTo(Long agentId);
-    List<DemandeEnregistrement> findByStatusIn(Collection<DemandeStatus> statuses);
-    @Query("SELECT d FROM DemandeEnregistrement d WHERE d.status = :status AND d.assignedTo IS NULL")
-    List<DemandeEnregistrement> findUnassignedByStatus(DemandeStatus status);
-    @Query("SELECT d FROM DemandeEnregistrement d WHERE d.exportateur.id = :exportateurId ORDER BY d.submittedAt DESC")
-    List<DemandeEnregistrement> findLatestByExportateur(@Param("exportateurId") Long exportateurId);
     @Query("SELECT COUNT(d) FROM DemandeEnregistrement d WHERE d.exportateur.id = :exportateurId AND d.status = :status")
     long countByExportateurIdAndStatus(@Param("exportateurId") Long exportateurId, @Param("status") DemandeStatus status);
-    boolean existsByReference(String reference);
-
     long countByExportateurIdAndStatusIn(Long exportateurId, List<DemandeStatus> statuses);
-    List<DemandeEnregistrement> findByImportateurIdAndTypeDemandeur(Long importateurId, TypeDemandeur type);
-
     List<DemandeEnregistrement> findByImportateurIdAndStatusIn(Long importateurId, List<DemandeStatus> statuses);
-
-    @Query("SELECT COUNT(d) > 0 FROM DemandeEnregistrement d " +
-            "JOIN d.demandeProduits dp " +
-            "WHERE d.importateur.id = :importateurId " +
-            "AND dp.produit.id = :produitId " +
-            "AND d.status IN :statuses")
-    boolean existsByImportateurIdAndProduitIdAndStatusIn(
-            @Param("importateurId") Long importateurId,
-            @Param("produitId") Long produitId,
-            @Param("statuses") List<DemandeStatus> statuses
-    );
-    List<DemandeEnregistrement> findByImportateurId(Long importateurId);
     List<DemandeEnregistrement> findByTypeDemandeur(TypeDemandeur typeDemandeur);
-    @Query("SELECT d FROM DemandeEnregistrement d WHERE d.importateur.id = :importateurId AND d.reference LIKE 'IMP-%'")
-    List<DemandeEnregistrement> findImportationDemandesByImportateurId(@Param("importateurId") Long importateurId);
 
 }
 

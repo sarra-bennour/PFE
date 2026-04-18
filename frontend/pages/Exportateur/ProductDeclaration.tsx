@@ -2,67 +2,14 @@ import React, { useState, useEffect, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import axios from 'axios';
+import { motion, AnimatePresence } from 'framer-motion'; // ✅ AJOUTÉ
 import PaymentForm from '../../components/PaymentForm';
 import FormAlert from '../../components/FormAlert';
-
-// ==================== TYPES ====================
-type ProductType = 'alimentaire' | 'industriel';
-
-interface ProductItem {
-  id: string;
-  backendId?: number;
-  type: ProductType;
-  category: string;
-  ngpCode: string;
-  productName: string;
-  isLinkedToBrand: boolean;
-  brandName: string;
-  isBrandOwner: boolean;
-  hasBrandLicense: boolean;
-  productState: string;
-  originCountry: string;
-  annualQuantityValue: string;
-  annualQuantityUnit: string;
-  commercialBrandName?: string;
-}
-
-interface DeclarationFormData {
-  products: ProductItem[];
-  files: Record<string, File | null>;
-}
-
-interface User {
-  id: number;
-  email: string;
-  role: string;
-  nom?: string;
-  prenom?: string;
-}
-
-interface ProductResponse {
-  id: number;
-  productType: string;
-  category: string;
-  hsCode: string;
-  productName: string;
-}
-
-interface DemandeResponse {
-  id: number;
-  reference: string;
-  status: string;
-  products: ProductResponse[];
-}
-
-// Interface pour la réponse de paiement
-interface PaymentResult {
-  success: boolean;
-  message: string;
-  transactionId?: string;
-  paymentReference?: string;
-  amount?: number;
-  status?: string;
-}
+import { ProductType, Product } from '../../types/Product';
+import { User } from '@/types/User';
+import { PaymentResult } from '@/types/PaymentResult';
+import { DemandeResponse } from '@/types/DemandeEnregistrement';
+import { DeclarationFormData } from '@/types/DeclarationFormData';
 
 // ==================== CONSTANTS ====================
 const PRODUCT_STATES = [
@@ -171,6 +118,7 @@ const ProductDeclaration: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [demandeId, setDemandeId] = useState<number | null>(null);
   const [isPaid, setIsPaid] = useState(false);
+  const [showDraftModal, setShowDraftModal] = useState(false); // ✅ AJOUTÉ
 
   // États pour les alertes de paiement
   const [paymentSuccess, setPaymentSuccess] = useState<PaymentResult | null>(null);
@@ -185,7 +133,8 @@ const ProductDeclaration: React.FC = () => {
 
   const [formData, setFormData] = useState<DeclarationFormData>({
     products: [],
-    files: {}
+    files: {},
+    productImages: {}
   });
 
   const [productIdMap, setProductIdMap] = useState<Map<string, number>>(new Map());
@@ -222,18 +171,6 @@ const ProductDeclaration: React.FC = () => {
     }
   }, []);
 
-  // Charger le brouillon du localStorage
-  useEffect(() => {
-    const savedDraft = localStorage.getItem('productDeclarationDraft');
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft);
-        setFormData(parsed);
-      } catch (e) {
-        console.error('Error loading draft:', e);
-      }
-    }
-  }, []);
 
   // Sauvegarder le brouillon dans localStorage
   useEffect(() => {
@@ -304,15 +241,16 @@ const ProductDeclaration: React.FC = () => {
   };
 
   const addProduct = (type: ProductType) => {
+    console.log('➕ ************Adding product of type:', type);
     setFormData(prev => ({
       ...prev,
       products: [
         ...prev.products,
         {
-          id: crypto.randomUUID(),
-          type,
+          id: Date.now(),
+          productType : type,
           category: '',
-          ngpCode: '',
+          ngp: '',
           productName: '',
           isLinkedToBrand: false,
           brandName: '',
@@ -328,23 +266,28 @@ const ProductDeclaration: React.FC = () => {
     }));
   };
 
-  const removeProduct = (id: string) => {
+  const removeProduct = (id: number) => {
     if (formData.products.length > 1) {
       const updatedFiles = { ...formData.files };
       Object.keys(updatedFiles).forEach(key => {
-        if (key.startsWith(id)) {
+        if (key.startsWith(String(id))) {
           delete updatedFiles[key];
         }
       });
 
+      // Supprimer aussi l'image du produit
+    const updatedProductImages = { ...formData.productImages };
+    delete updatedProductImages[id];
+
       setFormData(prev => ({
         products: prev.products.filter(p => p.id !== id),
-        files: updatedFiles
+        files: updatedFiles,
+        productImages: updatedProductImages
       }));
     }
   };
 
-  const updateProduct = (id: string, updates: Partial<ProductItem>) => {
+  const updateProduct = (id: number, updates: Partial<Product>) => {
     setFormData(prev => ({
       ...prev,
       products: prev.products.map(p => p.id === id ? { ...p, ...updates } : p)
@@ -432,7 +375,7 @@ const ProductDeclaration: React.FC = () => {
     }
   };
 
-  const handleFileChange = (frontendProductId: string, docId: string) => async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (frontendProductId: number, docId: string) => async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) {
       const fileKey = `${frontendProductId}_${docId}`;
@@ -468,66 +411,214 @@ const ProductDeclaration: React.FC = () => {
     console.log(`📦 Document ${docId} mis en attente (sera uploadé après création de la demande)`);
   };
 
-  const createDemande = async () => {
-    if (!user) throw new Error('Utilisateur non authentifié');
+const createDemande = async () => {
+  if (!user) throw new Error('Utilisateur non authentifié');
 
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Token d\'authentification manquant');
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('Token d\'authentification manquant');
+  }
+
+  const formDataToSend = new FormData();
+  
+  const demandeData = {
+    exportateurId: user.id,
+    products: formData.products.map(p => ({
+      productType: p.productType,
+      category: p.category,
+      hsCode: p.ngp,
+      productName: p.productName,
+      isLinkedToBrand: p.isLinkedToBrand,
+      brandName: p.brandName || null,
+      isBrandOwner: p.isBrandOwner,
+      hasBrandLicense: p.hasBrandLicense,
+      productState: p.productState,
+      originCountry: p.originCountry,
+      annualQuantityValue: p.annualQuantityValue || null,
+      annualQuantityUnit: p.annualQuantityUnit || null,
+      commercialBrandName: p.commercialBrandName || null
+    })),
+    documents: [],
+    paymentInfo: null
+  };
+
+  formDataToSend.append('demande', new Blob([JSON.stringify(demandeData)], {
+    type: 'application/json'
+  }));
+  
+  for (const product of formData.products) {
+    const imageFile = formData.productImages[product.id];
+    if (imageFile) {
+      formDataToSend.append('images', imageFile);
     }
+  }
 
-    const requestDTO = {
-      exportateurId: user.id,
-      products: formData.products.map(p => ({
-        productType: p.type,
-        category: p.category,
-        hsCode: p.ngpCode,
-        productName: p.productName,
-        isLinkedToBrand: p.isLinkedToBrand,
-        brandName: p.brandName || null,
-        isBrandOwner: p.isBrandOwner,
-        hasBrandLicense: p.hasBrandLicense,
-        productState: p.productState,
-        originCountry: p.originCountry,
-        annualQuantityValue: p.annualQuantityValue || null,
-        annualQuantityUnit: p.annualQuantityUnit || null,
-        commercialBrandName: p.commercialBrandName || null
-      })),
-      documents: [],
-      paymentInfo: null
-    };
-
-    console.log('📤 Creating demande with data:', requestDTO);
-
-    const response = await api.post('/produits', requestDTO);
-    console.log('✅ Demande created:', response.data);
+  try {
+    const response = await api.post('/produits', formDataToSend, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data as DemandeResponse;
-  };
+  } catch (error: any) {
+    // ✅ Récupérer le message d'erreur du backend
+    const backendMessage = error.response?.data?.message;
+    const backendError = error.response?.data?.error;
+    
+    console.error('❌ Erreur backend:', backendMessage);
+    console.error('❌ Code erreur:', backendError);
+    
+    // ✅ Lancer l'erreur avec le message du backend
+    throw new Error(backendMessage || 'Erreur lors de la création de la demande');
+  }
+};
 
-  const submitDemande = async () => {
-    if (!demandeId) throw new Error('Aucune demande trouvée');
 
-    console.log('📤 Submitting demande:', demandeId);
-
-    try {
-      const response = await api.post(`/produits/${demandeId}/soumettre`);
-      console.log('✅ Demande submitted successfully:', response.data);
-      return response.data;
-    } catch (error: any) {
-      console.error('❌ Submit error:', error);
-
-      if (error.response?.status === 401) {
-        showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
-        setTimeout(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
-        }, 2000);
-      }
-
-      throw error;
+const handleSubmit = async () => {
+  setIsLoading(true);
+  
+  try {
+    // Vérifier que tous les documents requis sont sélectionnés
+    const missingDocs = checkRequiredDocuments();
+    if (missingDocs.length > 0) {
+      showGeneralAlert(`Documents manquants: ${missingDocs.join(', ')}`, 'error');
+      setIsLoading(false);
+      return;
     }
+    
+    // Vérifier que l'utilisateur a accepté les conditions
+    if (!isAgreed) {
+      showGeneralAlert('Vous devez accepter les conditions pour soumettre la demande', 'error');
+      setIsLoading(false);
+      return;
+    }
+    
+    let demandeIdToSubmit = demandeId;
+    
+    // Si la demande n'existe pas encore, la créer d'abord
+    if (!demandeIdToSubmit) {
+      console.log('📝 Étape 1: Création de la demande...');
+      const data = await createDemande();
+      console.log('✅ Demande créée avec ID:', data.id);
+      
+      demandeIdToSubmit = data.id;
+      setDemandeId(data.id);
+      setDeclarationRef(data.reference);
+      
+      // Créer le mapping des produits
+      const newProductIdMap = new Map<string, number>();
+      formData.products.forEach((frontendProduct, index) => {
+        if (data.products && data.products[index]) {
+          newProductIdMap.set(String(frontendProduct.id), data.products[index].id);
+          updateProduct(frontendProduct.id, { backendId: data.products[index].id });
+        }
+      });
+      setProductIdMap(newProductIdMap);
+      
+      // Uploader les documents
+      console.log('📤 Étape 2: Upload des documents...');
+      await uploadAllDocuments(data.id, newProductIdMap);
+      console.log('✅ Upload terminé');
+    } else {
+      // Si la demande existe déjà, uploader les documents manquants
+      console.log('📤 Upload des documents pour la demande existante ID:', demandeIdToSubmit);
+      await uploadAllDocuments(demandeIdToSubmit, productIdMap);
+    }
+    
+    // Étape 3: Soumettre la demande (appel au backend /{id}/soumettre)
+    console.log('📤 Étape 3: Soumission de la demande ID:', demandeIdToSubmit);
+    const submittedDemande = await submitDemande(demandeIdToSubmit);
+    console.log('✅ Demande soumise avec succès:', submittedDemande);
+    
+    // ✅ MODIFICATION: Ne pas rediriger, passer à l'étape 5 (paiement)
+    // Nettoyer le localStorage
+    localStorage.removeItem('productDeclarationDraft');
+    localStorage.removeItem('currentDemandeId');
+    
+    // ✅ Passer à l'étape 5 (paiement) au lieu de setIsSubmitted(true)
+    showGeneralAlert('Demande soumise avec succès! Veuillez procéder au paiement.', 'success');
+    
+    // ✅ Aller à l'étape 5
+    setStep(5);
+    
+  } catch (error: any) {
+    console.error('❌ Erreur lors de la soumission:', error);
+    const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la soumission de la demande';
+    showGeneralAlert(errorMessage, 'error');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+// Modifier la fonction submitDemande pour qu'elle utilise l'ID passé en paramètre
+const submitDemande = async (demandeIdToSubmit: number) => {
+  console.log('📤 Soumission de la demande ID:', demandeIdToSubmit);
+
+  try {
+    const response = await api.post(`/produits/${demandeIdToSubmit}/soumettre`);
+    console.log('✅ Demande soumise avec succès:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ Erreur lors de la soumission:', error);
+    
+    // Récupérer le message d'erreur du backend
+    const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la soumission';
+    const errorCode = error.response?.data?.error;
+    
+    if (error.response?.status === 401) {
+      showGeneralAlert('Votre session a expiré. Veuillez vous reconnecter.', 'error');
+      setTimeout(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }, 2000);
+    }
+    
+    throw new Error(errorMessage);
+  }
+}
+
+  
+  const handleProductImageChange = (productId: number, file: File | null) => {
+  if (!file) {
+    // Supprimer l'image
+    updateProduct(productId, { productImage: undefined });
+    setFormData(prev => {
+      const newProductImages = { ...prev.productImages };
+      delete newProductImages[productId];
+      return { ...prev, productImages: newProductImages };
+    });
+    return;
+  }
+
+  // Vérifier la taille (max 2MB)
+  if (file.size > 2 * 1024 * 1024) {
+    showGeneralAlert("L'image ne doit pas dépasser 2MB", 'error');
+    return;
+  }
+
+  // Vérifier le type
+  if (!file.type.startsWith('image/')) {
+    showGeneralAlert("Veuillez sélectionner une image valide (JPG, PNG)", 'error');
+    return;
+  }
+
+  // Stocker le fichier pour l'upload
+  setFormData(prev => ({
+    ...prev,
+    productImages: {
+      ...prev.productImages,
+      [productId]: file
+    }
+  }));
+
+  // Créer un aperçu temporaire en base64 pour l'affichage
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    updateProduct(productId, { productImage: reader.result as string });
   };
+  reader.readAsDataURL(file);
+};
 
   const checkRequiredDocuments = (): string[] => {
     const missing: string[] = [];
@@ -535,7 +626,7 @@ const ProductDeclaration: React.FC = () => {
     formData.products.forEach(product => {
       console.log(`Checking documents for product: ${product.productName} (${product.id})`);
 
-      const docs = product.type === 'alimentaire'
+      const docs = product.productType === 'alimentaire'
         ? (product.hasBrandLicense ? FOOD_DOCS : FOOD_DOCS.filter(doc => doc.id !== 'BRAND_LICENSE'))
         : INDUSTRIAL_DOCS;
 
@@ -606,214 +697,242 @@ const ProductDeclaration: React.FC = () => {
 
 
   const handlePaymentSubmit = async (paymentDetails: any) => {
-    setPaymentLoading(true);
-    setPaymentError(null);
-    setPaymentSuccess(null);
+  setPaymentLoading(true);
+  setPaymentError(null);
+  setPaymentSuccess(null);
 
-    try {
-      if (!demandeId) {
-        setPaymentError('Aucune demande trouvée. Veuillez créer une demande d\'abord.');
-        setPaymentLoading(false);
-        return;
-      }
+  try {
+    console.log('💰 Début du processus complet pour la demande');
 
-      console.log('💰 Paiement pour la demande ID:', demandeId);
-
-      // Étape 1: Créer le PaymentIntent
-      const createIntentResponse = await handleCreatePaymentIntent(demandeId);
-      const paymentIntentId = createIntentResponse.paymentIntentId;
-
-      if (!paymentIntentId) {
-        throw new Error('Impossible de créer le PaymentIntent');
-      }
-
-      console.log('✅ PaymentIntent créé:', paymentIntentId);
-
-      // Étape 2: Confirmer le paiement avec le PaymentMethod ID
-      const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeId);
-
-      if (result.success) {
-        setPaymentSuccess({
-          success: true,
-          message: 'Paiement effectué avec succès!',
-          amount: result.amount
-        });
-
-        setIsPaid(true);
-
-        // Ne pas rediriger immédiatement, laisser l'utilisateur voir le succès
-        setTimeout(() => {
-          // Optionnel: rediriger après 2 secondes
-          // setStep(step + 1);
-        }, 2000);
-
-      } else {
-        setPaymentError(result.message || 'Erreur de paiement');
-      }
-
-    } catch (error: any) {
-      console.error('❌ Erreur:', error);
-
-      if (error.response?.status === 401) {
-        setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
-        setTimeout(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
-        }, 2000);
-      } else {
-        // 🔴 CORRECTION ICI 🔴
-        // Votre backend renvoie { "error": "message" } pas { "message": "..." }
-        const errorData = error.response?.data;
-
-        if (errorData && errorData.error) {
-          // Cas où le backend renvoie { "error": "message technique" }
-          const errorMessage = errorData.error;
-
-          // Nettoyer le message pour l'utilisateur
-          if (errorMessage.includes('card_declined')) {
-            setPaymentError('Votre carte a été refusée. Veuillez vérifier vos informations ou utiliser une autre carte.');
-          } else if (errorMessage.includes('insufficient_funds')) {
-            setPaymentError('Fonds insuffisants sur cette carte. Veuillez utiliser une autre carte.');
-          } else if (errorMessage.includes('expired_card')) {
-            setPaymentError('Votre carte a expiré. Veuillez utiliser une carte valide.');
-          } else if (errorMessage.includes('incorrect_cvc')) {
-            setPaymentError('Le code de sécurité (CVV) est incorrect. Veuillez vérifier et réessayer.');
-          } else {
-            // Extraire la première partie du message technique
-            const cleanMessage = errorMessage.split(';')[0];
-            setPaymentError(cleanMessage);
-          }
-        } else if (errorData && errorData.message) {
-          setPaymentError(errorData.message);
-        } else if (typeof errorData === 'string') {
-          setPaymentError(errorData);
-        } else {
-          setPaymentError(error.message || 'Erreur lors du paiement');
+    let demandeIdToSubmit = demandeId;
+    
+    // ✅ Étape 1: Créer la demande si elle n'existe pas encore
+    if (!demandeIdToSubmit) {
+      console.log('📝 Étape 1: Création de la demande...');
+      const data = await createDemande();
+      console.log('✅ Demande créée avec ID:', data.id);
+      
+      demandeIdToSubmit = data.id;
+      setDemandeId(data.id);
+      setDeclarationRef(data.reference);
+      
+      // Créer le mapping des produits
+      const newProductIdMap = new Map<string, number>();
+      formData.products.forEach((frontendProduct, index) => {
+        if (data.products && data.products[index]) {
+          newProductIdMap.set(String(frontendProduct.id), data.products[index].id);
+          updateProduct(frontendProduct.id, { backendId: data.products[index].id });
         }
-      }
-    } finally {
-      setPaymentLoading(false);
+      });
+      setProductIdMap(newProductIdMap);
+      
+      // Uploader les documents
+      console.log('📤 Étape 1b: Upload des documents...');
+      await uploadAllDocuments(data.id, newProductIdMap);
+      console.log('✅ Upload terminé');
+    } else {
+      // Si la demande existe déjà, uploader les documents manquants
+      console.log('📤 Upload des documents pour la demande existante ID:', demandeIdToSubmit);
+      await uploadAllDocuments(demandeIdToSubmit, productIdMap);
     }
-  };
+    
+    // ✅ Étape 2: Soumettre la demande (changer statut de BROUILLON à SOUMISE)
+    console.log('📤 Étape 2: Soumission de la demande ID:', demandeIdToSubmit);
+    const submittedDemande = await submitDemande(demandeIdToSubmit);
+    console.log('✅ Demande soumise avec succès:', submittedDemande);
+
+    // ✅ Étape 3: Créer le PaymentIntent
+    console.log('💰 Étape 3: Création du PaymentIntent...');
+    const createIntentResponse = await handleCreatePaymentIntent(demandeIdToSubmit);
+    const paymentIntentId = createIntentResponse.paymentIntentId;
+
+    if (!paymentIntentId) {
+      throw new Error('Impossible de créer le PaymentIntent');
+    }
+
+    console.log('✅ PaymentIntent créé:', paymentIntentId);
+
+    // ✅ Étape 4: Confirmer le paiement
+    console.log('💳 Étape 4: Confirmation du paiement...');
+    const result = await handleProcessPayment(paymentIntentId, paymentDetails, demandeIdToSubmit);
+
+    if (result.success) {
+      setPaymentSuccess({
+        success: true,
+        message: 'Paiement effectué avec succès! Votre demande a été soumise.',
+        amount: result.amount
+      });
+
+      setIsPaid(true);
+
+      // Nettoyer le localStorage
+      localStorage.removeItem('productDeclarationDraft');
+      localStorage.removeItem('currentDemandeId');
+
+      // Rediriger vers l'étape 6 (récapitulatif) après 2 secondes
+      setTimeout(() => {
+        setStep(6);
+      }, 2000);
+    } else {
+      setPaymentError(result.message || 'Erreur de paiement');
+    }
+
+  } catch (error: any) {
+    console.error('❌ Erreur:', error);
+    
+    if (error.response?.status === 401) {
+      setPaymentError('Votre session a expiré. Veuillez vous reconnecter.');
+      setTimeout(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }, 2000);
+    } else {
+      const errorData = error.response?.data;
+      if (errorData && errorData.error) {
+        const errorMessage = errorData.error;
+        if (errorMessage.includes('card_declined')) {
+          setPaymentError('Votre carte a été refusée. Veuillez vérifier vos informations ou utiliser une autre carte.');
+        } else if (errorMessage.includes('insufficient_funds')) {
+          setPaymentError('Fonds insuffisants sur cette carte. Veuillez utiliser une autre carte.');
+        } else if (errorMessage.includes('expired_card')) {
+          setPaymentError('Votre carte a expiré. Veuillez utiliser une carte valide.');
+        } else if (errorMessage.includes('incorrect_cvc')) {
+          setPaymentError('Le code de sécurité (CVV) est incorrect. Veuillez vérifier et réessayer.');
+        } else {
+          const cleanMessage = errorMessage.split(';')[0];
+          setPaymentError(cleanMessage);
+        }
+      } else if (errorData && errorData.message) {
+        setPaymentError(errorData.message);
+      } else if (typeof errorData === 'string') {
+        setPaymentError(errorData);
+      } else {
+        setPaymentError(error.message || 'Erreur lors du paiement');
+      }
+    }
+  } finally {
+    setPaymentLoading(false);
+  }
+};
+
+  // ✅ AJOUTÉ - Fonction pour sauvegarder en brouillon
+ const handleSaveDraft = async () => {
+  setIsLoading(true);
+  setShowDraftModal(false);
+  
+  try {
+    // Vérifier d'abord que tous les documents requis sont sélectionnés
+    const missingDocs = checkRequiredDocuments();
+    if (missingDocs.length > 0) {
+      showGeneralAlert(`Impossible de sauvegarder: documents manquants - ${missingDocs.join(', ')}`, 'error');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Si la demande n'existe pas encore, la créer
+    if (!demandeId) {
+      console.log('📝 Création de la demande avant sauvegarde...');
+      const data = await createDemande();
+      console.log('✅ Demande créée avec ID:', data.id);
+      
+      localStorage.setItem('currentDemandeId', data.id.toString());
+      setDemandeId(data.id);
+      setDeclarationRef(data.reference);
+      
+      // Créer le mapping des produits
+      const newProductIdMap = new Map<string, number>();
+      formData.products.forEach((frontendProduct, index) => {
+        if (data.products && data.products[index]) {
+          newProductIdMap.set(String(frontendProduct.id), data.products[index].id);
+          updateProduct(frontendProduct.id, { backendId: data.products[index].id });
+        }
+      });
+      setProductIdMap(newProductIdMap);
+      
+      // Uploader les documents
+      console.log('📤 Upload des documents...');
+      await uploadAllDocuments(data.id, newProductIdMap);
+      console.log('✅ Upload terminé');
+    } else {
+      // Si la demande existe déjà, on upload juste les documents
+      console.log('📤 Upload des documents pour la demande existante ID:', demandeId);
+      await uploadAllDocuments(demandeId, productIdMap);
+    }
+    
+    // Sauvegarder le brouillon dans localStorage
+    localStorage.setItem('productDeclarationDraft', JSON.stringify(formData));
+    localStorage.setItem('currentDemandeId', demandeId?.toString() || '');
+    
+    showGeneralAlert('Votre demande a été sauvegardée en tant que brouillon!', 'success');
+    
+    // Rediriger vers la page des demandes de l'exportateur
+    setTimeout(() => {
+      navigate('/exporter/mes-demandes');
+    }, 2000);
+    
+  } catch (error: any) {
+    console.error('❌ Erreur lors de la sauvegarde:', error);
+    showGeneralAlert(error.message || 'Erreur lors de la sauvegarde du brouillon', 'error');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Gérer le clic sur Suivant
   const handleNextStep = async () => {
-    // Étape 3: Documents - CRÉER LA DEMANDE (BROUILLON) + UPLOAD
-    if (step === 3) {
-      setIsLoading(true);
-      try {
-        // Vérifier que tous les documents requis sont sélectionnés
-        const missingDocs = checkRequiredDocuments();
-        if (missingDocs.length > 0) {
-          showGeneralAlert(`Documents manquants: ${missingDocs.join(', ')}`, 'error');
-          setIsLoading(false);
-          return;
-        }
-
-        // Créer la demande (statut BROUILLON)
-        console.log('📝 Étape 3: Création de la demande en BROUILLON...');
-        const data = await createDemande();
-        console.log('✅ Demande créée avec ID:', data.id, 'statut:', data.status);
-
-        localStorage.setItem('currentDemandeId', data.id.toString());
-        setDemandeId(data.id);
-        setDeclarationRef(data.reference);
-
-        // Créer le mapping des produits
-        const newProductIdMap = new Map<string, number>();
-
-        formData.products.forEach((frontendProduct, index) => {
-          if (data.products && data.products[index]) {
-            console.log(`Mapping product ${frontendProduct.id} to backend ID ${data.products[index].id}`);
-            newProductIdMap.set(frontendProduct.id, data.products[index].id);
-            updateProduct(frontendProduct.id, { backendId: data.products[index].id });
-          }
-        });
-
-        setProductIdMap(newProductIdMap);
-
-        // Attendre que le state soit mis à jour
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Uploader les documents
-        console.log('📤 Début de l\'upload des documents...');
-        await uploadAllDocuments(data.id, newProductIdMap);
-        console.log('✅ Upload terminé');
-
-        showGeneralAlert('Demande créée avec succès!', 'success');
-
-        // Passer à l'étape 4 (Validation)
-        setStep(step + 1);
-      } catch (error: any) {
-        console.error('❌ Erreur:', error);
-        showGeneralAlert(error.message || 'Erreur lors de la création de la demande', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    // Étape 4: Validation - SOUMETTRE LA DEMANDE (SOUMISE)
-    else if (step === 4) {
-      if (!isAgreed) {
-        showGeneralAlert('Vous devez cocher la case pour continuer', 'error');
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        console.log('📤 Étape 4: Soumission de la demande...');
-        await submitDemande();
-        console.log('✅ Demande soumise avec succès (statut: SOUMISE)');
-
-        showGeneralAlert('Demande soumise avec succès!', 'success');
-
-        // Passer à l'étape 5 (Paiement)
-        setStep(step + 1);
-      } catch (error: any) {
-        console.error('❌ Erreur lors de la soumission:', error);
-        showGeneralAlert(error.message || 'Erreur lors de la soumission', 'error');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    // Étape 5: Paiement - juste vérifier que le paiement est effectué
-    // Le changement de statut vers EN_COURS_VALIDATION est fait par le backend
-    else if (step === 5) {
-      if (!isPaid) {
-        showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
-        return;
-      }
-      // Passer à l'écran final
-      setStep(step + 1);
-    }
-    // Autres étapes: simple navigation
-    else {
-      setStep(step + 1);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Cette fonction n'est appelée qu'à l'étape 6 (après paiement)
-    // pour afficher l'écran de confirmation
-
+  // Étape 3: Documents - UNIQUEMENT VÉRIFIER LES DOCUMENTS, PAS CRÉER LA DEMANDE
+  if (step === 3) {
     setIsLoading(true);
     try {
-      // Simuler un délai
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Vérifier que tous les documents requis sont sélectionnés
+      const missingDocs = checkRequiredDocuments();
+      if (missingDocs.length > 0) {
+        showGeneralAlert(`Documents manquants: ${missingDocs.join(', ')}`, 'error');
+        setIsLoading(false);
+        return;
+      }
 
-      localStorage.removeItem('productDeclarationDraft');
-      localStorage.removeItem('currentDemandeId');
-      setIsSubmitted(true);
-      showGeneralAlert('Déclaration soumise avec succès!', 'success');
-    } catch (err: any) {
-      console.error('❌ Error:', err);
+      // ✅ SUPPRIMÉ: createDemande() n'est plus appelé ici
+      // La demande sera créée uniquement lors de la sauvegarde en brouillon
+      
+      console.log('📝 Étape 3: Tous les documents sont sélectionnés, passage à l\'étape 4');
+      showGeneralAlert('Documents validés, passez à l\'étape suivante', 'success');
+
+      // Passer à l'étape 4 (Validation)
+      setStep(step + 1);
+    } catch (error: any) {
+      console.error('❌ Erreur:', error);
+      showGeneralAlert(error.message || 'Erreur lors de la vérification des documents', 'error');
     } finally {
       setIsLoading(false);
     }
-  };
+  }
+  // Étape 4: Validation - SOUMETTRE LA DEMANDE (SOUMISE) si elle existe déjà
+  else if (step === 4) {
+    if (!isAgreed) {
+      showGeneralAlert('Vous devez cocher la case pour continuer', 'error');
+      return;
+    }
+    
+    setStep(step + 1);
+  }
+  // Étape 5: Paiement - juste vérifier que le paiement est effectué
+  else if (step === 5) {
+    if (!isPaid) {
+      showGeneralAlert('Veuillez effectuer le paiement avant de continuer', 'error');
+      return;
+    }
+    // Passer à l'écran final
+    setStep(step + 1);
+  }
+  // Autres étapes: simple navigation
+  else {
+    setStep(step + 1);
+  }
+};
 
+  
   const calculateFees = () => {
     const baseFee = 50;
     const perProductFee = 20;
@@ -905,7 +1024,7 @@ const ProductDeclaration: React.FC = () => {
     );
   };
 
-  if (isSubmitted) {
+  if (step === 6) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center animate-fade-in-scale">
         <div className="bg-white rounded-[3rem] p-12 shadow-2xl border border-emerald-100 mb-8">
@@ -929,6 +1048,7 @@ const ProductDeclaration: React.FC = () => {
   }
 
   return (
+    <>
     <div className="max-w-5xl mx-auto py-8">
       <div className="flex items-center justify-between mb-12 px-8">
         {['Produits', 'Logistique', 'Documents', 'Validation', 'Paiement'].map((label, i) => (
@@ -980,15 +1100,15 @@ const ProductDeclaration: React.FC = () => {
                 ) : (
                   formData.products.map((product, index) => (
                     <div key={product.id} className="relative p-10 rounded-[2.5rem] bg-slate-50/30 border-2 border-slate-50">
-                      <div className={`absolute -top-5 -left-5 w-12 h-12 rounded-2xl flex items-center justify-center font-black italic shadow-xl ${product.type === 'alimentaire' ? 'bg-emerald-500 text-white' : 'bg-blue-500 text-white'
+                      <div className={`absolute -top-5 -left-5 w-12 h-12 rounded-2xl flex items-center justify-center font-black italic shadow-xl ${product.productType === 'alimentaire' ? 'bg-emerald-500 text-white' : 'bg-blue-500 text-white'
                         }`}>
                         {index + 1}
                       </div>
 
                       <div className="absolute top-6 right-6 flex items-center gap-4">
-                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${product.type === 'alimentaire' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${product.productType === 'alimentaire' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'
                           }`}>
-                          {product.type}
+                          {product.productType}
                         </span>
                         <button
                           onClick={() => removeProduct(product.id)}
@@ -1000,13 +1120,50 @@ const ProductDeclaration: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            Image du produit
+                          </label>
+                          <div className="flex items-center gap-6">
+                            <div className="w-24 h-24 rounded-2xl bg-white border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative group">
+                              {product.productImage ? (
+                                <img 
+                                  src={product.productImage} 
+                                  alt="Preview" 
+                                  className="w-full h-full object-cover" 
+                                  referrerPolicy="no-referrer" 
+                                />
+                              ) : (
+                                <i className="fas fa-camera text-slate-300 text-xl"></i>
+                              )}
+                              <input 
+                                type="file" 
+                                accept="image/jpeg,image/png,image/jpg"
+                                onChange={(e) => handleProductImageChange(product.id, e.target.files?.[0] || null)}
+                                className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                disabled={isLoading}
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <i className="fas fa-cloud-arrow-up text-white text-sm"></i>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-[10px] font-bold text-slate-500 leading-relaxed">
+                                Ajoutez une photo claire de votre produit pour qu'il soit visible par les importateurs dans le catalogue.
+                              </p>
+                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mt-1">
+                                Format: JPG, PNG • Max: 2MB
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                         <SearchableSelect
                           label="Catégorie"
-                          value={product.category}
-                          options={(product.type === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).map(c => c.name)}
+                          value={product.category || ''}
+                          options={(product.productType === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).map(c => c.name)}
                           onChange={(val) => {
-                            const cat = (product.type === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).find(c => c.name === val);
-                            updateProduct(product.id, { category: val, ngpCode: cat?.codes[0] || '' });
+                            const cat = (product.productType === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS).find(c => c.name === val);
+                            updateProduct(product.id, { category: val, ngp: cat?.codes[0] || '' });
                           }}
                           placeholder="Choisir une catégorie..."
                           required
@@ -1015,13 +1172,13 @@ const ProductDeclaration: React.FC = () => {
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Code NGP *</label>
                           <select
-                            value={product.ngpCode}
-                            onChange={(e) => updateProduct(product.id, { ngpCode: e.target.value })}
+                            value={product.ngp}
+                            onChange={(e) => updateProduct(product.id, { ngp: e.target.value })}
                             className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-white focus:border-tunisia-red transition-all outline-none"
                             disabled={isLoading}
                           >
                             <option value="">Sélectionner un code...</option>
-                            {(product.type === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS)
+                            {(product.productType === 'alimentaire' ? CATEGORIES_ALIMENTAIRES : CATEGORIES_INDUSTRIELS)
                               .find(c => c.name === product.category)?.codes.map(code => (
                                 <option key={code} value={code}>{code}</option>
                               ))}
@@ -1042,7 +1199,7 @@ const ProductDeclaration: React.FC = () => {
 
                         <SearchableSelect
                           label="Pays d'origine"
-                          value={product.originCountry}
+                          value={product.originCountry || ''}
                           options={COUNTRIES}
                           onChange={(val) => updateProduct(product.id, { originCountry: val })}
                           placeholder="Rechercher un pays..."
@@ -1050,7 +1207,7 @@ const ProductDeclaration: React.FC = () => {
                           isCountry
                         />
 
-                        {product.type === 'alimentaire' ? (
+                        {product.productType === 'alimentaire' ? (
                           <>
                             <div className="space-y-4 md:col-span-2 p-6 bg-white rounded-2xl border border-slate-50">
                               <div className="flex flex-col md:flex-row gap-8">
@@ -1223,8 +1380,8 @@ const ProductDeclaration: React.FC = () => {
                     {formData.products.map((p, i) => (
                       <div key={p.id} className="flex justify-between items-center text-xs font-bold p-3 bg-white rounded-xl border border-slate-50">
                         <span className="text-slate-500">{i + 1}. {p.productName || 'Produit sans nom'}</span>
-                        <span className={`px-2 py-0.5 rounded-md text-[8px] uppercase ${p.type === 'alimentaire' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
-                          {p.type}
+                        <span className={`px-2 py-0.5 rounded-md text-[8px] uppercase ${p.productType === 'alimentaire' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                          {p.productType}
                         </span>
                       </div>
                     ))}
@@ -1261,13 +1418,13 @@ const ProductDeclaration: React.FC = () => {
                         {pIdx + 1}
                       </div>
                       <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight italic">
-                        {product.productName || `Produit ${pIdx + 1}`} ({product.type})
+                        {product.productName || `Produit ${pIdx + 1}`} ({product.productType})
                         {product.backendId && <span className="ml-2 text-[8px] text-slate-400">ID: {product.backendId}</span>}
                       </h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {(product.type === 'alimentaire' ?
+                      {(product.productType === 'alimentaire' ?
                         (product.hasBrandLicense ? FOOD_DOCS : FOOD_DOCS.filter(doc => doc.id !== 'BRAND_LICENSE'))
                         : INDUSTRIAL_DOCS
                       ).map((doc) => {
@@ -1363,13 +1520,13 @@ const ProductDeclaration: React.FC = () => {
                   <div className="space-y-4">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Alimentaires</p>
                     <p className="text-2xl font-black italic tracking-tighter text-emerald-600">
-                      {formData.products.filter(p => p.type === 'alimentaire').length}
+                      {formData.products.filter(p => p.productType === 'alimentaire').length}
                     </p>
                   </div>
                   <div className="space-y-4">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Industriels</p>
                     <p className="text-2xl font-black italic tracking-tighter text-blue-600">
-                      {formData.products.filter(p => p.type === 'industriel').length}
+                      {formData.products.filter(p => p.productType === 'industriel').length}
                     </p>
                   </div>
                 </div>
@@ -1502,7 +1659,20 @@ const ProductDeclaration: React.FC = () => {
               Précédent
             </button>
           )}
+          
+          {/* ✅ AJOUTÉ - Bouton Sauvegarder Brouillon UNIQUEMENT à l'étape 4 */}
+          {step === 4 && (
+            <button 
+              onClick={() => setShowDraftModal(true)}
+              className="px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all flex items-center gap-2 border border-slate-200"
+              disabled={isLoading}
+            >
+              <i className="fas fa-save text-[12px]"></i> Sauvegarder Brouillon
+            </button>
+          )}
+          
           <div className="flex-grow"></div>
+          
           {step < 5 ? (
             <button
               onClick={handleNextStep}
@@ -1511,12 +1681,13 @@ const ProductDeclaration: React.FC = () => {
                 (step === 1 && formData.products.length === 0) ||
                 (step === 4 && !isAgreed)
               }
-              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${isLoading ||
-                  (step === 1 && formData.products.length === 0) ||
-                  (step === 4 && !isAgreed)
+              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
+                isLoading ||
+                (step === 1 && formData.products.length === 0) ||
+                (step === 4 && !isAgreed)
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   : 'bg-slate-900 text-white hover:bg-black'
-                }`}
+              }`}
             >
               {isLoading ? (
                 <><i className="fas fa-spinner fa-spin mr-2"></i> Chargement...</>
@@ -1526,10 +1697,13 @@ const ProductDeclaration: React.FC = () => {
             </button>
           ) : (
             <button
-              onClick={handleSubmit}
+              onClick={handleNextStep}
               disabled={!isAgreed || isLoading || !isPaid}
-              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${isAgreed && !isLoading && isPaid ? 'bg-tunisia-red text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
+              className={`px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl transition-all ${
+                isAgreed && !isLoading && isPaid
+                  ? 'bg-tunisia-red text-white hover:bg-red-700'
+                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
             >
               {isLoading ? (
                 <><i className="fas fa-spinner fa-spin mr-2"></i> Envoi...</>
@@ -1541,6 +1715,66 @@ const ProductDeclaration: React.FC = () => {
         </div>
       </div>
     </div>
+
+    {/* ✅ AJOUTÉ - Draft Modal */}
+    <AnimatePresence>
+      {showDraftModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowDraftModal(false)}
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+          />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl p-10 border border-slate-100 overflow-hidden"
+          >
+            <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center text-2xl mb-6">
+              <i className="fas fa-save"></i>
+            </div>
+            <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-4">Enregistrer en tant que brouillon ?</h3>
+            <div className="space-y-4 text-slate-500 font-medium leading-relaxed mb-8">
+              <p>
+                En choisissant d'enregistrer cette demande comme brouillon, <span className="text-slate-900 font-black">elle ne sera pas encore soumise aux autorités</span> pour validation.
+              </p>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] space-y-2">
+                <p className="flex items-center gap-2">
+                  <i className="fas fa-eye-slash text-slate-400 w-4"></i>
+                  <span>La demande ne sera pas visible par les instances de contrôle.</span>
+                </p>
+                <p className="flex items-center gap-2">
+                  <i className="fas fa-credit-card text-slate-400 w-4"></i>
+                  <span>Le paiement des frais ne sera pas effectué à ce stade.</span>
+                </p>
+                <p className="flex items-center gap-2">
+                  <i className="fas fa-arrow-right text-tunisia-red w-4"></i>
+                  <span className="text-slate-900">Vous devrez finaliser le paiement et soumettre officiellement la demande plus tard via votre liste de dossiers.</span>
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={handleSaveDraft}
+                className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-black transition-all shadow-xl"
+              >
+                Confirmer l'enregistrement
+              </button>
+              <button 
+                onClick={() => setShowDraftModal(false)}
+                className="w-full py-4 bg-white text-slate-400 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-50 transition-all"
+              >
+                Annuler
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+    </>
   );
 };
 

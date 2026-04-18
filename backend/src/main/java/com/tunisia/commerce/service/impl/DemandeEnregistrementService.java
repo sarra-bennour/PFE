@@ -103,6 +103,72 @@ public class DemandeEnregistrementService {
     }
 
     /**
+     * Uploader une image pour un produit
+     */
+    @Transactional
+    public String uploadProductImage(Long demandeId, Long productId, MultipartFile file) {
+        log.info("Upload de l'image pour le produit ID: {}, demande ID: {}", productId, demandeId);
+
+        try {
+            // 1. Récupérer le produit
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new RuntimeException("Produit non trouvé avec ID: " + productId));
+
+            // 2. Vérifier que le produit appartient à la demande
+            boolean isAssociated = demandeProduitRepository.existsByDemandeIdAndProduitId(demandeId, productId);
+            if (!isAssociated) {
+                throw new RuntimeException("Ce produit n'appartient pas à cette demande");
+            }
+
+            // 3. Créer le répertoire pour les images
+            String uploadDir = UPLOAD_DIR + demandeId + "/products/" + productId + "/images/";
+            Path uploadPath = Paths.get(uploadDir);
+            if (!Files.exists(uploadPath)) {
+                Files.createDirectories(uploadPath);
+                log.info("Répertoire créé: {}", uploadDir);
+            }
+
+            // 4. Générer un nom de fichier unique
+            String originalFileName = file.getOriginalFilename();
+            String fileExtension = "";
+            if (originalFileName != null && originalFileName.contains(".")) {
+                fileExtension = originalFileName.substring(originalFileName.lastIndexOf("."));
+            }
+            String fileName = UUID.randomUUID().toString() + fileExtension;
+
+            // 5. Sauvegarder le fichier
+            Path filePath = uploadPath.resolve(fileName);
+            Files.copy(file.getInputStream(), filePath);
+            log.info("Fichier sauvegardé: {}", filePath.toString());
+
+            // 6. Supprimer l'ancienne image si elle existe
+            if (product.getProductImage() != null && !product.getProductImage().isEmpty()) {
+                try {
+                    Path oldImagePath = Paths.get(product.getProductImage());
+                    if (Files.exists(oldImagePath)) {
+                        Files.delete(oldImagePath);
+                        log.info("Ancienne image supprimée: {}", oldImagePath);
+                    }
+                } catch (Exception e) {
+                    log.warn("Impossible de supprimer l'ancienne image: {}", e.getMessage());
+                }
+            }
+
+            // 7. Mettre à jour le produit avec le chemin de l'image
+            String imageUrl = "\\uploads\\" + demandeId + "\\products\\" + productId + "\\images\\" + fileName;
+            product.setProductImage(imageUrl);
+            productRepository.save(product);
+
+            log.info("Image uploadée avec succès pour le produit ID: {}", productId);
+            return imageUrl;
+
+        } catch (IOException e) {
+            log.error("Erreur lors de l'upload de l'image: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de l'upload: " + e.getMessage());
+        }
+    }
+
+    /**
      * Map ProductRequestDTO to Product entity
      */
     private Product mapToEntity(ProductRequestDTO dto) {
@@ -241,7 +307,7 @@ public class DemandeEnregistrementService {
                     List.of(DemandeStatus.SOUMISE)
             );
 
-            if (submittedDemandesCount >= MAX_SUBMITTED_DEMANDES) {
+            if (submittedDemandesCount > MAX_SUBMITTED_DEMANDES) {
                 throw ProductDeclarationException.maxSubmittedDemandesExceeded(MAX_SUBMITTED_DEMANDES);
             }
 
@@ -269,7 +335,101 @@ public class DemandeEnregistrementService {
         }
     }
 
+    /**
+     * Supprimer une demande en mode brouillon
+     * @param demandeId ID de la demande à supprimer
+     * @param exportateurId ID de l'exportateur connecté
+     */
     @Transactional
+    public void deleteDemande(Long demandeId, Long exportateurId) {
+        log.info("Tentative de suppression de la demande ID: {} par l'exportateur ID: {}", demandeId, exportateurId);
+
+        try {
+            // 1. Vérifier que la demande existe
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> ProductDeclarationException.demandeNotFound(demandeId));
+
+            // 2. Vérifier que la demande appartient à l'exportateur
+            if (!demande.getExportateur().getId().equals(exportateurId)) {
+                log.error("Accès non autorisé: la demande {} n'appartient pas à l'exportateur {}", demandeId, exportateurId);
+                throw ProductDeclarationException.unauthorizedAccess();
+            }
+
+            // 3. Vérifier que la demande est en mode BROUILLON (seules les demandes en brouillon peuvent être supprimées)
+            if (demande.getStatus() != DemandeStatus.BROUILLON) {
+                log.error("Impossible de supprimer la demande {}: statut actuel = {}, seul BROUILLON est autorisé",
+                        demandeId, demande.getStatus());
+                throw ProductDeclarationException.invalidDemandeStatusForDeletion(demande.getStatus());
+            }
+
+            // 4. Supprimer les fichiers physiques (documents et images)
+            deletePhysicalFiles(demande);
+
+            // 5. Supprimer les associations DemandeProduit
+            List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demandeId);
+            demandeProduitRepository.deleteAll(demandeProduits);
+            log.info("Supprimé {} associations produit(s) pour la demande {}", demandeProduits.size(), demandeId);
+
+            // 6. Supprimer les produits associés
+            for (DemandeProduit dp : demandeProduits) {
+                Product product = dp.getProduit();
+                if (product != null) {
+                    productRepository.delete(product);
+                    log.info("Produit ID: {} supprimé", product.getId());
+                }
+            }
+
+            // 7. Supprimer les documents
+            List<Document> documents = documentRepository.findByDemandeId(demandeId);
+            documentRepository.deleteAll(documents);
+            log.info("Supprimé {} document(s) pour la demande {}", documents.size(), demandeId);
+
+            // 8. Supprimer l'historique
+            List<DemandeHistory> histories = historyRepository.findByDemandeIdOrderByPerformedAtDesc(demandeId);
+            historyRepository.deleteAll(histories);
+            log.info("Supprimé {} historique(s) pour la demande {}", histories.size(), demandeId);
+
+            // 9. Supprimer la demande elle-même
+            demandeRepository.delete(demande);
+            log.info("Demande ID: {} supprimée avec succès", demandeId);
+
+        } catch (ProductDeclarationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Erreur inattendue lors de la suppression de la demande: {}", e.getMessage());
+            throw ProductDeclarationException.demandeDeletionFailed(e.getMessage());
+        }
+    }
+
+    /**
+     * Supprimer les fichiers physiques associés à une demande
+     */
+    private void deletePhysicalFiles(DemandeEnregistrement demande) {
+        try {
+            // Chemin du répertoire de la demande
+            String demandeDir = UPLOAD_DIR + demande.getId();
+            Path demandePath = Paths.get(demandeDir);
+
+            if (Files.exists(demandePath)) {
+                // Supprimer récursivement tous les fichiers et dossiers
+                Files.walk(demandePath)
+                        .sorted((path1, path2) -> path2.compareTo(path1)) // Supprimer les fichiers avant les dossiers
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                                log.info("Fichier supprimé: {}", path);
+                            } catch (IOException e) {
+                                log.warn("Impossible de supprimer le fichier: {}", path, e);
+                            }
+                        });
+                log.info("Répertoire de la demande supprimé: {}", demandeDir);
+            }
+        } catch (IOException e) {
+            log.warn("Erreur lors de la suppression des fichiers physiques: {}", e.getMessage());
+        }
+    }
+
+    /*@Transactional
     public DemandeEnregistrementDTO validateDemande(Long demandeId, String decisionComment, Long agentId) {
         log.info("Validation de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
 
@@ -310,9 +470,9 @@ public class DemandeEnregistrementService {
 
         log.info("Demande validée avec succès, agrément N°: {}", numeroAgrement);
         return mapToDTO(demande);
-    }
+    }*/
 
-    @Transactional
+/*    @Transactional
     public DemandeEnregistrementDTO rejectDemande(Long demandeId, String rejectionReason, Long agentId) {
         log.info("Rejet de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
 
@@ -341,14 +501,14 @@ public class DemandeEnregistrementService {
 
         log.info("Demande rejetée, ID: {}", demandeId);
         return mapToDTO(demande);
-    }
+    }*/
 
-    public DemandeEnregistrementDTO getDemandeById(Long demandeId) {
+    /*public DemandeEnregistrementDTO getDemandeById(Long demandeId) {
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
                 .orElseThrow(() -> new RuntimeException("Demande non trouvée avec ID: " + demandeId));
 
         return mapToDTO(demande);
-    }
+    }*/
 
     /**
      * Récupérer UNIQUEMENT les déclarations de produits (DEM-)
@@ -365,16 +525,16 @@ public class DemandeEnregistrementService {
     }
 
 
-    public List<DemandeEnregistrementDTO> getDemandesByStatus(DemandeStatus status) {
+    /*public List<DemandeEnregistrementDTO> getDemandesByStatus(DemandeStatus status) {
         return demandeRepository.findByStatus(status).stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
-    }
+    }*/
 
     /**
      * Récupérer un document par son ID
      */
-    public DocumentDTO getDocumentById(Long documentId, Long exportateurId) {
+    /*public DocumentDTO getDocumentById(Long documentId, Long exportateurId) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
 
@@ -384,12 +544,12 @@ public class DemandeEnregistrementService {
         }
 
         return convertToDTO(document);
-    }
+    }*/
 
     /**
      * Récupérer le fichier du document
      */
-    public org.springframework.core.io.Resource getDocumentFile(Long documentId, Long exportateurId) {
+    /*public org.springframework.core.io.Resource getDocumentFile(Long documentId, Long exportateurId) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
 
@@ -410,7 +570,7 @@ public class DemandeEnregistrementService {
         } catch (Exception e) {
             throw new RuntimeException("Erreur lors de la lecture du fichier: " + e.getMessage());
         }
-    }
+    }*/
 
     private void validateRequiredDocuments(DemandeEnregistrement demande) {
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
@@ -492,11 +652,11 @@ public class DemandeEnregistrementService {
         return "DEM-" + dateStr + "-" + uniqueId;
     }
 
-    private String generateAgrementNumber() {
+    /*private String generateAgrementNumber() {
         String year = String.valueOf(LocalDateTime.now().getYear());
         String random = String.format("%06d", new Random().nextInt(1000000));
         return "AGR-" + year + "-" + random;
-    }
+    }*/
 
     private void addHistory(DemandeEnregistrement demande, DemandeStatus oldStatus,
                             DemandeStatus newStatus, String action, String comment, User performedBy) {
@@ -543,7 +703,7 @@ public class DemandeEnregistrementService {
                 .build();
     }
 
-    private UserDTO mapExportateurToDTO(ExportateurEtranger exportateur) {
+    /*private UserDTO mapExportateurToDTO(ExportateurEtranger exportateur) {
         UserDTO dto = new UserDTO();
         dto.setId(exportateur.getId());
         dto.setNom(exportateur.getNom());
@@ -575,7 +735,7 @@ public class DemandeEnregistrementService {
         dto.setDocumentsCount(documentRepository.countByExportateurId(exportateur.getId()));
 
         return dto;
-    }
+    }*/
 
     private List<ProduitDTO> mapProductsToDTO(List<Product> products) {
         return products.stream()
@@ -594,6 +754,7 @@ public class DemandeEnregistrementService {
                         .annualQuantityValue(product.getAnnualQuantityValue())
                         .annualQuantityUnit(product.getAnnualQuantityUnit())
                         .commercialBrandName(product.getCommercialBrandName())
+                        .productImage(product.getProductImage())
 
                         // For backward compatibility
                         .processingType(product.getProductState())

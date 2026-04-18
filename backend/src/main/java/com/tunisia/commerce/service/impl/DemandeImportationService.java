@@ -278,7 +278,7 @@ public class DemandeImportationService {
     /**
      * Map Product to ProduitDTO
      */
-    private List<ProduitDTO> mapProductsToDTO(List<Product> products) {
+    /*private List<ProduitDTO> mapProductsToDTO(List<Product> products) {
         return products.stream()
                 .map(product -> ProduitDTO.builder()
                         .id(product.getId())
@@ -302,7 +302,7 @@ public class DemandeImportationService {
                                         product.getAnnualQuantityUnit() : null)
                         .build())
                 .collect(Collectors.toList());
-    }
+    }*/
 
     /**
      * Map Document to DocumentDTO
@@ -330,7 +330,7 @@ public class DemandeImportationService {
     /**
      * Récupérer une demande spécifique par son ID (avec vérification d'autorisation)
      */
-    public DemandeEnregistrementDTO getDemandeById(Long demandeId, Long importateurId) {
+    /*public DemandeEnregistrementDTO getDemandeById(Long demandeId, Long importateurId) {
         log.info("Récupération de la demande ID: {} pour l'importateur ID: {}", demandeId, importateurId);
 
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
@@ -342,12 +342,12 @@ public class DemandeImportationService {
         }
 
         return mapToDTO(demande);
-    }
+    }*/
 
     /**
      * Récupérer un document par son ID (avec vérification d'autorisation)
      */
-    public DocumentDTO getDocumentById(Long documentId, Long importateurId) {
+    /*public DocumentDTO getDocumentById(Long documentId, Long importateurId) {
         log.info("Récupération du document ID: {} pour l'importateur ID: {}", documentId, importateurId);
 
         Document document = documentRepository.findById(documentId)
@@ -361,12 +361,12 @@ public class DemandeImportationService {
         }
 
         return convertToDocumentDTO(document);
-    }
+    }*/
 
     /**
      * Récupérer le fichier d'un document (avec vérification d'autorisation)
      */
-    public Resource getDocumentFile(Long documentId, Long importateurId) {
+    /*public Resource getDocumentFile(Long documentId, Long importateurId) {
         log.info("Récupération du fichier du document ID: {} pour l'importateur ID: {}", documentId, importateurId);
 
         Document document = documentRepository.findById(documentId)
@@ -391,7 +391,7 @@ public class DemandeImportationService {
         } catch (Exception e) {
             throw new RuntimeException("Erreur lors de la lecture du fichier: " + e.getMessage());
         }
-    }
+    }*/
 
     @Transactional
     public DocumentDTO uploadDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr) {
