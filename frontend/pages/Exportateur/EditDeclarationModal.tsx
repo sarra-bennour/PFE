@@ -73,7 +73,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
       hsCode: p.hsCode || p.ngp || '',
       productName: p.productName || '',
       productImage: p.productImage || p.image || null,
-      productImageName: p.productImage ? p.productImage.split('/').pop() : null, // ✅ Extraire le nom de l'URL existante
+      productImageName: p.productImage ? p.productImage.split('/').pop() : null,
       isLinkedToBrand: p.isLinkedToBrand ?? false,
       brandName: p.brandName || '',
       isBrandOwner: p.isBrandOwner ?? false,
@@ -84,7 +84,6 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
       annualQuantityUnit: p.annualQuantityUnit || 'Tonnes',
       commercialBrandName: p.commercialBrandName || '',
     })),
-    // ✅ Stocker les nouvelles images séparément (comme dans ProductDeclaration)
     newProductImages: {} as Record<number, File>,
     documents: {} as Record<string, File>
   });
@@ -187,7 +186,6 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           })
       );
 
-      // ✅ Construire les produits avec les noms d'images (comme dans ProductDeclaration)
       const updateData = {
         exportateurId: declaration.exportateurId || declaration.exportateur?.id,
         products: formData.products.map((p: any) => {
@@ -207,8 +205,8 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
             annualQuantityValue: p.annualQuantityValue || null,
             annualQuantityUnit: p.annualQuantityUnit || null,
             commercialBrandName: p.commercialBrandName || null,
-            productImage: p.productImage,  // L'aperçu base64 (pour l'affichage)
-            productImageName: newImageFile ? newImageFile.name : p.productImageName  // ✅ Nom original si nouvelle image
+            productImage: p.productImage,
+            productImageName: newImageFile ? newImageFile.name : p.productImageName
           };
         }),
         documents: documentsWithContent,
@@ -224,7 +222,47 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
     }
   };
 
-  // ✅ Gestionnaire pour les images (stocke le fichier et crée l'aperçu)
+  // ✅ Fonction pour obtenir l'URL d'affichage de l'image
+  // Fonction pour obtenir l'URL d'affichage de l'image
+const getDisplayImageUrl = (product: any): string => {
+    console.log('=== getDisplayImageUrl ===');
+    console.log('Product ID:', product.id);
+    console.log('Product image brut:', product.productImage);
+    console.log('Type de productImage:', typeof product.productImage);
+    
+    // Si c'est une nouvelle image en Base64
+    if (product.productImage && product.productImage.startsWith('data:image')) {
+        console.log('✅ Image en Base64 détectée');
+        return product.productImage;
+    }
+    
+    // ✅ Si c'est une URL qui commence par /api (déjà complète)
+    if (product.productImage && product.productImage.startsWith('/api')) {
+        const fullUrl = `http://localhost:8080${product.productImage}`;
+        console.log('✅ URL API détectée (commence par /api)');
+        console.log('URL construite:', fullUrl);
+        return fullUrl;
+    }
+    
+    // Si c'est une URL existante qui commence par /uploads
+    if (product.productImage && product.productImage.startsWith('/uploads')) {
+        const fullUrl = `http://localhost:8080/api/produits${product.productImage}`;
+        console.log('✅ URL existante (commence par /uploads)');
+        console.log('URL construite:', fullUrl);
+        return fullUrl;
+    }
+    
+    // Si c'est une URL complète
+    if (product.productImage && product.productImage.startsWith('http')) {
+        console.log('✅ URL complète détectée:', product.productImage);
+        return product.productImage;
+    }
+    
+    // Image par défaut
+    console.log('⚠️ Aucune image valide, utilisation image par défaut');
+    return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-family='sans-serif' font-size='14'%3E📷 Image%3C/text%3E%3C/svg%3E";
+};
+
   const handleImageChange = (id: number, file: File | null) => {
     if (!file) {
       updateProduct(id, { productImage: null, productImageName: null });
@@ -236,19 +274,16 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
       return;
     }
 
-    // Vérifier la taille (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
       alert("L'image ne doit pas dépasser 2MB");
       return;
     }
 
-    // Vérifier le type
     if (!file.type.startsWith('image/')) {
       alert("Veuillez sélectionner une image valide (JPG, PNG)");
       return;
     }
 
-    // ✅ Stocker le fichier dans newProductImages
     setFormData(prev => ({
       ...prev,
       newProductImages: {
@@ -257,10 +292,8 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
       }
     }));
 
-    // ✅ Stocker le nom original
     updateProduct(id, { productImageName: file.name });
 
-    // Créer un aperçu temporaire en base64 pour l'affichage
     const reader = new FileReader();
     reader.onloadend = () => {
       updateProduct(id, { productImage: reader.result as string });
@@ -268,7 +301,6 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
     reader.readAsDataURL(file);
   };
 
-  // Gestionnaire pour les fichiers de documents
   const handleDocumentFileChange = (docKey: string, file: File | null) => {
     if (!file) return;
     setFormData(prev => ({
@@ -280,7 +312,6 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
     }));
   };
 
-  // Supprimer un document
   const handleRemoveDocument = (docKey: string) => {
     setFormData(prev => {
       const newDocs = { ...prev.documents };
@@ -307,7 +338,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
         exit={{ opacity: 0, y: 20, scale: 0.98 }}
         className="relative w-full max-w-5xl h-[90vh] bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col border border-slate-100"
       >
-        {/* Header - inchangé */}
+        {/* Header */}
         <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
           <div>
             <h2 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Modification de Déclaration</h2>
@@ -323,7 +354,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           </button>
         </div>
 
-        {/* Tab Switcher - inchangé */}
+        {/* Tab Switcher */}
         <div className="px-8 pt-6 flex gap-8 border-b border-slate-50 shrink-0">
           {[
             { id: 'products', label: 'Liste des Produits', icon: Package },
@@ -344,7 +375,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           ))}
         </div>
 
-        {/* Content - reste identique sauf l'affichage du nom de l'image */}
+        {/* Content */}
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <AnimatePresence mode="wait">
             {activeTab === 'products' ? (
@@ -394,11 +425,14 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                         {/* Image Column */}
                         <div className="space-y-3">
                           <div className="aspect-square rounded-2xl bg-white border-2 border-dashed border-slate-200 flex items-center justify-center relative overflow-hidden group/img">
-                            {product.productImage ? (
-                              <img src={product.productImage} className="w-full h-full object-cover" alt="Product" />
-                            ) : (
-                              <Camera size={24} className="text-slate-300" />
-                            )}
+                            <img 
+                              src={getDisplayImageUrl(product)} 
+                              className="w-full h-full object-cover" 
+                              alt="Product"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-family='sans-serif' font-size='14'%3E📷 Image%3C/text%3E%3C/svg%3E";
+                              }}
+                            />
                             <input 
                               type="file" 
                               accept="image/*"
@@ -409,13 +443,12 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                               <Plus size={20} className="text-white" />
                             </div>
                           </div>
-                          {/* ✅ Afficher le nom de l'image */}
                           <p className="text-[8px] font-bold text-slate-400 uppercase text-center tracking-widest truncate">
                             {product.productImageName || 'Image Produit'}
                           </p>
                         </div>
 
-                        {/* Details - reste inchangé */}
+                        {/* Details */}
                         <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -623,7 +656,6 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
                 exit={{ opacity: 0, y: -10 }}
                 className="space-y-6"
               >
-                {/* Section Documents - inchangée */}
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Documents Requis par l'Instance de Validation</h3>
                   <p className="text-[10px] text-amber-600 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-100 uppercase tracking-tight">Vérifiez la validité de vos certificats par article</p>
@@ -725,7 +757,7 @@ const EditDeclarationModal: React.FC<EditDeclarationModalProps> = ({ declaration
           </AnimatePresence>
         </div>
 
-        {/* Footer Actions - inchangé */}
+        {/* Footer Actions */}
         <div className="px-8 py-6 border-t border-slate-100 bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>

@@ -101,6 +101,52 @@ public class DemandeEnregistrementService {
     }
 
     /**
+     * Récupérer tous les produits de l'exportateur connecté
+     * @param exportateurId ID de l'exportateur
+     * @return Liste des produits
+     */
+    public List<ProduitDTO> getProductsByExportateur(Long exportateurId) {
+        log.info("Récupération des produits pour l'exportateur ID: {}", exportateurId);
+
+        try {
+            // Vérifier que l'exportateur existe
+            ExportateurEtranger exportateur = exportateurRepository.findById(exportateurId)
+                    .orElseThrow(() -> ProductDeclarationException.exportateurNotFound(exportateurId));
+
+            // Récupérer les produits
+            List<Product> products = productRepository.findProductsByExportateurId(exportateurId);
+
+            log.info("{} produit(s) trouvé(s) pour l'exportateur {}", products.size(), exportateurId);
+
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+
+        } catch (ProductDeclarationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des produits: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la récupération des produits: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Récupérer les produits par type
+     * @param exportateurId ID de l'exportateur
+     * @param productType Type de produit ("alimentaire" ou "industriel")
+     * @return Liste des produits filtrés
+     */
+    public List<ProduitDTO> getProductsByExportateurAndType(Long exportateurId, String productType) {
+        log.info("Récupération des produits de type {} pour l'exportateur ID: {}", productType, exportateurId);
+
+        List<Product> products = productRepository.findProductsByExportateurIdAndType(exportateurId, productType);
+
+        return products.stream()
+                .map(this::mapProductToProduitDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Uploader une image pour un produit
      */
     @Transactional
@@ -826,86 +872,6 @@ public class DemandeEnregistrementService {
         }
     }
 
-    /*@Transactional
-    public DemandeEnregistrementDTO validateDemande(Long demandeId, String decisionComment, Long agentId) {
-        log.info("Validation de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
-
-        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec ID: " + demandeId));
-
-        User agent = userRepository.findById(agentId)
-                .orElseThrow(() -> new RuntimeException("Agent non trouvé avec ID: " + agentId));
-
-        // Vérifier que la demande est soumise
-        if (demande.getStatus() != DemandeStatus.SOUMISE) {
-            throw new RuntimeException("Seules les demandes soumises peuvent être validées");
-        }
-
-        // Générer le numéro d'agrément
-        String numeroAgrement = generateAgrementNumber();
-
-        DemandeStatus oldStatus = demande.getStatus();
-
-        demande.setStatus(DemandeStatus.VALIDEE);
-        demande.setDecisionDate(LocalDateTime.now());
-        demande.setDecisionComment(decisionComment);
-        demande.setAssignedTo(agentId);
-        demande.setNumeroAgrement(numeroAgrement);
-        demande.setDateAgrement(LocalDateTime.now().toLocalDate());
-
-        // Mettre à jour le statut de l'exportateur
-        ExportateurEtranger exportateur = demande.getExportateur();
-        exportateur.setStatutAgrement(StatutAgrement.VALIDE);
-        exportateur.setNumeroAgrement(numeroAgrement);
-        exportateur.setDateAgrement(LocalDateTime.now().toLocalDate());
-        exportateurRepository.save(exportateur);
-
-        demande = demandeRepository.save(demande);
-
-        addHistory(demande, oldStatus, DemandeStatus.VALIDEE, "VALIDATION",
-                "Agrément N° " + numeroAgrement + " attribué. " + decisionComment, agent);
-
-        log.info("Demande validée avec succès, agrément N°: {}", numeroAgrement);
-        return mapToDTO(demande);
-    }*/
-
-/*    @Transactional
-    public DemandeEnregistrementDTO rejectDemande(Long demandeId, String rejectionReason, Long agentId) {
-        log.info("Rejet de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
-
-        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec ID: " + demandeId));
-
-        User agent = userRepository.findById(agentId)
-                .orElseThrow(() -> new RuntimeException("Agent non trouvé avec ID: " + agentId));
-
-        // Vérifier que la demande est soumise
-        if (demande.getStatus() != DemandeStatus.SOUMISE) {
-            throw new RuntimeException("Seules les demandes soumises peuvent être rejetées");
-        }
-
-        DemandeStatus oldStatus = demande.getStatus();
-
-        demande.setStatus(DemandeStatus.REJETEE);
-        demande.setDecisionDate(LocalDateTime.now());
-        demande.setDecisionComment(rejectionReason);
-        demande.setAssignedTo(agentId);
-
-        demande = demandeRepository.save(demande);
-
-        addHistory(demande, oldStatus, DemandeStatus.REJETEE, "REJET",
-                rejectionReason, agent);
-
-        log.info("Demande rejetée, ID: {}", demandeId);
-        return mapToDTO(demande);
-    }*/
-
-    /*public DemandeEnregistrementDTO getDemandeById(Long demandeId) {
-        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec ID: " + demandeId));
-
-        return mapToDTO(demande);
-    }*/
 
     /**
      * Récupérer UNIQUEMENT les déclarations de produits (DEM-)
@@ -920,54 +886,6 @@ public class DemandeEnregistrementService {
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
-
-
-    /*public List<DemandeEnregistrementDTO> getDemandesByStatus(DemandeStatus status) {
-        return demandeRepository.findByStatus(status).stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
-    }*/
-
-    /**
-     * Récupérer un document par son ID
-     */
-    /*public DocumentDTO getDocumentById(Long documentId, Long exportateurId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
-
-        // Vérifier que le document appartient bien à l'exportateur
-        if (!document.getExportateur().getId().equals(exportateurId)) {
-            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
-        }
-
-        return convertToDTO(document);
-    }*/
-
-    /**
-     * Récupérer le fichier du document
-     */
-    /*public org.springframework.core.io.Resource getDocumentFile(Long documentId, Long exportateurId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
-
-        // Vérifier que le document appartient bien à l'exportateur
-        if (!document.getExportateur().getId().equals(exportateurId)) {
-            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
-        }
-
-        try {
-            Path filePath = Paths.get(document.getFilePath());
-            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
-
-            if (resource.exists() && resource.isReadable()) {
-                return resource;
-            } else {
-                throw new RuntimeException("Le fichier n'existe pas ou n'est pas accessible");
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Erreur lors de la lecture du fichier: " + e.getMessage());
-        }
-    }*/
 
     private void validateRequiredDocuments(DemandeEnregistrement demande) {
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
@@ -1049,11 +967,6 @@ public class DemandeEnregistrementService {
         return "DEM-" + dateStr + "-" + uniqueId;
     }
 
-    /*private String generateAgrementNumber() {
-        String year = String.valueOf(LocalDateTime.now().getYear());
-        String random = String.format("%06d", new Random().nextInt(1000000));
-        return "AGR-" + year + "-" + random;
-    }*/
 
     private void addHistory(DemandeEnregistrement demande, DemandeStatus oldStatus,
                             DemandeStatus newStatus, String action, String comment, User performedBy) {
@@ -1100,40 +1013,6 @@ public class DemandeEnregistrementService {
                 .build();
     }
 
-    /*private UserDTO mapExportateurToDTO(ExportateurEtranger exportateur) {
-        UserDTO dto = new UserDTO();
-        dto.setId(exportateur.getId());
-        dto.setNom(exportateur.getNom());
-        dto.setPrenom(exportateur.getPrenom());
-        dto.setEmail(exportateur.getEmail());
-        dto.setTelephone(exportateur.getTelephone());
-        dto.setRole(exportateur.getRole());
-        dto.setStatut(exportateur.getUserStatut());
-        dto.setDateCreation(exportateur.getDateCreation());
-        dto.setLastLogin(exportateur.getLastLogin());
-        dto.setEmailVerified(exportateur.isEmailVerified());
-        dto.setTwoFactorEnabled(exportateur.isTwoFactorEnabled());
-
-        // Champs spécifiques exportateur
-        dto.setPaysOrigine(exportateur.getPaysOrigine());
-        dto.setRaisonSociale(exportateur.getRaisonSociale());
-        dto.setNumeroRegistreCommerce(exportateur.getNumeroRegistreCommerce());
-        dto.setAdresseLegale(exportateur.getAdresseLegale());
-        dto.setVille(exportateur.getVille());
-        dto.setSiteWeb(exportateur.getSiteWeb());
-        dto.setRepresentantLegal(exportateur.getRepresentantLegal());
-        dto.setNumeroTVA(exportateur.getNumeroTVA());
-        dto.setStatutAgrement(exportateur.getStatutAgrement());
-        dto.setNumeroAgrement(exportateur.getNumeroAgrement());
-        dto.setDateAgrement(exportateur.getDateAgrement());
-        dto.setCompanyName(exportateur.getRaisonSociale());
-        dto.setCountry(exportateur.getPaysOrigine());
-
-        dto.setDocumentsCount(documentRepository.countByExportateurId(exportateur.getId()));
-
-        return dto;
-    }*/
-
     private List<ProduitDTO> mapProductsToDTO(List<Product> products) {
         return products.stream()
                 .map(product -> ProduitDTO.builder()
@@ -1161,6 +1040,36 @@ public class DemandeEnregistrementService {
                                         product.getAnnualQuantityUnit() : null)
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Mapper un seul Product vers ProduitDTO
+     */
+    private ProduitDTO mapProductToProduitDTO(Product product) {
+        if (product == null) return null;
+
+        return ProduitDTO.builder()
+                .id(product.getId())
+                .productType(product.getProductType())
+                .category(product.getCategory())
+                .hsCode(product.getHsCode())
+                .productName(product.getProductName())
+                .isLinkedToBrand(product.getIsLinkedToBrand())
+                .brandName(product.getBrandName())
+                .isBrandOwner(product.getIsBrandOwner())
+                .hasBrandLicense(product.getHasBrandLicense())
+                .productState(product.getProductState())
+                .originCountry(product.getOriginCountry())
+                .annualQuantityValue(product.getAnnualQuantityValue())
+                .annualQuantityUnit(product.getAnnualQuantityUnit())
+                .commercialBrandName(product.getCommercialBrandName())
+                .productImage(product.getProductImage())
+                // For backward compatibility
+                .processingType(product.getProductState())
+                .annualExportCapacity(product.getAnnualQuantityValue() != null &&
+                        product.getAnnualQuantityUnit() != null ?
+                        product.getAnnualQuantityValue() + " " + product.getAnnualQuantityUnit() : null)
+                .build();
     }
 
     private DocumentDTO convertToDTO(Document document) {

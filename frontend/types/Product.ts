@@ -23,5 +23,7 @@ export interface Product {
   commercialBrandName?: string;
   processingType?: string;
   annualExportCapacity?: string;
+  updatedAt?: string;
+  createdAt?: string;
   exporter?: User;
 }

@@ -18,5 +18,21 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     );
     List<Product> findByHsCode(String hsCode);
 
+    // Récupérer tous les produits d'un exportateur via ses demandes
+    @Query("SELECT DISTINCT p FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE d.exportateur.id = :exportateurId")
+    List<Product> findProductsByExportateurId(@Param("exportateurId") Long exportateurId);
+
+    // Récupérer les produits par type (alimentaire/industriel)
+    @Query("SELECT DISTINCT p FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE d.exportateur.id = :exportateurId " +
+            "AND p.productType = :productType")
+    List<Product> findProductsByExportateurIdAndType(@Param("exportateurId") Long exportateurId,
+                                                     @Param("productType") String productType);
+
 
 }

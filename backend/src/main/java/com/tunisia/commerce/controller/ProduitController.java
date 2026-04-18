@@ -3,6 +3,7 @@ package com.tunisia.commerce.controller;
 import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementRequestDTO;
+import com.tunisia.commerce.dto.produits.ProduitDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.entity.ExportateurEtranger;
@@ -35,7 +36,6 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/produits")
@@ -51,6 +51,84 @@ public class ProduitController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
+
+    /**
+     * Récupérer tous les produits de l'exportateur connecté (catalogue)
+     */
+    @GetMapping("/mes-produits")
+    @Operation(summary = "Récupérer les produits de l'exportateur")
+    @PreAuthorize("hasRole('EXPORTATEUR')")
+    public ResponseEntity<?> getMyProducts(@RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT getMyProducts ===");
+
+        try {
+            // Extraire l'exportateur du token
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            System.out.println("Exportateur ID: " + exportateur.getId() + ", Email: " + exportateur.getEmail());
+
+            // Récupérer les produits
+            List<ProduitDTO> products = demandeService.getProductsByExportateur(exportateur.getId());
+
+            System.out.println("✅ " + products.size() + " produit(s) trouvé(s)");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("products", products);
+            response.put("count", products.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (ProductDeclarationException e) {
+            System.err.println("❌ ProductDeclarationException: " + e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur inattendue: " + e.getMessage());
+            e.printStackTrace();
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", "Erreur lors de la récupération des produits: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * Récupérer les produits par type
+     */
+    @GetMapping("/mes-produits/{productType}")
+    @Operation(summary = "Récupérer les produits par type")
+    @PreAuthorize("hasRole('EXPORTATEUR')")
+    public ResponseEntity<?> getMyProductsByType(
+            @PathVariable String productType,
+            @RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT getMyProductsByType ===");
+        System.out.println("Type demandé: " + productType);
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            List<ProduitDTO> products = demandeService.getProductsByExportateurAndType(exportateur.getId(), productType);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("products", products);
+            response.put("count", products.size());
+            response.put("type", productType);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
 
     /**
      * Créer une nouvelle demande d'enregistrement
@@ -186,10 +264,6 @@ public class ProduitController {
         }
     }
 
-
-    /**
-     * Mettre à jour une demande en mode brouillon
-     */
     /**
      * Mettre à jour une demande en mode brouillon (avec documents en base64)
      */
