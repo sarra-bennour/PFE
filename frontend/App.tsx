@@ -263,7 +263,7 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/products" element={
-                <ProtectedRoute roles={['EXPORTATEUR']}>
+                <ProtectedRoute roles={['EXPORTATEUR', 'IMPORTATEUR']}>
                   <ProductsCatalog />
                 </ProtectedRoute>
               } />

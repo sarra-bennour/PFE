@@ -30,6 +30,7 @@ const ImporterSpace: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
+      <br /> 
       {/* Overlay global avec flou */}
       {isModalOpen && (
         <div

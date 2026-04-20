@@ -99,6 +99,52 @@ public class DemandeEnregistrementService {
             throw ProductDeclarationException.demandeCreationFailed(e.getMessage());
         }
     }
+    /**
+     * Récupérer tous les produits pour l'importateur (catalogue complet)
+     * @return Liste de tous les produits de tous les exportateurs
+     */
+    public List<ProduitDTO> getAllProductsForImporter() {
+        log.info("Récupération de tous les produits pour le catalogue importateur");
+
+        try {
+            // Récupérer tous les produits distincts de tous les exportateurs
+            List<Product> allProducts = productRepository.findAllProductsWithDistinctExportateurs();
+
+            log.info("{} produit(s) trouvé(s) dans le catalogue", allProducts.size());
+
+            return allProducts.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération du catalogue: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la récupération du catalogue: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Récupérer les produits par type pour l'importateur
+     * @param productType Type de produit ("alimentaire" ou "industriel")
+     * @return Liste des produits filtrés
+     */
+    public List<ProduitDTO> getProductsByTypeForImporter(String productType) {
+        log.info("Récupération des produits de type {} pour le catalogue importateur", productType);
+
+        try {
+            List<Product> products = productRepository.findByProductType(productType);
+
+            log.info("{} produit(s) de type {} trouvé(s)", products.size(), productType);
+
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des produits par type: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la récupération des produits: " + e.getMessage());
+        }
+    }
+
 
     /**
      * Récupérer tous les produits de l'exportateur connecté
@@ -229,6 +275,147 @@ public class DemandeEnregistrementService {
         } catch (IOException e) {
             log.error("Erreur lors de l'upload de l'image: {}", e.getMessage());
             throw new RuntimeException("Erreur lors de l'upload: " + e.getMessage());
+        }
+    }
+
+
+    // ==================== MÉTHODES POUR EXPORTATEUR ====================
+
+    /**
+     * Rechercher des produits par mot-clé pour un exportateur (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsByExportateur(Long exportateurId, String keyword) {
+        log.info("Recherche de produits pour exportateur {} avec mot-clé: {}", exportateurId, keyword);
+
+        try {
+            List<Product> products = productRepository.searchProductsByExportateurId(exportateurId, keyword);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rechercher des produits par type pour un exportateur (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsByExportateurAndType(Long exportateurId, String productType) {
+        log.info("Recherche de produits de type {} pour exportateur {}", productType, exportateurId);
+
+        try {
+            List<Product> products = productRepository.findProductsByExportateurIdAndType(exportateurId, productType);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rechercher des produits par catégorie pour un exportateur (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsByExportateurAndCategory(Long exportateurId, String category) {
+        log.info("Recherche de produits de catégorie {} pour exportateur {}", category, exportateurId);
+
+        try {
+            List<Product> products = productRepository.findProductsByExportateurIdAndCategory(exportateurId, category);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rechercher des produits par pays d'origine pour un exportateur (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsByExportateurAndOrigin(Long exportateurId, String originCountry) {
+        log.info("Recherche de produits du pays {} pour exportateur {}", originCountry, exportateurId);
+
+        try {
+            List<Product> products = productRepository.findProductsByExportateurIdAndOrigin(exportateurId, originCountry);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+// ==================== MÉTHODES POUR IMPORTATEUR ====================
+
+    /**
+     * Rechercher des produits dans le catalogue par mot-clé (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsInCatalogue(String keyword) {
+        log.info("Recherche dans le catalogue avec mot-clé: {}", keyword);
+
+        try {
+            List<Product> products = productRepository.searchProductsInCatalogue(keyword);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rechercher des produits dans le catalogue par type (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsInCatalogueByType(String productType) {
+        log.info("Recherche dans le catalogue par type: {}", productType);
+
+        try {
+            List<Product> products = productRepository.findByProductType(productType);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rechercher des produits dans le catalogue par catégorie (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsInCatalogueByCategory(String category) {
+        log.info("Recherche dans le catalogue par catégorie: {}", category);
+
+        try {
+            List<Product> products = productRepository.findByCategory(category);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Rechercher des produits dans le catalogue par pays d'origine (retourne une liste)
+     */
+    public List<ProduitDTO> searchProductsInCatalogueByOrigin(String originCountry) {
+        log.info("Recherche dans le catalogue par pays: {}", originCountry);
+
+        try {
+            List<Product> products = productRepository.findByOriginCountry(originCountry);
+            return products.stream()
+                    .map(this::mapProductToProduitDTO)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Erreur lors de la recherche: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
         }
     }
 

@@ -7,9 +7,12 @@ import com.tunisia.commerce.dto.produits.ProduitDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.entity.ExportateurEtranger;
+import com.tunisia.commerce.entity.ImportateurTunisien;
+import com.tunisia.commerce.entity.User;
 import com.tunisia.commerce.exception.ProductDeclarationException;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
+import com.tunisia.commerce.repository.UserRepository;
 import com.tunisia.commerce.service.impl.DemandeEnregistrementService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
@@ -47,10 +50,97 @@ public class ProduitController {
     private final DemandeEnregistrementService demandeService;
     private final JwtUtil jwtUtil;
     private final ExportateurRepository exportateurRepository;
+    private final UserRepository userRepository;
     private final DemandeEnregistrementRepository demandeEnregistrementRepository;
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
+
+    /**
+     * Récupérer tous les produits (catalogue complet) - accessible aux importateurs
+     */
+    @GetMapping("/catalogue-produits")
+    @Operation(summary = "Récupérer le catalogue complet des produits pour les importateurs")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getAllProductsForImporter(@RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT getAllProductsForImporter ===");
+
+        try {
+            // Vérifier l'authentification de l'importateur
+            User user = getUserFromToken(authHeader);
+            System.out.println("Importateur ID: " + user.getId() + ", Email: " + user.getEmail());
+
+            if (!(user instanceof ImportateurTunisien)) {
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "FORBIDDEN");
+                errorResponse.put("message", "Accès réservé aux importateurs");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+            }
+
+            // Récupérer tous les produits
+            List<ProduitDTO> products = demandeService.getAllProductsForImporter();
+
+            System.out.println("✅ " + products.size() + " produit(s) trouvé(s) dans le catalogue");
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("products", products);
+            response.put("count", products.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (ProductDeclarationException e) {
+            System.err.println("❌ ProductDeclarationException: " + e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getErrorCode());
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(e.getStatus()).body(errorResponse);
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur inattendue: " + e.getMessage());
+            e.printStackTrace();
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", "Erreur lors de la récupération du catalogue: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * Récupérer les produits par type pour l'importateur
+     */
+    @GetMapping("/catalogue-produits/{productType}")
+    @Operation(summary = "Récupérer le catalogue par type de produit")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getProductsByTypeForImporter(
+            @PathVariable String productType,
+            @RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT getProductsByTypeForImporter ===");
+        System.out.println("Type demandé: " + productType);
+
+        try {
+            User user = getUserFromToken(authHeader);
+            System.out.println("Importateur ID: " + user.getId());
+
+            List<ProduitDTO> products = demandeService.getProductsByTypeForImporter(productType);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("products", products);
+            response.put("count", products.size());
+            response.put("type", productType);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
 
     /**
      * Récupérer tous les produits de l'exportateur connecté (catalogue)
@@ -130,6 +220,115 @@ public class ProduitController {
         }
     }
 
+    /**
+     * Rechercher des produits pour exportateur (retourne une liste simple)
+     */
+    @GetMapping("/mes-produits/recherche")
+    @Operation(summary = "Rechercher des produits de l'exportateur")
+    @PreAuthorize("hasRole('EXPORTATEUR')")
+    public ResponseEntity<?> searchMyProducts(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String productType,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String originCountry,
+            @RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT searchMyProducts ===");
+        System.out.println("Keyword: " + keyword);
+        System.out.println("ProductType: " + productType);
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            List<ProduitDTO> products;
+
+            if (keyword != null && !keyword.isEmpty()) {
+                products = demandeService.searchProductsByExportateur(exportateur.getId(), keyword);
+            } else if (productType != null && !productType.isEmpty()) {
+                products = demandeService.searchProductsByExportateurAndType(exportateur.getId(), productType);
+            } else if (category != null && !category.isEmpty()) {
+                products = demandeService.searchProductsByExportateurAndCategory(exportateur.getId(), category);
+            } else if (originCountry != null && !originCountry.isEmpty()) {
+                products = demandeService.searchProductsByExportateurAndOrigin(exportateur.getId(), originCountry);
+            } else {
+                products = demandeService.getProductsByExportateur(exportateur.getId());
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("products", products);
+            response.put("count", products.size());
+
+            System.out.println("✅ " + products.size() + " produit(s) trouvé(s)");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur: " + e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
+
+    /**
+     * Rechercher des produits pour importateur (retourne une liste simple)
+     */
+    @GetMapping("/catalogue-produits/recherche")
+    @Operation(summary = "Rechercher des produits dans le catalogue")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> searchCatalogueProducts(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String productType,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String originCountry,
+            @RequestHeader("Authorization") String authHeader) {
+
+        System.out.println("=== DÉBUT searchCatalogueProducts ===");
+        System.out.println("Keyword: " + keyword);
+
+        try {
+            User user = getUserFromToken(authHeader);
+
+            if (!(user instanceof ImportateurTunisien)) {
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "FORBIDDEN");
+                errorResponse.put("message", "Accès réservé aux importateurs");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+            }
+
+            List<ProduitDTO> products;
+
+            if (keyword != null && !keyword.isEmpty()) {
+                products = demandeService.searchProductsInCatalogue(keyword);
+            } else if (productType != null && !productType.isEmpty()) {
+                products = demandeService.searchProductsInCatalogueByType(productType);
+            } else if (category != null && !category.isEmpty()) {
+                products = demandeService.searchProductsInCatalogueByCategory(category);
+            } else if (originCountry != null && !originCountry.isEmpty()) {
+                products = demandeService.searchProductsInCatalogueByOrigin(originCountry);
+            } else {
+                products = demandeService.getAllProductsForImporter();
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("products", products);
+            response.put("count", products.size());
+
+            System.out.println("✅ " + products.size() + " produit(s) trouvé(s)");
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur: " + e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "INTERNAL_ERROR");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
     /**
      * Créer une nouvelle demande d'enregistrement
      */
@@ -481,5 +680,33 @@ public class ProduitController {
         }
 
         return token;
+    }
+
+    /**
+     * Méthode utilitaire pour extraire l'utilisateur du token JWT (générique)
+     */
+    private User getUserFromToken(String authHeader) {
+        try {
+            String token = extractToken(authHeader);
+
+            if (!jwtUtil.validateToken(token)) {
+                throw new RuntimeException("Token invalide ou expiré");
+            }
+
+            String email = jwtUtil.extractUsername(token);
+            if (email == null || email.isEmpty()) {
+                throw new RuntimeException("Email non trouvé dans le token");
+            }
+
+            return userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Aucun utilisateur trouvé avec l'email: " + email));
+
+        } catch (ExpiredJwtException e) {
+            throw new RuntimeException("Token expiré. Veuillez vous reconnecter.");
+        } catch (MalformedJwtException | SignatureException e) {
+            throw new RuntimeException("Token invalide. Veuillez vous reconnecter.");
+        } catch (Exception e) {
+            throw new RuntimeException("Erreur d'authentification: " + e.getMessage());
+        }
     }
 }

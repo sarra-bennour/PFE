@@ -35,4 +35,55 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
                                                      @Param("productType") String productType);
 
 
+
+    /**
+     * Récupérer tous les produits distincts de tous les exportateurs
+     */
+    @Query("SELECT DISTINCT p FROM Product p WHERE p.productImage IS NOT NULL OR p.productName IS NOT NULL")
+    List<Product> findAllProductsWithDistinctExportateurs();
+
+    /**
+     * Récupérer les produits par type
+     */
+    // ==================== POUR EXPORTATEUR ====================
+
+    @Query("SELECT DISTINCT p FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE d.exportateur.id = :exportateurId " +
+            "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(p.category) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "p.hsCode LIKE CONCAT('%', :keyword, '%'))")
+    List<Product> searchProductsByExportateurId(@Param("exportateurId") Long exportateurId,
+                                                @Param("keyword") String keyword);
+
+    @Query("SELECT DISTINCT p FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE d.exportateur.id = :exportateurId " +
+            "AND p.category = :category")
+    List<Product> findProductsByExportateurIdAndCategory(@Param("exportateurId") Long exportateurId,
+                                                         @Param("category") String category);
+
+    @Query("SELECT DISTINCT p FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE d.exportateur.id = :exportateurId " +
+            "AND p.originCountry = :originCountry")
+    List<Product> findProductsByExportateurIdAndOrigin(@Param("exportateurId") Long exportateurId,
+                                                       @Param("originCountry") String originCountry);
+
+    // ==================== POUR IMPORTATEUR ====================
+
+    @Query("SELECT p FROM Product p WHERE " +
+            "LOWER(p.productName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(p.category) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "p.hsCode LIKE CONCAT('%', :keyword, '%')")
+    List<Product> searchProductsInCatalogue(@Param("keyword") String keyword);
+
+    List<Product> findByProductType(String productType);
+
+    List<Product> findByCategory(String category);
+
+    List<Product> findByOriginCountry(String originCountry);
 }
