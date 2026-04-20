@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface DemandeHistoryRepository extends JpaRepository<DemandeHistory, Long> {
     List<DemandeHistory> findByDemandeIdOrderByPerformedAtDesc(Long demandeId);
+    List<DemandeHistory> findByDemandeId(Long demandeId);
+
 }

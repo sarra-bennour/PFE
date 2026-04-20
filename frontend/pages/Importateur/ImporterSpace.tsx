@@ -119,6 +119,7 @@ const ImporterSpace: React.FC = () => {
           }`}>
           {view === 'track' ? (
             <div className="space-y-6 animate-fade-in">
+              <div className='flex items-center justify-between'>
               <button
                 onClick={() => handleViewChange('main')}
                 className="text-slate-400 font-black uppercase text-[10px] tracking-widest hover:text-tunisia-red flex items-center gap-2 transition-colors duration-300 group"
@@ -126,6 +127,8 @@ const ImporterSpace: React.FC = () => {
                 <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform duration-300"></i>
                 Retour au Dashboard
               </button>
+              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">Suivi en temps réel</span>
+              </div>
               <ImporterTracking onModalOpen={handleModalOpen} />
             </div>
           ) : (

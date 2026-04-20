@@ -117,7 +117,6 @@ const Navbar: React.FC = () => {
     
     if ((user.role === 'EXPORTATEUR' || user.role === 'IMPORTATEUR') && user.raisonSociale) {
       const raisonSociale = user.raisonSociale;
-      console.log('*******Raison Sociale:', raisonSociale);
       return raisonSociale.length > 15 ? raisonSociale.substring(0, 12) + '...' : raisonSociale;
     }
     

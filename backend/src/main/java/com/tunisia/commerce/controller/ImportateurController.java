@@ -91,156 +91,6 @@ public class ImportateurController {
         }
     }
 
-    /*@Operation(
-            summary = "Recherche d'exportateurs validés par pays",
-            description = "Récupère la liste des exportateurs validés filtrée par pays d'origine"
-    )
-    @GetMapping("/exportateurs/pays/{pays}")
-    public ResponseEntity<?> rechercherParPays(
-            @Parameter(description = "Pays d'origine", required = true)
-            @PathVariable String pays) {
-
-        log.info("========== RECHERCHE PAR PAYS ==========");
-        log.info("Pays recherché: '{}'", pays);
-
-        try {
-            long startTime = System.currentTimeMillis();
-
-            List<UserDTO> resultats = importateurService.rechercherParPays(pays);
-
-            long endTime = System.currentTimeMillis();
-
-            log.info("Résultats trouvés pour le pays '{}': {} exportateur(s)", pays, resultats.size());
-            log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            return ResponseEntity.ok(resultats);
-
-        } catch (ImportateurException e) {
-            log.error("ERREUR lors de la recherche par pays '{}': {}", pays, e.getMessage());
-            return handleImportateurException(e);
-        }
-    }*/
-
-    /*@Operation(
-            summary = "Recherche d'exportateurs validés par raison sociale",
-            description = "Récupère la liste des exportateurs validés filtrée par raison sociale (nom de l'entreprise)"
-    )
-    @GetMapping("/exportateurs/raison-sociale/{raisonSociale}")
-    public ResponseEntity<?> rechercherParRaisonSociale(
-            @Parameter(description = "Raison sociale de l'entreprise", required = true)
-            @PathVariable String raisonSociale) {
-
-        log.info("========== RECHERCHE PAR RAISON SOCIALE ==========");
-        log.info("Raison sociale recherchée: '{}'", raisonSociale);
-
-        try {
-            long startTime = System.currentTimeMillis();
-
-            List<UserDTO> resultats = importateurService.rechercherParRaisonSociale(raisonSociale);
-
-            long endTime = System.currentTimeMillis();
-
-            log.info("Résultats trouvés pour '{}': {} exportateur(s)", raisonSociale, resultats.size());
-            log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            return ResponseEntity.ok(resultats);
-
-        } catch (ImportateurException e) {
-            log.error("ERREUR lors de la recherche par raison sociale '{}': {}", raisonSociale, e.getMessage());
-            return handleImportateurException(e);
-        }
-    }*/
-
-    /*@Operation(
-            summary = "Recherche d'exportateurs validés par produit",
-            description = "Récupère la liste des exportateurs validés qui proposent un produit spécifique"
-    )
-    @GetMapping("/exportateurs/produit/{produit}")
-    public ResponseEntity<?> rechercherParProduit(
-            @Parameter(description = "Nom du produit", required = true)
-            @PathVariable String produit) {
-
-        log.info("========== RECHERCHE PAR PRODUIT ==========");
-        log.info("Produit recherché: '{}'", produit);
-
-        try {
-            long startTime = System.currentTimeMillis();
-
-            List<UserDTO> resultats = importateurService.rechercherParProduit(produit);
-
-            long endTime = System.currentTimeMillis();
-
-            log.info("Résultats trouvés pour le produit '{}': {} exportateur(s)", produit, resultats.size());
-            log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            return ResponseEntity.ok(resultats);
-
-        } catch (ImportateurException e) {
-            log.error("ERREUR lors de la recherche par produit '{}': {}", produit, e.getMessage());
-            return handleImportateurException(e);
-        }
-    }*/
-
-    /*@Operation(
-            summary = "Recherche d'exportateurs validés par code NGP",
-            description = "Récupère la liste des exportateurs validés qui proposent des produits avec un code NGP spécifique"
-    )
-    @GetMapping("/exportateurs/code-ngp/{codeNGP}")
-    public ResponseEntity<?> rechercherParCodeNGP(
-            @Parameter(description = "Code NGP du produit", required = true)
-            @PathVariable String codeNGP) {
-
-        log.info("========== RECHERCHE PAR CODE NGP ==========");
-        log.info("Code NGP recherché: '{}'", codeNGP);
-
-        try {
-            long startTime = System.currentTimeMillis();
-
-            List<UserDTO> resultats = importateurService.rechercherParCodeNGP(codeNGP);
-
-            long endTime = System.currentTimeMillis();
-
-            log.info("Résultats trouvés pour le code NGP '{}': {} exportateur(s)", codeNGP, resultats.size());
-            log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            return ResponseEntity.ok(resultats);
-
-        } catch (ImportateurException e) {
-            log.error("ERREUR lors de la recherche par code NGP '{}': {}", codeNGP, e.getMessage());
-            return handleImportateurException(e);
-        }
-    }*/
-
-    /*@Operation(
-            summary = "Récupérer un exportateur validé par ID",
-            description = "Récupère les détails complets d'un exportateur validé par son identifiant"
-    )
-    @GetMapping("/exportateurs/{id}")
-    public ResponseEntity<?> getExportateurParId(
-            @Parameter(description = "ID de l'exportateur", required = true)
-            @PathVariable Long id) {
-
-        log.info("========== RECHERCHE PAR ID ==========");
-        log.info("ID recherché: {}", id);
-
-        try {
-            long startTime = System.currentTimeMillis();
-
-            UserDTO exportateur = importateurService.getExportateurValideById(id);
-
-            long endTime = System.currentTimeMillis();
-
-            log.info("Exportateur trouvé: ID={}, Nom='{}', Pays='{}'",
-                    exportateur.getId(), exportateur.getRaisonSociale(), exportateur.getPaysOrigine());
-            log.info("Temps d'exécution: {} ms", endTime - startTime);
-
-            return ResponseEntity.ok(exportateur);
-
-        } catch (ImportateurException e) {
-            log.error("ERREUR lors de la recherche par ID {}: {}", id, e.getMessage());
-            return handleImportateurException(e);
-        }
-    }*/
 
     @Operation(
             summary = "Lister tous les exportateurs validés",
@@ -447,82 +297,115 @@ public class ImportateurController {
     }
 
     /**
-     * Récupérer une demande d'importation spécifique par son ID
+     * Modifier une demande d'importation (uniquement si elle est en brouillon)
      */
-    /*@Operation(
-            summary = "Détails d'une demande d'importation",
-            description = "Récupère les détails complets d'une demande d'importation spécifique"
+    @Operation(
+            summary = "Modifier une demande d'importation",
+            description = "Modifie une demande d'importation existante (uniquement si elle est en brouillon)"
     )
-    @GetMapping("/demandes/{demandeId}")
+    @PutMapping("/demandes/{demandeId}")
     @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<?> getDemandeById(
-            @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
+    public ResponseEntity<?> updateDemande(
+            @Parameter(description = "ID de la demande à modifier") @PathVariable Long demandeId,
+            @Valid @RequestBody DemandeImportationRequestDTO request,
             @RequestHeader("Authorization") String authHeader) {
 
-        log.info("========== RÉCUPÉRATION DEMANDE ID: {} ==========", demandeId);
+        log.info("========== MODIFICATION DEMANDE D'IMPORTATION ==========");
+        log.info("Demande ID: {}", demandeId);
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            DemandeEnregistrementDTO demande = demandeImportationService.getDemandeById(
+            // Appeler le service pour modifier la demande
+            DemandeEnregistrementDTO demande = demandeImportationService.updateImportationDemande(
                     demandeId,
-                    importateur.getId()
+                    importateur.getId(),
+                    request
             );
 
-            log.info("Demande trouvée: référence={}, status={}", demande.getReference(), demande.getStatus());
-            log.info("========== FIN RÉCUPÉRATION ==========");
+            log.info("Demande ID: {} modifiée avec succès", demandeId);
+            log.info("========== FIN MODIFICATION ==========");
 
-            return ResponseEntity.ok(demande);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Demande modifiée avec succès");
+            response.put("demandeId", demande.getId());
+            response.put("reference", demande.getReference());
+            response.put("status", demande.getStatus());
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("Erreur lors de la récupération de la demande: {}", e.getMessage());
+            log.error("Erreur lors de la modification de la demande {}: {}", demandeId, e.getMessage());
+
             Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", "NOT_FOUND");
+            errorResponse.put("error", "UPDATE_FAILED");
             errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+
+            if (e.getMessage().contains("non autorisé")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+            } else if (e.getMessage().contains("brouillon")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+            } else if (e.getMessage().contains("non trouvée")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+            }
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }*/
+    }
 
     /**
-     * Télécharger un document d'une demande d'importation
+     * Supprimer une demande d'importation (uniquement si elle est en brouillon)
      */
-    /*@Operation(
-            summary = "Télécharger un document",
-            description = "Télécharge le fichier d'un document spécifique"
+    @Operation(
+            summary = "Supprimer une demande d'importation",
+            description = "Supprime une demande d'importation ainsi que tous ses documents associés (uniquement si elle est en brouillon)"
     )
-    @GetMapping("/demandes/documents/{documentId}/telecharger")
+    @DeleteMapping("/demandes/{demandeId}")
     @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<Resource> downloadDocument(
-            @Parameter(description = "ID du document") @PathVariable Long documentId,
+    public ResponseEntity<?> deleteDemande(
+            @Parameter(description = "ID de la demande à supprimer") @PathVariable Long demandeId,
             @RequestHeader("Authorization") String authHeader) {
 
-        log.info("========== TÉLÉCHARGEMENT DOCUMENT ID: {} ==========", documentId);
+        log.info("========== SUPPRESSION DEMANDE D'IMPORTATION ==========");
+        log.info("Demande ID: {}", demandeId);
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            Resource resource = demandeImportationService.getDocumentFile(documentId, importateur.getId());
-            DocumentDTO documentInfo = demandeImportationService.getDocumentById(documentId, importateur.getId());
+            // Appeler le service pour supprimer la demande
+            demandeImportationService.deleteImportationDemande(demandeId, importateur.getId());
 
-            log.info("Document téléchargé: {}", documentInfo.getFileName());
-            log.info("========== FIN TÉLÉCHARGEMENT ==========");
+            log.info("Demande ID: {} supprimée avec succès", demandeId);
+            log.info("========== FIN SUPPRESSION ==========");
 
-            // Déterminer le Content-Type
-            String contentType = determineContentType(documentInfo.getFileType());
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Demande supprimée avec succès");
+            response.put("demandeId", demandeId);
 
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=\"" + documentInfo.getFileName() + "\"")
-                    .body(resource);
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("Erreur lors du téléchargement du document: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            log.error("Erreur lors de la suppression de la demande {}: {}", demandeId, e.getMessage());
+
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "DELETE_FAILED");
+            errorResponse.put("message", e.getMessage());
+
+            if (e.getMessage().contains("non autorisé")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+            } else if (e.getMessage().contains("brouillon")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+            } else if (e.getMessage().contains("non trouvée")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+            }
+
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }*/
+    }
 
     // ==================== MÉTHODES PRIVÉES ====================
 
@@ -547,52 +430,6 @@ public class ImportateurController {
         return authHeader.substring(7);
     }
 
-    /**
-     * Sauvegarder un document
-     */
-    /*private DocumentDTO saveDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr)
-            throws IOException {
-
-        // Créer le répertoire
-        Path uploadPath = Paths.get(UPLOAD_DIR + demandeId);
-        if (!Files.exists(uploadPath)) {
-            Files.createDirectories(uploadPath);
-        }
-
-        // Sauvegarder le fichier
-        String fileName = UUID.randomUUID().toString() + "_" + file.getOriginalFilename();
-        Path filePath = uploadPath.resolve(fileName);
-        Files.copy(file.getInputStream(), filePath);
-
-        // Ici, vous devriez appeler un service pour enregistrer le document en base
-        // Pour l'instant, on retourne un DTO basique
-        return DocumentDTO.builder()
-                .id(System.currentTimeMillis()) // ID temporaire
-                .fileName(file.getOriginalFilename())
-                .filePath(filePath.toString())
-                .fileType(file.getContentType())
-                .fileSize(file.getSize())
-                .documentType(com.tunisia.commerce.enums.DocumentType.valueOf(documentTypeStr))
-                .status(com.tunisia.commerce.enums.DocumentStatus.EN_ATTENTE)
-                .uploadedAt(java.time.LocalDateTime.now())
-                .downloadUrl("/api/importateur/demandes/documents/" + System.currentTimeMillis() + "/telecharger")
-                .build();
-    }*/
-
-    /**
-     * Déterminer le content type en fonction de l'extension du fichier
-     */
-    /*private String determineContentType(String fileType) {
-        if (fileType == null) return "application/octet-stream";
-
-        String type = fileType.toLowerCase();
-        if (type.contains("pdf")) return "application/pdf";
-        if (type.contains("jpg") || type.contains("jpeg")) return "image/jpeg";
-        if (type.contains("png")) return "image/png";
-        if (type.contains("gif")) return "image/gif";
-
-        return "application/octet-stream";
-    }*/
 
     // ==================== GESTION DES EXCEPTIONS ====================
 
@@ -623,11 +460,6 @@ public class ImportateurController {
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // Méthode utilitaire pour récupérer la requête HTTP courante
-    /*private HttpServletRequest getCurrentHttpRequest() {
-        return ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-    }*/
-
     // ==================== ENDPOINTS POUR LES STATUTS DES PRODUITS ====================
 
     @GetMapping("/produits/statuts")
@@ -653,31 +485,5 @@ public class ImportateurController {
             return handleGenericException(e);
         }
     }
-
-    /*@GetMapping("/produits/{produitId}/statut")
-    @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<?> getProduitStatut(
-            @PathVariable Long produitId,
-            @RequestHeader("Authorization") String authHeader) {
-
-        log.info("========== VÉRIFICATION STATUT PRODUIT ID: {} ==========", produitId);
-
-        try {
-            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
-            String statut = importateurService.getProduitStatut(importateur.getId(), produitId);
-
-            Map<String, String> response = new HashMap<>();
-            response.put("statut", statut);
-            response.put("productId", String.valueOf(produitId));
-
-            return ResponseEntity.ok(response);
-
-        } catch (ImportateurException e) {
-            return handleImportateurException(e);
-        } catch (Exception e) {
-            log.error("ERREUR inattendue: {}", e.getMessage());
-            return handleGenericException(e);
-        }
-    }*/
 
 }

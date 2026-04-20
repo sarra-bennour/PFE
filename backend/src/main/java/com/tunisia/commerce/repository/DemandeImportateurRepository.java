@@ -18,6 +18,15 @@ public interface DemandeImportateurRepository extends JpaRepository<DemandeImpor
             "d.amount as amount, " +
             "d.currency as currency, " +
             "d.transportMode as transportMode, " +
+            "d.invoiceNumber as invoiceNumber, " +
+            "d.invoiceDate as invoiceDate, " +
+            "d.incoterm as incoterm, " +
+            "d.loadingPort as loadingPort, " +
+            "d.dischargePort as dischargePort, " +
+            "d.arrivalDate as arrivalDate, " +
+            "d.paymentStatus as paymentStatus, " +
+            "d.paymentAmount as paymentAmount, " +
+            "d.paymentReference as paymentReference, " +
             "e.raisonSociale as exportateurName, " +
             "e.paysOrigine as exportateurCountry, " +
             "p.productName as productName, " +

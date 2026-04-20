@@ -11,8 +11,9 @@ import { useAuth } from '../App';
 import { Product } from '../types/Product';
 import axios from 'axios';
 import { notificationService } from '../services/notificationService';
-import { ProductAdditionData } from '../types/ProductAdditionData';
 import ProductDeclarationForm from './Importateur/ProductDeclarationForm';
+import { ProductAdditionData } from '../types/ProductAdditionData';
+
 
 const API_URL = 'http://localhost:8080/api';
 
@@ -702,9 +703,9 @@ const ProductsCatalog: React.FC = () => {
             >
               <button 
                 onClick={() => setSelectedProduct(null)}
-                className="absolute top-6 right-6 z-20 w-12 h-12 rounded-full bg-white/10 backdrop-blur-md text-white hover:bg-white hover:text-slate-900 transition-all flex items-center justify-center border border-white/10"
+                className="absolute top-6 left-6 z-20 w-12 h-12 rounded-full bg-white/90 backdrop-blur-md text-slate-700 hover:bg-white hover:text-tunisia-red transition-all flex items-center justify-center border border-slate-200 shadow-lg"
               >
-                <ArrowLeft size={20} className="rotate-135" />
+                <ArrowLeft size={20} />
               </button>
 
               {/* Modal Left: Image Portfolio */}
@@ -719,32 +720,32 @@ const ProductsCatalog: React.FC = () => {
                   }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent flex flex-col justify-end p-10">
-                   <div className="flex gap-4 mb-4">
+                  <div className="flex gap-4 mb-4">
                       <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 text-white">
-                         <Camera size={20} />
+                        <Camera size={20} />
                       </div>
                       <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 text-white">
-                         <ExternalLink size={20} />
+                        <ExternalLink size={20} />
                       </div>
-                   </div>
-                   <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-tight">
-                     {selectedProduct.productName}
-                   </h2>
+                  </div>
+                  <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-tight">
+                    {selectedProduct.productName}
+                  </h2>
                 </div>
               </div>
 
               {/* Modal Right: Technical Specs */}
-              <div className="md:w-7/12 overflow-y-auto p-12 custom-scrollbar space-y-12 bg-[#FDFDFD]">
+              <div className="md:w-7/12 overflow-y-auto p-12 custom-scrollbar space-y-8 bg-[#FDFDFD]"> {/* Changé space-y-12 à space-y-8 */}
                 <div className="flex items-center gap-4">
-                   <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                     selectedProduct.productType === 'alimentaire' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'
-                   }`}>
-                     {selectedProduct.productType === 'alimentaire' ? 'Alimentaire' : 'Industriel'}
-                   </span>
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                    selectedProduct.productType === 'alimentaire' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-blue-50 text-blue-600 border-blue-100'
+                  }`}>
+                    {selectedProduct.productType === 'alimentaire' ? 'Alimentaire' : 'Industriel'}
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-12">
-                   <div className="space-y-8">
+                <div className="grid grid-cols-2 gap-12"> {/* Réduit gap-12 à gap-8 si nécessaire */}
+                  <div className="space-y-6"> {/* Changé space-y-8 à space-y-6 */}
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
                           <Layers size={10} /> Classification Douanière
@@ -765,9 +766,9 @@ const ProductsCatalog: React.FC = () => {
                         </label>
                         <p className="text-base font-black text-slate-700 uppercase italic tracking-tight">{selectedProduct.originCountry}</p>
                       </div>
-                   </div>
+                  </div>
 
-                   <div className="space-y-8">
+                  <div className="space-y-6"> {/* Changé space-y-8 à space-y-6 */}
                       <div className="space-y-1.5">
                         <label className="text-[10px] font-black text-slate-300 uppercase tracking-widest flex items-center gap-2">
                           <ShoppingBag size={10} /> Marque & Branding
@@ -792,65 +793,65 @@ const ProductsCatalog: React.FC = () => {
                           {selectedProduct.annualQuantityValue} {selectedProduct.annualQuantityUnit || 'N/A'}
                         </p>
                       </div>
-                   </div>
+                  </div>
                 </div>
 
                 {selectedProduct.productType === 'alimentaire' && (
-                  <div className="p-8 bg-slate-900 rounded-[2rem] border border-slate-800 space-y-6 shadow-2xl">
-                     <h4 className="text-white font-black italic uppercase tracking-tighter text-sm flex items-center gap-3">
+                  <div className="p-6 bg-slate-900 rounded-[2rem] border border-slate-800 space-y-4 shadow-2xl"> {/* Changé p-8 à p-6, space-y-6 à space-y-4 */}
+                    <h4 className="text-white font-black italic uppercase tracking-tighter text-sm flex items-center gap-3">
                         <Apple className="text-emerald-500" size={18} /> Spécifications Alimentaires
-                     </h4>
-                     <div className="grid grid-cols-2 gap-6">
-                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                           <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Propriétaire de marque</span>
-                           <span className={`text-[10px] font-black uppercase ${selectedProduct.isBrandOwner ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4"> {/* Changé gap-6 à gap-4 */}
+                        <div className="p-3 bg-white/5 rounded-2xl border border-white/5"> {/* Changé p-4 à p-3 */}
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Propriétaire de marque</span>
+                          <span className={`text-[10px] font-black uppercase ${selectedProduct.isBrandOwner ? 'text-emerald-400' : 'text-amber-400'}`}>
                               {selectedProduct.isBrandOwner ? 'OUI (DÉCLARÉ)' : 'NON (EXPLOITANT)'}
-                           </span>
+                          </span>
                         </div>
-                        <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                           <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Licence d'exploitation</span>
-                           <span className={`text-[10px] font-black uppercase ${selectedProduct.hasBrandLicense ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        <div className="p-3 bg-white/5 rounded-2xl border border-white/5"> {/* Changé p-4 à p-3 */}
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-1">Licence d'exploitation</span>
+                          <span className={`text-[10px] font-black uppercase ${selectedProduct.hasBrandLicense ? 'text-emerald-400' : 'text-slate-500'}`}>
                               {selectedProduct.hasBrandLicense ? 'VALIDE' : 'NON REQUIS'}
-                           </span>
+                          </span>
                         </div>
-                     </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Bouton Ajouter dans le modal pour importateur */}
+                {/* Bouton Ajouter dans le modal pour importateur - Réduit l'espace */}
                 {user?.role === 'IMPORTATEUR' && (
-                  <div className="pt-4">
+                  <div className="pt-2"> {/* Changé pt-4 à pt-2 */}
                     {renderProductButton(selectedProduct)}
                   </div>
                 )}
 
-                <div className="flex justify-between items-center pt-8 border-t border-slate-100">
-                   <div className="flex flex-col">
-                     <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] block mb-1">Historique Opérationnel</span>
-                     <span className="text-sm font-black text-slate-900 italic tracking-tighter uppercase">
-                       Dernière mise à jour: {formatDate(selectedProduct.updatedAt)}
-                     </span>
-                   </div>
-                   <div className="flex gap-4">
-                     {user?.role === 'EXPORTATEUR' && (
-                       <button 
-                         onClick={() => {
-                           setSelectedProduct(null);
-                           navigate('/declare-product');
-                         }}
-                         className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-black transition-all flex items-center gap-3 group"
-                       >
-                         <ExternalLink size={14} />
-                         Réutiliser les données
-                       </button>
-                     )}
-                     <button 
-                       onClick={() => setSelectedProduct(null)}
-                       className="px-8 py-4 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 transition-all border border-slate-100"
-                     >
-                       Fermer
-                     </button>
-                   </div>
+                <div className="flex justify-between items-center pt-6 border-t border-slate-100"> {/* Changé pt-8 à pt-6 */}
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-[0.3em] block mb-1">Historique Opérationnel</span>
+                    <span className="text-sm font-black text-slate-900 italic tracking-tighter uppercase">
+                      Dernière mise à jour: {formatDate(selectedProduct.updatedAt)}
+                    </span>
+                  </div>
+                  <div className="flex gap-4">
+                    {user?.role === 'EXPORTATEUR' && (
+                      <button 
+                        onClick={() => {
+                          setSelectedProduct(null);
+                          navigate('/declare-product');
+                        }}
+                        className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-xl hover:bg-black transition-all flex items-center gap-3 group" // Changé px-8 py-4 à px-6 py-3
+                      >
+                        <ExternalLink size={14} />
+                        Réutiliser les données
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setSelectedProduct(null)}
+                      className="px-6 py-3 bg-slate-50 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-slate-100 transition-all border border-slate-100" // Changé px-8 py-4 à px-6 py-3
+                    >
+                      Fermer
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
