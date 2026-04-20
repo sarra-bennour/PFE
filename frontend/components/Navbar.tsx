@@ -115,18 +115,19 @@ const Navbar: React.FC = () => {
   const getDisplayName = () => {
     if (!user) return '';
     
-    if (user.role === 'EXPORTATEUR' && user.companyName) {
-      const companyName = user.companyName;
-      return companyName.length > 15 ? companyName.substring(0, 12) + '...' : companyName;
+    if ((user.role === 'EXPORTATEUR' || user.role === 'IMPORTATEUR') && user.raisonSociale) {
+      const raisonSociale = user.raisonSociale;
+      console.log('*******Raison Sociale:', raisonSociale);
+      return raisonSociale.length > 15 ? raisonSociale.substring(0, 12) + '...' : raisonSociale;
     }
     
-    if (user.prenom || user.nom) {
-      const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
-      if (fullName.length > 0) {
-        const firstName = user.prenom || user.nom || '';
-        return firstName.length > 12 ? firstName.substring(0, 10) + '...' : firstName;
-      }
-    }
+    // if (user.prenom || user.nom) {
+    //   const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
+    //   if (fullName.length > 0) {
+    //     const firstName = user.prenom || user.nom || '';
+    //     return firstName.length > 12 ? firstName.substring(0, 10) + '...' : firstName;
+    //   }
+    // }
     
     return user.email.split('@')[0];
   };
@@ -142,8 +143,8 @@ const Navbar: React.FC = () => {
     if (user.prenom && user.nom) {
       return (user.prenom.charAt(0) + user.nom.charAt(0)).toUpperCase();
     }
-    if (user.companyName) {
-      return user.companyName.charAt(0).toUpperCase();
+    if (user.raisonSociale) {
+      return user.raisonSociale.charAt(0).toUpperCase();
     }
     return user.email.charAt(0).toUpperCase();
   };
@@ -289,7 +290,7 @@ const Navbar: React.FC = () => {
                       <div className="p-1">
                         <div className="px-4 py-3 border-b border-slate-100 mb-1">
                           <div className="text-[9px] font-black text-slate-900 uppercase tracking-widest truncate max-w-[150px]" title={user.email}>
-                            {user.email}
+                            {user.nom ? `${user.prenom || ''} ${user.nom || ''}`.trim() : user.email.split('@')[0]}
                           </div>
                           {user.paysOrigine && (
                             <div className="text-[7px] text-slate-400 font-medium mt-1">

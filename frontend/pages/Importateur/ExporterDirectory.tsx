@@ -197,7 +197,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
             productName: productItem.productName || '',
             price: productItem.price || 'Prix sur demande',
             productImage: productItem.productImage || null,
-            ngp: productItem.hsCode || productItem.ngp || '',
+            hsCode: productItem.hsCode || productItem.ngp || '',
             annualQuantityValue: productItem.annualQuantityValue,
             annualQuantityUnit: productItem.annualQuantityUnit,
             category: productItem.category || 'Non spécifié'
@@ -312,7 +312,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
         productId: Number(product.id),
         productName: product.productName || 'Produit sans nom',
         productPrice: product.price || 'Prix sur demande',
-        productNgp: product.ngp || '',
+        productNgp: product.hsCode || '',
         declarationId,
         message: `${importerName} souhaite ajouter votre produit "${product.productName}" à sa déclaration d'importation.`
       };
@@ -474,7 +474,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
     exporters.forEach(exporter => {
       exporter.products?.forEach(product => {
         const productName = (product.productName || '').toLowerCase();
-        const productNgp = (product.ngp || '').toLowerCase();
+        const productNgp = (product.hsCode || '').toLowerCase();
 
         if (productName.includes(query) || productNgp.includes(query)) {
           allProducts.push({
@@ -687,7 +687,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {selectedExporter.products?.map((product, idx) => {
-                      const placeholder = getProductPlaceholder(product.category || 'Catégorie non spécifiée', product.ngp);
+                      const placeholder = getProductPlaceholder(product.category || 'Catégorie non spécifiée', product.hsCode);
                       const productWithExporter = { ...product, exporter: selectedExporter };
                       return (
                         <div
@@ -716,9 +716,9 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                           </div>
                           <div className="p-4 flex-grow flex flex-col">
                             <h5 className="font-black text-slate-900 uppercase tracking-tight mb-1">{product.productName}</h5>
-                            {product.ngp && (
+                            {product.hsCode && (
                               <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                                NGP: {product.ngp}
+                                HS Code: {product.hsCode}
                               </p>
                             )}
                             <div className="flex justify-between items-center mb-4">
@@ -745,9 +745,9 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 {selectedProduct.productImage ? (
                   <img src={selectedProduct.productImage} alt={selectedProduct.productName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).color}`}>
-                    <i className={`fas ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).icon} text-6xl mb-4`}></i>
-                    <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).label}</span>
+                  <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.hsCode).color}`}>
+                    <i className={`fas ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.hsCode).icon} text-6xl mb-4`}></i>
+                    <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || '', selectedProduct.hsCode).label}</span>
                   </div>
                 )}
                 <button
@@ -761,7 +761,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="px-3 py-1 bg-slate-100 rounded-lg text-[8px] font-black uppercase tracking-widest text-slate-500">
-                      NGP: {selectedProduct.ngp}
+                      HS Code: {selectedProduct.hsCode}
                     </span>
                     <span className="px-3 py-1 bg-tunisia-red/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-tunisia-red">
                       En Stock
@@ -816,7 +816,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
               price: selectedProductForForm.price || 'Prix sur demande',
               category: selectedProductForForm.category || 'Autre',
               productImage: selectedProductForForm.productImage || undefined,
-              ngp: selectedProductForForm.ngp
+              hsCode: selectedProductForForm.hsCode
             }}
             exporter={{
               nom: selectedProductForForm.exporter.nom,
@@ -910,7 +910,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
             <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter px-4">Produits correspondants</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {filteredProducts.map((product, idx) => {
-                const placeholder = getProductPlaceholder(product.category || '', product.ngp);
+                const placeholder = getProductPlaceholder(product.category || '', product.hsCode);
                 return (
                   <div
                     key={idx}
@@ -947,8 +947,8 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
                       </h5>
                       <div className="flex justify-between items-center mb-4">
                         <span className="text-xs font-black text-tunisia-red italic">{product.price || 'Prix sur demande'}</span>
-                        {product.ngp && (
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{product.ngp}</span>
+                        {product.hsCode && (
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{product.hsCode}</span>
                         )}
                       </div>
                       {renderProductButton(product)}
@@ -1034,9 +1034,9 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
               {selectedProduct.productImage ? (
                 <img src={selectedProduct.productImage} alt={selectedProduct.productName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).color}`}>
-                  <i className={`fas ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).icon} text-6xl mb-4`}></i>
-                  <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || '', selectedProduct.ngp).label}</span>
+                <div className={`w-full h-full flex flex-col items-center justify-center ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.hsCode).color}`}>
+                  <i className={`fas ${getProductPlaceholder(selectedProduct.category || '', selectedProduct.hsCode).icon} text-6xl mb-4`}></i>
+                  <span className="text-xs font-black uppercase tracking-widest">{getProductPlaceholder(selectedProduct.category || '', selectedProduct.hsCode).label}</span>
                 </div>
               )}
               <button
@@ -1050,7 +1050,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="px-3 py-1 bg-slate-100 rounded-lg text-[8px] font-black uppercase tracking-widest text-slate-500">
-                    NGP: {selectedProduct.ngp}
+                    HS Code: {selectedProduct.hsCode}
                   </span>
                   <span className="px-3 py-1 bg-tunisia-red/10 rounded-lg text-[8px] font-black uppercase tracking-widest text-tunisia-red">
                     En Stock
@@ -1103,7 +1103,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
             price: selectedProductForForm.price || 'Prix sur demande',
             category: selectedProductForForm.category || 'Autre',
             productImage: selectedProductForForm.productImage || undefined,
-            ngp: selectedProductForForm.ngp
+            hsCode: selectedProductForForm.hsCode
           }}
           exporter={{
             nom: selectedProductForForm.exporter.nom || selectedProductForForm.exporter.companyName || '',

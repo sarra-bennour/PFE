@@ -129,8 +129,22 @@ public class UserServiceImpl implements UserService {
         ExportateurEtranger exportateur = new ExportateurEtranger();
 
         // === CHAMPS DE LA CLASSE PARENT (User) ===
-        exportateur.setNom(request.getCompanyName());        // Nom de l'entreprise
-        exportateur.setPrenom(request.getLegalRep());        // Représentant légal
+        // Récupérer le nom complet du représentant légal
+        String legalRep = request.getLegalRep();
+
+        if (legalRep != null && !legalRep.isEmpty()) {
+            String[] nameParts = legalRep.trim().split("\\s+", 2);
+
+            if (nameParts.length == 1) {
+                // Un seul mot : on le met dans le prénom
+                exportateur.setPrenom(nameParts[0]);
+                exportateur.setNom("");
+            } else {
+                // Premier mot = prénom, le reste = nom
+                exportateur.setPrenom(nameParts[0]);
+                exportateur.setNom(nameParts[1]);
+            }
+        }
         exportateur.setEmail(request.getEmail());            // Email
         exportateur.setTelephone(request.getPhone());        // Téléphone
         exportateur.setRole(UserRole.EXPORTATEUR);          // Rôle
@@ -614,6 +628,7 @@ public class UserServiceImpl implements UserService {
             ImportateurTunisien importateur = (ImportateurTunisien) user;
             dto.setMobileIdMatricule(importateur.getMobileIdMatricule());
             dto.setMobileIdPin(importateur.getMobileIdPin());
+            dto.setRaisonSociale(importateur.getRaisonSociale());
             dto.setEmailVerified(true);
         }
 
@@ -768,22 +783,6 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    /*@Override
-    @Transactional
-    public boolean validateResetToken(String token) {
-        logger.info("=== VALIDATION TOKEN RÉINITIALISATION ===");
-
-        ExportateurEtranger exportateur = exportateurRepository.findByResetPasswordToken(token)
-                .orElseThrow(() -> new RuntimeException("Token de réinitialisation invalide"));
-
-        // Vérifier si le token a expiré
-        if (exportateur.getResetPasswordTokenExpiry().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Le token de réinitialisation a expiré");
-        }
-
-        return true;
-    }*/
-
     @Override
     @Transactional
     public void resetPassword(String token, String newPassword) {
@@ -871,48 +870,117 @@ public class UserServiceImpl implements UserService {
         logger.info("=== MISE À JOUR DU PROFIL ===");
         logger.info("Email: " + email);
 
-        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // Mettre à jour uniquement les champs fournis (non null)
-        if (request.getCompanyName() != null && !request.getCompanyName().isEmpty()) {
-            exportateur.setRaisonSociale(request.getCompanyName());
-            exportateur.setNom(request.getCompanyName()); // Mettre à jour aussi le champ nom dans User
-        }
-
+        // Mettre à jour les champs communs
         if (request.getPhone() != null && !request.getPhone().isEmpty()) {
-            exportateur.setTelephone(request.getPhone());
+            user.setTelephone(request.getPhone());
         }
 
-        if (request.getAddress() != null && !request.getAddress().isEmpty()) {
-            exportateur.setAdresseLegale(request.getAddress());
+
+        User savedUser = null;
+
+        // Gestion selon le rôle
+        if (user instanceof ExportateurEtranger) {
+            ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+
+            if (request.getCity() != null && !request.getCity().isEmpty()) {
+                exportateur.setVille(request.getCity());
+            }
+            if (request.getCompanyName() != null && !request.getCompanyName().isEmpty()) {
+                exportateur.setRaisonSociale(request.getCompanyName());
+                exportateur.setNom(request.getCompanyName());
+            }
+
+            if (request.getAddress() != null && !request.getAddress().isEmpty()) {
+                exportateur.setAdresseLegale(request.getAddress());
+            }
+
+            if (request.getCountry() != null && !request.getCountry().isEmpty()) {
+                exportateur.setPaysOrigine(request.getCountry());
+            }
+
+
+            if (request.getTinNumber() != null && !request.getTinNumber().isEmpty()) {
+                exportateur.setNumeroRegistreCommerce(request.getTinNumber());
+            }
+
+            if (request.getWebsite() != null && !request.getWebsite().isEmpty()) {
+                exportateur.setSiteWeb(request.getWebsite());
+            }
+
+            if (request.getLegalRep() != null && !request.getLegalRep().isEmpty()) {
+                exportateur.setRepresentantLegal(request.getLegalRep());
+                // Séparer le nom complet en prénom et nom
+                String[] nameParts = request.getLegalRep().trim().split("\\s+", 2);
+                if (nameParts.length == 1) {
+                    exportateur.setPrenom(nameParts[0]);
+                    exportateur.setNom("");
+                } else {
+                    exportateur.setPrenom(nameParts[0]);
+                    exportateur.setNom(nameParts[1]);
+                }
+            }
+
+            if (request.getSiteType() != null) {
+                exportateur.setSiteType(request.getSiteType());
+            }
+
+            if (request.getCapaciteAnnuelle() != null) {
+                exportateur.setCapaciteAnnuelle(request.getCapaciteAnnuelle());
+            }
+
+            savedUser = exportateurRepository.save(exportateur);
+            logger.info("Profil exportateur mis à jour avec succès pour: " + savedUser.getEmail());
+
+        } else if (user instanceof ImportateurTunisien) {
+            ImportateurTunisien importateur = importateurRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Importateur non trouvé"));
+
+            if (request.getCompanyName() != null && !request.getCompanyName().isEmpty()) {
+                importateur.setRaisonSociale(request.getCompanyName());
+            }
+
+            if (request.getNom() != null && !request.getNom().isEmpty()) {
+                importateur.setNom(request.getNom());
+            }
+
+            if (request.getPrenom() != null && !request.getPrenom().isEmpty()) {
+                importateur.setPrenom(request.getPrenom());
+            }
+
+            savedUser = importateurRepository.save(importateur);
+            logger.info("Profil importateur mis à jour avec succès pour: " + savedUser.getEmail());
+
+        } else if (user instanceof InstanceValidation) {
+            InstanceValidation instance = instanceValidationRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Instance de validation non trouvée"));
+
+            if (request.getNomOfficiel() != null && !request.getNomOfficiel().isEmpty()) {
+                instance.setNomOfficiel(request.getNomOfficiel());
+                instance.setNom(request.getNomOfficiel());
+            }
+
+            if (request.getCodeMinistere() != null && !request.getCodeMinistere().isEmpty()) {
+                instance.setCodeMinistere(request.getCodeMinistere());
+            }
+
+            if (request.getTypeAutorite() != null) {
+                instance.setTypeAutorite(request.getTypeAutorite());
+            }
+
+            if (request.getSlaTraitementJours() != null) {
+                instance.setSlaTraitementJours(request.getSlaTraitementJours());
+            }
+
+
+            savedUser = instanceValidationRepository.save(instance);
+            logger.info("Profil instance de validation mis à jour avec succès pour: " + savedUser.getEmail());
         }
 
-        if (request.getCountry() != null && !request.getCountry().isEmpty()) {
-            exportateur.setPaysOrigine(request.getCountry());
-        }
-
-        if (request.getCity() != null && !request.getCity().isEmpty()) {
-            exportateur.setVille(request.getCity());
-        }
-
-        if (request.getTinNumber() != null && !request.getTinNumber().isEmpty()) {
-            exportateur.setNumeroRegistreCommerce(request.getTinNumber());
-        }
-
-        if (request.getWebsite() != null && !request.getWebsite().isEmpty()) {
-            exportateur.setSiteWeb(request.getWebsite());
-        }
-
-        if (request.getLegalRep() != null && !request.getLegalRep().isEmpty()) {
-            exportateur.setRepresentantLegal(request.getLegalRep());
-            exportateur.setPrenom(request.getLegalRep()); // Mettre à jour aussi le champ prenom dans User
-        }
-
-        ExportateurEtranger saved = exportateurRepository.save(exportateur);
-        logger.info("Profil mis à jour avec succès pour: " + saved.getEmail());
-
-        return mapToUserDTO(saved);
+        return mapToUserDTO(savedUser != null ? savedUser : user);
     }
 
     @Override
@@ -1446,15 +1514,7 @@ public class UserServiceImpl implements UserService {
         return hasPending;
     }
 
-    /*@Override
-    public DeactivationRequestAdminDTO getDeactivationRequestById(Long requestId) {
-        logger.info("=== RÉCUPÉRATION DEMANDE DE DÉSACTIVATION ID: "+ requestId+" ===");
 
-        DeactivationRequest request = deactivationRequestRepository.findById(requestId)
-                .orElseThrow(() -> new RuntimeException("Demande de désactivation non trouvée avec l'id: " + requestId));
-
-        return mapToDeactivationRequestAdminDTO(request);
-    }*/
 
     @Override
     @Transactional
@@ -1577,31 +1637,6 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    /*@Override
-    @Transactional
-    public String generateAndSendPassword(Long userId) {
-        logger.info("=== GÉNÉRATION ET ENVOI MOT DE PASSE ID: "+ userId+" ===");
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
-
-        String newPassword = PasswordGenerator.generatePasswordForUser(user);
-        String encodedPassword = passwordEncoder.encode(newPassword);
-
-        if (user instanceof ExportateurEtranger) {
-            ExportateurEtranger exportateur = (ExportateurEtranger) user;
-            exportateur.setPasswordHash(encodedPassword);
-            exportateur.setLastPasswordChange(LocalDateTime.now());
-            exportateurRepository.save(exportateur);
-        }
-
-        // Envoyer l'email avec le mot de passe
-        sendNewPasswordEmail(user, newPassword);
-
-        logger.info("✅ Nouveau mot de passe généré et envoyé pour: "+ user.getEmail());
-
-        return newPassword;
-    }*/
 
     private void sendNewPasswordEmail(User user, String newPassword) {
         try {
@@ -1806,79 +1841,6 @@ public class UserServiceImpl implements UserService {
         return mapToUserDTO(saved);
     }
 
-    /*@Override
-    public List<UserDTO> getAllInstanceValidations() {
-        logger.info("=== RÉCUPÉRATION DE TOUTES LES INSTANCES DE VALIDATION ===");
-        return instanceValidationRepository.findAll().stream()
-                .map(this::mapToUserDTO)
-                .collect(Collectors.toList());
-    }*/
-
-    /*@Override
-    public UserDTO getInstanceValidationById(Long id) {
-        logger.info("=== RÉCUPÉRATION INSTANCE ID: "+ id+" ===");
-        InstanceValidation instance = instanceValidationRepository.findById(id)
-                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
-        return mapToUserDTO(instance);
-    }*/
-
-    /*@Override
-    public UserDTO getInstanceValidationByEmail(String email) {
-        logger.info("=== RÉCUPÉRATION INSTANCE PAR EMAIL: "+ email+" ===");
-        InstanceValidation instance = instanceValidationRepository.findByEmail(email)
-                .orElseThrow(() -> InstanceValidationException.instanceNotFoundByEmail(email));
-        return mapToUserDTO(instance);
-    }*/
-
-    /*@Override
-    @Transactional
-    public void updateInstanceValidationStatus(Long id, String status) {
-        logger.info("=== MISE À JOUR STATUT INSTANCE ID: "+ id+" ===");
-
-        InstanceValidation instance = instanceValidationRepository.findById(id)
-                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
-
-        try {
-            UserStatus newStatus = UserStatus.valueOf(status);
-            if (newStatus != UserStatus.ACTIF && newStatus != UserStatus.INACTIF) {
-                throw InstanceValidationException.invalidStatus(status);
-            }
-            instance.setUserStatut(newStatus);
-            instance.setUpdatedAt(LocalDateTime.now());
-            instanceValidationRepository.save(instance);
-            logger.info("Statut mis à jour: "+ instance.getEmail()+" -> "+ newStatus);
-        } catch (IllegalArgumentException e) {
-            throw InstanceValidationException.invalidStatus(status);
-        }
-    }*/
-
-    /*@Override
-    @Transactional
-    public void deleteInstanceValidation(Long id) {
-        logger.info("=== SUPPRESSION LOGIQUE INSTANCE ID: "+ id+" ===");
-
-        InstanceValidation instance = instanceValidationRepository.findById(id)
-                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
-
-        instance.setUserStatut(UserStatus.INACTIF);
-        instance.setUpdatedAt(LocalDateTime.now());
-        instanceValidationRepository.save(instance);
-
-        logger.info("Instance désactivée: "+ instance.getEmail());
-    }*/
-
-    /*@Override
-    @Transactional
-    public void hardDeleteInstanceValidation(Long id) {
-        logger.info("=== SUPPRESSION PHYSIQUE INSTANCE ID: "+ id+" ===");
-
-        InstanceValidation instance = instanceValidationRepository.findById(id)
-                .orElseThrow(() -> InstanceValidationException.instanceNotFound(id));
-
-        instanceValidationRepository.delete(instance);
-        logger.info("Instance supprimée définitivement: "+ instance.getEmail());
-    }*/
-
 
     // ==================== PRIVATE METHODS ====================
 
@@ -1937,25 +1899,4 @@ public class UserServiceImpl implements UserService {
         return dto;
     }
 
-    /*@Override
-    @Transactional
-    public boolean verifyInstanceValidationEmail(String token) {
-        logger.info("=== VÉRIFICATION EMAIL INSTANCE VALIDATION ===");
-
-        InstanceValidation instance = instanceValidationRepository.findByVerificationToken(token)
-                .orElseThrow(() -> new RuntimeException("Token de vérification invalide"));
-
-        if (instance.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Le token de vérification a expiré");
-        }
-
-        instance.setEmailVerified(true);
-        instance.setUserStatut(UserStatus.ACTIF);
-        instance.setVerificationToken(null);
-        instance.setVerificationTokenExpiry(null);
-
-        instanceValidationRepository.save(instance);
-
-        return true;
-    }*/
 }

@@ -36,6 +36,9 @@ public class ImportateurTunisien extends User {
     @Column(name = "mobile_id_pin")
     private String mobileIdPin;
 
+    @Column(name = "raison_sociale")
+    private String raisonSociale;
+
     @OneToMany(mappedBy = "importateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     @ToString.Exclude
