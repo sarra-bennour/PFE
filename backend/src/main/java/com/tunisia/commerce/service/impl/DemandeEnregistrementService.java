@@ -107,14 +107,35 @@ public class DemandeEnregistrementService {
         log.info("Récupération de tous les produits pour le catalogue importateur");
 
         try {
-            // Récupérer tous les produits distincts de tous les exportateurs
-            List<Product> allProducts = productRepository.findAllProductsWithDistinctExportateurs();
+            // Récupérer les produits avec les informations exportateur
+            List<Object[]> results = productRepository.findAllProductsWithExporterInfo();
 
-            log.info("{} produit(s) trouvé(s) dans le catalogue", allProducts.size());
+            List<ProduitDTO> products = new ArrayList<>();
 
-            return allProducts.stream()
-                    .map(this::mapProductToProduitDTO)
-                    .collect(Collectors.toList());
+            for (Object[] row : results) {
+                Product product = (Product) row[0];
+                ExportateurEtranger exportateur = (ExportateurEtranger) row[1];
+
+                ProduitDTO dto = mapProductToProduitDTO(product);
+
+                // ✅ Ajouter les infos exportateur
+                if (exportateur != null) {
+                    dto.setExporterId(exportateur.getId());
+                    String exporterFullName = exportateur.getRaisonSociale();
+                    if (exporterFullName == null || exporterFullName.isEmpty()) {
+                        exporterFullName = (exportateur.getNom() != null ? exportateur.getNom() : "") +
+                                " " + (exportateur.getPrenom() != null ? exportateur.getPrenom() : "");
+                        exporterFullName = exporterFullName.trim();
+                    }
+                    dto.setExporterName(exporterFullName);
+                    dto.setExporterCountry(exportateur.getPaysOrigine());
+                }
+
+                products.add(dto);
+            }
+
+            log.info("{} produit(s) trouvé(s) dans le catalogue", products.size());
+            return products;
 
         } catch (Exception e) {
             log.error("Erreur lors de la récupération du catalogue: {}", e.getMessage());
@@ -358,10 +379,34 @@ public class DemandeEnregistrementService {
         log.info("Recherche dans le catalogue avec mot-clé: {}", keyword);
 
         try {
-            List<Product> products = productRepository.searchProductsInCatalogue(keyword);
-            return products.stream()
-                    .map(this::mapProductToProduitDTO)
-                    .collect(Collectors.toList());
+            List<Object[]> results = productRepository.searchProductsInCatalogueWithExporter(keyword);
+
+            List<ProduitDTO> products = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Product product = (Product) row[0];
+                ExportateurEtranger exportateur = (ExportateurEtranger) row[1];
+
+                ProduitDTO dto = mapProductToProduitDTO(product);
+
+                if (exportateur != null) {
+                    dto.setExporterId(exportateur.getId());
+                    String exporterFullName = exportateur.getRaisonSociale();
+                    if (exporterFullName == null || exporterFullName.isEmpty()) {
+                        exporterFullName = (exportateur.getNom() != null ? exportateur.getNom() : "") +
+                                " " + (exportateur.getPrenom() != null ? exportateur.getPrenom() : "");
+                        exporterFullName = exporterFullName.trim();
+                    }
+                    dto.setExporterName(exporterFullName);
+                    dto.setExporterCountry(exportateur.getPaysOrigine());
+                }
+
+                products.add(dto);
+            }
+
+            log.info("{} produit(s) trouvé(s)", products.size());
+            return products;
+
         } catch (Exception e) {
             log.error("Erreur lors de la recherche: {}", e.getMessage());
             throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());
@@ -375,10 +420,34 @@ public class DemandeEnregistrementService {
         log.info("Recherche dans le catalogue par type: {}", productType);
 
         try {
-            List<Product> products = productRepository.findByProductType(productType);
-            return products.stream()
-                    .map(this::mapProductToProduitDTO)
-                    .collect(Collectors.toList());
+            List<Object[]> results = productRepository.findProductsByTypeWithExporter(productType);
+
+            List<ProduitDTO> products = new ArrayList<>();
+
+            for (Object[] row : results) {
+                Product product = (Product) row[0];
+                ExportateurEtranger exportateur = (ExportateurEtranger) row[1];
+
+                ProduitDTO dto = mapProductToProduitDTO(product);
+
+                if (exportateur != null) {
+                    dto.setExporterId(exportateur.getId());
+                    String exporterFullName = exportateur.getRaisonSociale();
+                    if (exporterFullName == null || exporterFullName.isEmpty()) {
+                        exporterFullName = (exportateur.getNom() != null ? exportateur.getNom() : "") +
+                                " " + (exportateur.getPrenom() != null ? exportateur.getPrenom() : "");
+                        exporterFullName = exporterFullName.trim();
+                    }
+                    dto.setExporterName(exporterFullName);
+                    dto.setExporterCountry(exportateur.getPaysOrigine());
+                }
+
+                products.add(dto);
+            }
+
+            log.info("{} produit(s) de type {} trouvé(s)", products.size(), productType);
+            return products;
+
         } catch (Exception e) {
             log.error("Erreur lors de la recherche: {}", e.getMessage());
             throw new RuntimeException("Erreur lors de la recherche: " + e.getMessage());

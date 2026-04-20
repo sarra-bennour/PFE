@@ -36,4 +36,8 @@ public class ProduitDTO {
     private String storagePoints;
     private String productImage;
 
+
+    private Long exporterId;
+    private String exporterName;
+    private String exporterCountry;
 }

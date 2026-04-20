@@ -35,13 +35,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
                                                      @Param("productType") String productType);
 
 
-
-    /**
-     * Récupérer tous les produits distincts de tous les exportateurs
-     */
-    @Query("SELECT DISTINCT p FROM Product p WHERE p.productImage IS NOT NULL OR p.productName IS NOT NULL")
-    List<Product> findAllProductsWithDistinctExportateurs();
-
     /**
      * Récupérer les produits par type
      */
@@ -75,15 +68,40 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     // ==================== POUR IMPORTATEUR ====================
 
-    @Query("SELECT p FROM Product p WHERE " +
-            "LOWER(p.productName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "LOWER(p.category) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "p.hsCode LIKE CONCAT('%', :keyword, '%')")
-    List<Product> searchProductsInCatalogue(@Param("keyword") String keyword);
-
     List<Product> findByProductType(String productType);
 
     List<Product> findByCategory(String category);
 
     List<Product> findByOriginCountry(String originCountry);
+
+    /**
+     * Récupérer tous les produits avec les informations de l'exportateur
+     */
+    @Query("SELECT p, d.exportateur FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE d.status = 'SOUMISE' OR d.status = 'VALIDEE'")
+    List<Object[]> findAllProductsWithExporterInfo();
+
+    /**
+     * Rechercher des produits par mot-clé avec les informations de l'exportateur
+     */
+    @Query("SELECT p, d.exportateur FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE (d.status = 'SOUMISE' OR d.status = 'VALIDEE') " +
+            "AND (LOWER(p.productName) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(p.category) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "p.hsCode LIKE CONCAT('%', :keyword, '%'))")
+    List<Object[]> searchProductsInCatalogueWithExporter(@Param("keyword") String keyword);
+
+    /**
+     * Rechercher des produits par type avec les informations de l'exportateur
+     */
+    @Query("SELECT p, d.exportateur FROM Product p " +
+            "JOIN p.demandeProduits dp " +
+            "JOIN dp.demande d " +
+            "WHERE (d.status = 'SOUMISE' OR d.status = 'VALIDEE') " +
+            "AND p.productType = :productType")
+    List<Object[]> findProductsByTypeWithExporter(@Param("productType") String productType);
 }

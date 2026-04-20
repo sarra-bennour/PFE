@@ -10,6 +10,9 @@ import {
 import { useAuth } from '../App';
 import { Product } from '../types/Product';
 import axios from 'axios';
+import { notificationService } from '../services/notificationService';
+import { ProductAdditionData } from '../types/ProductAdditionData';
+import ProductDeclarationForm from './Importateur/ProductDeclarationForm';
 
 const API_URL = 'http://localhost:8080/api';
 
@@ -28,8 +31,16 @@ const ProductsCatalog: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
+  
+  // États pour la gestion des produits ajoutés
+  const [acceptedProductIds, setAcceptedProductIds] = useState<Set<number>>(new Set());
+  const [pendingProductIds, setPendingProductIds] = useState<Set<number>>(new Set());
+  const [submittedProductIds, setSubmittedProductIds] = useState<Set<number>>(new Set());
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDeclarationForm, setShowDeclarationForm] = useState(false);
+  const [selectedProductForForm, setSelectedProductForForm] = useState<Product | null>(null);
+  const [pendingDeclarationId, setPendingDeclarationId] = useState<number | null>(null);
   const [addingProductId, setAddingProductId] = useState<number | null>(null);
-  const [showAddSuccess, setShowAddSuccess] = useState<number | null>(null);
 
   // Configuration axios
   const axiosInstance = axios.create({
@@ -43,6 +54,72 @@ const ProductsCatalog: React.FC = () => {
     }
     return config;
   });
+
+  // Charger les statuts des produits depuis localStorage
+  const loadStatutsFromLocalStorage = () => {
+    if (user) {
+      const savedAccepted = localStorage.getItem(`accepted_${user.id}`);
+      const savedPending = localStorage.getItem(`pending_${user.id}`);
+      const savedSubmitted = localStorage.getItem(`submitted_${user.id}`);
+
+      if (savedAccepted) setAcceptedProductIds(new Set(JSON.parse(savedAccepted)));
+      if (savedPending) setPendingProductIds(new Set(JSON.parse(savedPending)));
+      if (savedSubmitted) setSubmittedProductIds(new Set(JSON.parse(savedSubmitted)));
+    }
+  };
+
+  const saveStatutsToLocalStorage = () => {
+    if (user) {
+      localStorage.setItem(`accepted_${user.id}`, JSON.stringify(Array.from(acceptedProductIds)));
+      localStorage.setItem(`pending_${user.id}`, JSON.stringify(Array.from(pendingProductIds)));
+      localStorage.setItem(`submitted_${user.id}`, JSON.stringify(Array.from(submittedProductIds)));
+    }
+  };
+
+  // Charger les statuts depuis l'API
+  const loadProductStatuts = async () => {
+    if (!user || user.role !== 'IMPORTATEUR') return;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8080/api/importateur/produits/statuts', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.status === 403) {
+        return;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        setAcceptedProductIds(new Set(data.acceptedProductIds || []));
+        setPendingProductIds(new Set(data.pendingProductIds || []));
+        setSubmittedProductIds(new Set(data.submittedProductIds || []));
+        saveStatutsToLocalStorage();
+      } else {
+        loadStatutsFromLocalStorage();
+      }
+    } catch (error) {
+      loadStatutsFromLocalStorage();
+    }
+  };
+
+  // Sauvegarder les statuts quand ils changent
+  useEffect(() => {
+    saveStatutsToLocalStorage();
+  }, [acceptedProductIds, pendingProductIds, submittedProductIds, user]);
+
+  // Charger les statuts au montage
+  useEffect(() => {
+    if (user && user.role === 'IMPORTATEUR') {
+      loadStatutsFromLocalStorage();
+      loadProductStatuts();
+    }
+  }, [user]);
 
   // Debounce pour la recherche
   useEffect(() => {
@@ -133,21 +210,171 @@ const ProductsCatalog: React.FC = () => {
     setCurrentPage(1);
   };
 
-  const handleAddToCart = async (product: Product) => {
-    setAddingProductId(product.id);
+  const getAuthToken = () => {
+    return localStorage.getItem('token') || '';
+  };
+
+  const sendProductAdditionNotification = async (
+    importerId: number,
+    importerName: string,
+    exporterId: number,
+    exporterName: string,
+    product: Product,
+    declarationId: number = 0
+  ) => {
     try {
-      // Appel API pour ajouter au panier ou créer une demande
-      console.log('Ajout du produit:', product);
-      // Simulation d'appel API
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setShowAddSuccess(product.id);
-      setTimeout(() => setShowAddSuccess(null), 2000);
-    } catch (err) {
-      console.error('Erreur lors de l\'ajout:', err);
-    } finally {
-      setAddingProductId(null);
+      const notificationData: ProductAdditionData = {
+        importerId,
+        importerName,
+        exporterId,
+        exporterName,
+        productId: Number(product.id),
+        productName: product.productName || 'Produit sans nom',
+        productPrice: product.price || 'Prix sur demande',
+        productNgp: product.hsCode || '',
+        declarationId,
+        message: `${importerName} souhaite ajouter votre produit "${product.productName}" à sa déclaration d'importation.`
+      };
+
+      const response = await notificationService.createProductAdditionNotification(notificationData);
+      return response;
+    } catch (error) {
+      throw error;
     }
+  };
+
+  const handleAddProduct = async (product: Product) => {
+    if (!user || user.role !== 'IMPORTATEUR') {
+      return;
+    }
+
+    const productIdNum = Number(product.id);
+
+    if (acceptedProductIds.has(productIdNum)) {
+      return;
+    }
+
+    if (pendingProductIds.has(productIdNum)) {
+      return;
+    }
+
+    if (submittedProductIds.has(productIdNum)) {
+      return;
+    }
+
+    setAddingProductId(productIdNum);
+    setIsSubmitting(true);
+
+    setPendingProductIds(prev => {
+      const newSet = new Set(prev);
+      newSet.add(productIdNum);
+      return newSet;
+    });
+
+    try {
+      const importerName = `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email;
+      const exporterId = Number((product as any).exporterId || 0);
+      const exporterName = (product as any).exporterName || '';
+
+      await sendProductAdditionNotification(
+        user.id,
+        importerName,
+        exporterId,
+        exporterName,
+        product,
+        0
+      );
+
+      setSelectedProduct(null);
+      
+      // Afficher un message de succès temporaire
+      setTimeout(() => {
+        setAddingProductId(null);
+      }, 2000);
+      
+    } catch (error) {
+      setPendingProductIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(productIdNum);
+        return newSet;
+      });
+      setAddingProductId(null);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderProductButton = (product: Product) => {
+    if (user?.role !== 'IMPORTATEUR') return null;
+
+    const productIdNum = Number(product.id);
+    const isSubmitted = submittedProductIds.has(productIdNum);
+    const isAccepted = acceptedProductIds.has(productIdNum);
+    const isPending = pendingProductIds.has(productIdNum);
+    const isAdding = addingProductId === productIdNum;
+
+    if (isSubmitted) {
+      return (
+        <button
+          disabled
+          className="w-full py-2.5 bg-gray-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <i className="fas fa-check-circle"></i>
+          Demande envoyée
+        </button>
+      );
+    }
+
+    if (isAccepted) {
+      return (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedProductForForm(product);
+            setShowDeclarationForm(true);
+          }}
+          className="w-full py-2.5 bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
+        >
+          <i className="fas fa-file-alt"></i>
+          Compléter la déclaration
+        </button>
+      );
+    }
+
+    if (isPending) {
+      return (
+        <button
+          disabled
+          className="w-full py-2.5 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          <i className="fas fa-hourglass-half fa-spin"></i>
+          En attente
+        </button>
+      );
+    }
+
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleAddProduct(product);
+        }}
+        disabled={isSubmitting || isAdding}
+        className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {isAdding ? (
+          <>
+            <Loader2 className="animate-spin" size={14} />
+            Ajout...
+          </>
+        ) : (
+          <>
+            <ShoppingCart size={14} />
+            Ajouter à ma commande
+          </>
+        )}
+      </button>
+    );
   };
 
   // Bouton de retour selon le rôle
@@ -368,8 +595,8 @@ const ProductsCatalog: React.FC = () => {
                     </div>
 
                     {/* Product Info */}
-                    <div className="p-6 flex-1 flex flex-col">  {/* Réduit de p-8 à p-6 */}
-                      <div className="mb-3">  {/* Réduit de mb-4 à mb-3 */}
+                    <div className="p-6 flex-1 flex flex-col">
+                      <div className="mb-3">
                         <span className="text-[10px] font-mono font-bold text-tunisia-red bg-red-50 px-2 py-0.5 rounded italic whitespace-nowrap overflow-hidden text-ellipsis block">
                           NGP: {product.hsCode}
                         </span>
@@ -380,11 +607,11 @@ const ProductsCatalog: React.FC = () => {
                       >
                         {product.productName}
                       </h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">  {/* Réduit de mb-6 à mb-4 */}
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-4">
                         <Tags size={12} /> {product.category}
                       </p>
 
-                      <div className="mt-auto pt-4 border-t border-slate-50 grid grid-cols-2 gap-4">  {/* Réduit de pt-6 à pt-4 */}
+                      <div className="mt-auto pt-4 border-t border-slate-50 grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Origine</span>
                           <p className="text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -398,29 +625,10 @@ const ProductsCatalog: React.FC = () => {
                           </p>
                         </div>
                       </div>
+                      <br />
 
                       {/* Bouton Ajouter - UNIQUEMENT POUR IMPORTATEUR */}
-                      {user?.role === 'IMPORTATEUR' && (
-                        <button
-                          onClick={() => handleAddToCart(product)}
-                          disabled={addingProductId === product.id}
-                          className="mt-4 w-full py-2.5 bg-emerald-500 text-white rounded-xl font-black uppercase tracking-widest text-[10px] shadow-md hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {addingProductId === product.id ? (
-                            <Loader2 className="animate-spin" size={14} />
-                          ) : showAddSuccess === product.id ? (
-                            <>
-                              <i className="fas fa-check-circle text-xs"></i>
-                              Ajouté !
-                            </>
-                          ) : (
-                            <>
-                              <ShoppingCart size={14} />
-                              Ajouter à ma commande
-                            </>
-                          )}
-                        </button>
-                      )}
+                      {renderProductButton(product)}
                     </div>
                   </motion.div>
                 ))}
@@ -612,25 +820,7 @@ const ProductsCatalog: React.FC = () => {
                 {/* Bouton Ajouter dans le modal pour importateur */}
                 {user?.role === 'IMPORTATEUR' && (
                   <div className="pt-4">
-                    <button
-                      onClick={() => handleAddToCart(selectedProduct)}
-                      disabled={addingProductId === selectedProduct.id}
-                      className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-lg hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                    >
-                      {addingProductId === selectedProduct.id ? (
-                        <Loader2 className="animate-spin" size={20} />
-                      ) : showAddSuccess === selectedProduct.id ? (
-                        <>
-                          <i className="fas fa-check-circle"></i>
-                          Produit ajouté avec succès !
-                        </>
-                      ) : (
-                        <>
-                          <ShoppingCart size={18} />
-                          Ajouter ce produit à ma commande
-                        </>
-                      )}
-                    </button>
+                    {renderProductButton(selectedProduct)}
                   </div>
                 )}
 
@@ -667,6 +857,73 @@ const ProductsCatalog: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Product Declaration Form Modal */}
+      {showDeclarationForm && selectedProductForForm && user && (
+        <ProductDeclarationForm
+          product={{
+            id: selectedProductForForm.id,
+            productName: selectedProductForForm.productName,
+            price: selectedProductForForm.price || 'Prix sur demande',
+            category: selectedProductForForm.category || 'Autre',
+            productImage: selectedProductForForm.productImage || undefined,
+            hsCode: selectedProductForForm.hsCode
+          }}
+          exporter={{
+            nom: (selectedProductForForm as any).exporterName || '',
+            paysOrigine: selectedProductForForm.originCountry || 'UN',
+            id: Number((selectedProductForForm as any).exporterId || 0),
+            role: 'EXPORTATEUR',
+            email: '',
+            telephone: '',
+            products: []
+          }}
+          onClose={() => {
+            setShowDeclarationForm(false);
+            setSelectedProductForForm(null);
+          }}
+          onSuccess={async () => {
+            if (user && selectedProductForForm && pendingDeclarationId) {
+              setIsSubmitting(true);
+              try {
+                await sendProductAdditionNotification(
+                  user.id,
+                  `${user.prenom || ''} ${user.nom || ''}`.trim() || user.email,
+                  Number((selectedProductForForm as any).exporterId || 0),
+                  (selectedProductForForm as any).exporterName || '',
+                  selectedProductForForm,
+                  pendingDeclarationId
+                );
+
+                setAcceptedProductIds(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(Number(selectedProductForForm.id));
+                  return newSet;
+                });
+                setSubmittedProductIds(prev => {
+                  const newSet = new Set(prev);
+                  newSet.add(Number(selectedProductForForm.id));
+                  return newSet;
+                });
+
+              } catch (error) {
+                console.error('Error:', error);
+              } finally {
+                setIsSubmitting(false);
+                setShowDeclarationForm(false);
+                setSelectedProductForForm(null);
+                setPendingDeclarationId(null);
+              }
+            } else {
+              setShowDeclarationForm(false);
+              setSelectedProductForForm(null);
+            }
+          }}
+          onDeclarationCreated={(declarationId: number) => {
+            setPendingDeclarationId(declarationId);
+          }}
+        />
+      )}
     </div>
   );
 };

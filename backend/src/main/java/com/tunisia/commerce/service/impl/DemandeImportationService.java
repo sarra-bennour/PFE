@@ -275,34 +275,6 @@ public class DemandeImportationService {
                 .build();
     }
 
-    /**
-     * Map Product to ProduitDTO
-     */
-    /*private List<ProduitDTO> mapProductsToDTO(List<Product> products) {
-        return products.stream()
-                .map(product -> ProduitDTO.builder()
-                        .id(product.getId())
-                        .productType(product.getProductType())
-                        .category(product.getCategory())
-                        .hsCode(product.getHsCode())
-                        .productName(product.getProductName())
-                        .isLinkedToBrand(product.getIsLinkedToBrand())
-                        .brandName(product.getBrandName())
-                        .isBrandOwner(product.getIsBrandOwner())
-                        .hasBrandLicense(product.getHasBrandLicense())
-                        .productState(product.getProductState())
-                        .originCountry(product.getOriginCountry())
-                        .annualQuantityValue(product.getAnnualQuantityValue())
-                        .annualQuantityUnit(product.getAnnualQuantityUnit())
-                        .commercialBrandName(product.getCommercialBrandName())
-                        .processingType(product.getProductState())
-                        .annualExportCapacity(product.getAnnualQuantityValue() != null &&
-                                product.getAnnualQuantityUnit() != null ?
-                                product.getAnnualQuantityValue() + " " +
-                                        product.getAnnualQuantityUnit() : null)
-                        .build())
-                .collect(Collectors.toList());
-    }*/
 
     /**
      * Map Document to DocumentDTO
@@ -326,72 +298,6 @@ public class DemandeImportationService {
                 .downloadUrl("/api/importateur/demandes/documents/" + document.getId() + "/telecharger")
                 .build();
     }
-
-    /**
-     * Récupérer une demande spécifique par son ID (avec vérification d'autorisation)
-     */
-    /*public DemandeEnregistrementDTO getDemandeById(Long demandeId, Long importateurId) {
-        log.info("Récupération de la demande ID: {} pour l'importateur ID: {}", demandeId, importateurId);
-
-        DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new RuntimeException("Demande non trouvée avec l'ID: " + demandeId));
-
-        // Vérifier que la demande appartient à l'importateur
-        if (demande.getImportateur() == null || !demande.getImportateur().getId().equals(importateurId)) {
-            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à cette demande");
-        }
-
-        return mapToDTO(demande);
-    }*/
-
-    /**
-     * Récupérer un document par son ID (avec vérification d'autorisation)
-     */
-    /*public DocumentDTO getDocumentById(Long documentId, Long importateurId) {
-        log.info("Récupération du document ID: {} pour l'importateur ID: {}", documentId, importateurId);
-
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
-
-        // Vérifier que le document appartient à une demande de l'importateur
-        if (document.getDemande() == null ||
-                document.getDemande().getImportateur() == null ||
-                !document.getDemande().getImportateur().getId().equals(importateurId)) {
-            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
-        }
-
-        return convertToDocumentDTO(document);
-    }*/
-
-    /**
-     * Récupérer le fichier d'un document (avec vérification d'autorisation)
-     */
-    /*public Resource getDocumentFile(Long documentId, Long importateurId) {
-        log.info("Récupération du fichier du document ID: {} pour l'importateur ID: {}", documentId, importateurId);
-
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
-
-        // Vérifier que le document appartient à une demande de l'importateur
-        if (document.getDemande() == null ||
-                document.getDemande().getImportateur() == null ||
-                !document.getDemande().getImportateur().getId().equals(importateurId)) {
-            throw new RuntimeException("Vous n'êtes pas autorisé à accéder à ce document");
-        }
-
-        try {
-            Path filePath = Paths.get(document.getFilePath());
-            Resource resource = new UrlResource(filePath.toUri());
-
-            if (resource.exists() && resource.isReadable()) {
-                return resource;
-            } else {
-                throw new RuntimeException("Le fichier n'existe pas ou n'est pas accessible");
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Erreur lors de la lecture du fichier: " + e.getMessage());
-        }
-    }*/
 
     @Transactional
     public DocumentDTO uploadDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr) {
