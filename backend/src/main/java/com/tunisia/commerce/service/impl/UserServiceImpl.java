@@ -47,6 +47,8 @@ public class UserServiceImpl implements UserService {
     private final TwoFactorAuthService twoFactorAuthService;
     private final AdministrateurRepository administrateurRepository;
     private final InstanceValidationRepository instanceValidationRepository;
+    private final StructureInterneRepository structureRepository;
+
 
 
 
@@ -958,17 +960,13 @@ public class UserServiceImpl implements UserService {
             InstanceValidation instance = instanceValidationRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("Instance de validation non trouvée"));
 
-            if (request.getNomOfficiel() != null && !request.getNomOfficiel().isEmpty()) {
-                instance.setNomOfficiel(request.getNomOfficiel());
-                instance.setNom(request.getNomOfficiel());
-            }
+            if (request.getStructureInterne() != null && request.getStructureInterne().getId() != null) {
+                StructureInterne structure = structureRepository.findById(request.getStructureInterne().getId())
+                        .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructureInterne().getId()));
+                instance.setStructure(structure);
 
-            if (request.getCodeMinistere() != null && !request.getCodeMinistere().isEmpty()) {
-                instance.setCodeMinistere(request.getCodeMinistere());
-            }
-
-            if (request.getTypeAutorite() != null) {
-                instance.setTypeAutorite(request.getTypeAutorite());
+                // Mettre à jour les champs dérivés de la structure
+                instance.setStructure(structure);
             }
 
             if (request.getSlaTraitementJours() != null) {
@@ -1660,10 +1658,10 @@ public class UserServiceImpl implements UserService {
             // 👇 AJOUT: Pour les instances de validation
             else if (user instanceof InstanceValidation) {
                 InstanceValidation instance = (InstanceValidation) user;
-                params.put("companyName", instance.getNomOfficiel());
+                params.put("companyName", instance.getStructure().getOfficialName());
                 emailService.sendValidationNotification(
                         user.getEmail(),
-                        instance.getNomOfficiel(),
+                        instance.getStructure().getOfficialName(),
                         ValidationNotificationType.INSTANCE_VALIDATION_PASSWORD_RESET,
                         params
                 );
@@ -1762,11 +1760,14 @@ public class UserServiceImpl implements UserService {
         validateRequiredField(request.getPrenom(), "prenom");
         validateRequiredField(request.getEmail(), "email");
         validateRequiredField(request.getTelephone(), "telephone");
-        validateRequiredField(request.getNomOfficiel(), "nomOfficiel");
-        validateRequiredField(request.getCodeMinistere(), "codeMinistere");
 
         if (request.getSlaTraitementJours() == null) {
             throw InstanceValidationException.missingRequiredField("slaTraitementJours");
+        }
+
+        // 🔥 Validation de la structure
+        if (request.getStructure() == null || request.getStructure().getId() == null) {
+            throw InstanceValidationException.missingRequiredField("structure");
         }
 
         if (!EMAIL_PATTERN.matcher(request.getEmail()).matches()) {
@@ -1777,10 +1778,6 @@ public class UserServiceImpl implements UserService {
             throw InstanceValidationException.invalidPhoneFormat(request.getTelephone());
         }
 
-        if (!CODE_MINISTERE_PATTERN.matcher(request.getCodeMinistere()).matches()) {
-            throw InstanceValidationException.invalidCodeMinistereFormat(request.getCodeMinistere());
-        }
-
         if (request.getSlaTraitementJours() < 1 || request.getSlaTraitementJours() > 60) {
             throw InstanceValidationException.invalidSlaDays(request.getSlaTraitementJours());
         }
@@ -1789,18 +1786,10 @@ public class UserServiceImpl implements UserService {
             throw InstanceValidationException.emailAlreadyExists(request.getEmail());
         }
 
-        if (instanceValidationRepository.existsByCodeMinistere(request.getCodeMinistere())) {
-            throw InstanceValidationException.codeMinistereAlreadyExists(request.getCodeMinistere());
-        }
+        // 🔥 Récupérer la structure depuis la base de données (pour être sûr qu'elle existe)
+        StructureInterne structure = structureRepository.findById(request.getStructure().getId())
+                .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructure().getId()));
 
-        InstanceValidationType typeAutorite;
-        try {
-            typeAutorite = InstanceValidationType.valueOf(request.getTypeAutorite());
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw InstanceValidationException.invalidTypeAutorite(
-                    request.getTypeAutorite() != null ? request.getTypeAutorite() : "null"
-            );
-        }
 
         // Générer le token de vérification
         String verificationToken = generateVerificationToken();
@@ -1812,9 +1801,7 @@ public class UserServiceImpl implements UserService {
         instance.setPrenom(request.getPrenom());
         instance.setEmail(request.getEmail());
         instance.setTelephone(request.getTelephone());
-        instance.setNomOfficiel(request.getNomOfficiel());
-        instance.setCodeMinistere(request.getCodeMinistere());
-        instance.setTypeAutorite(typeAutorite);
+        instance.setStructure(structure);
         instance.setSlaTraitementJours(request.getSlaTraitementJours());
         instance.setRole(UserRole.INSTANCE_VALIDATION);
         instance.setUserStatut(UserStatus.INACTIF);
@@ -1860,16 +1847,16 @@ public class UserServiceImpl implements UserService {
             params.put("email", instance.getEmail());
             params.put("generatedPassword", password);
             params.put("activationLink", activationLink);
-            params.put("nomOfficiel", instance.getNomOfficiel());
-            params.put("codeMinistere", instance.getCodeMinistere());
-            params.put("typeAutorite", instance.getTypeAutorite());
+            params.put("nomOfficiel", instance.getStructure().getOfficialName());
+            params.put("codeMinistere", instance.getStructure().getCode());
+            params.put("typeAutorite", instance.getStructure().getType());
             params.put("slaTraitementJours", instance.getSlaTraitementJours());
             params.put("loginUrl", frontendUrl + "/login");
             params.put("supportEmail", "support@tunisia-commerce.gov.tn");
 
             emailService.sendValidationNotification(
                     instance.getEmail(),
-                    instance.getNomOfficiel(),
+                    instance.getStructure().getOfficialName(),
                     ValidationNotificationType.INSTANCE_VALIDATION_CREATED,
                     params
             );
@@ -1891,11 +1878,14 @@ public class UserServiceImpl implements UserService {
         dto.setStatut(instance.getUserStatut());
         dto.setDateCreation(instance.getDateCreation());
         dto.setLastLogin(instance.getLastLogin());
-        dto.setNomOfficiel(instance.getNomOfficiel());
-        dto.setCodeMinistere(instance.getCodeMinistere());
-        dto.setTypeAutorite(instance.getTypeAutorite());
         dto.setSlaTraitementJours(instance.getSlaTraitementJours());
         dto.setUpdatedAt(instance.getUpdatedAt());
+
+        if (instance.getStructure() != null) {
+            dto.setStructureName(instance.getStructure().getOfficialName());
+            dto.setStructureCode(instance.getStructure().getCode());
+            dto.setStructureType(instance.getStructure().getType());
+        }
         return dto;
     }
 

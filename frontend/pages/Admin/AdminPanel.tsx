@@ -28,6 +28,39 @@ const AdminPanel: React.FC = () => {
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [showStructureForm, setShowStructureForm] = useState(false);
   const [selectedStructure, setSelectedStructure] = useState<InternalStructure | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
+
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Fonction pour charger tous les utilisateurs
+  const loadUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:8080/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.data.success) {
+        setUsers(response.data.users);
+        console.log('**********Utilisateurs chargés:', response.data.users);
+        console.log('✅ Utilisateurs chargés:', response.data.users.length);
+      } else {
+        console.error('Erreur chargement utilisateurs:', response.data.error);
+      }
+    } catch (error) {
+      console.error('Erreur API:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // Appeler loadUsers au montage du composant ou quand l'onglet users est activé
+  useEffect(() => {
+    if (activeTab === 'users') {
+      loadUsers();
+    }
+  }, [activeTab]);
 
   // Configuration API
   const API_URL = 'http://localhost:8080/api/admin/structures';
@@ -223,14 +256,15 @@ const AdminPanel: React.FC = () => {
                 </button>
               </div>
               <div className="p-10 max-h-[70vh] overflow-y-auto scrollbar-hide">
-                {/* <CreateUserForm 
-                  InternalStructure={structures}
+                <CreateUserForm 
+                  structures={structures}  // Changé de InternalStructure à structures
                   onSuccess={() => {
                     setShowCreateUser(false);
-                    // Refresh logic here
+                    // Rafraîchir la liste des utilisateurs si nécessaire
+                    loadUsers(); // Si vous avez une fonction pour recharger les utilisateurs
                   }}
                   onCancel={() => setShowCreateUser(false)}
-                /> */}
+                />
               </div>
             </div>
           </div>

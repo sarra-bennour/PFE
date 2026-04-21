@@ -56,31 +56,6 @@ public class AdminController {
         }
     }
 
-    /**
-     * Récupérer un utilisateur par son ID
-     */
-    /*@GetMapping("/users/{id}")
-    public ResponseEntity<?> getUserById(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== RÉCUPÉRATION UTILISATEUR ID: {} ===", id);
-            validateAdmin(authHeader);
-
-            UserDTO user = userService.getUserById(id);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "user", user
-            ));
-        } catch (Exception e) {
-            log.error("Erreur lors de la récupération de l'utilisateur: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage()
-            ));
-        }
-    }*/
 
     /**
      * Récupérer toutes les demandes de désactivation en attente
@@ -281,29 +256,6 @@ public class AdminController {
         }
     }
 
-    // Dans AuthController.java ou UserController.java
-    /*@GetMapping("/verify-email")
-    public ResponseEntity<?> verifyEmail(@RequestParam String token) {
-        try {
-            boolean verified = userService.verifyInstanceValidationEmail(token);
-            if (verified) {
-                return ResponseEntity.ok(Map.of(
-                        "success", true,
-                        "message", "Email vérifié avec succès. Vous pouvez maintenant vous connecter."
-                ));
-            } else {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "message", "Token invalide ou expiré."
-                ));
-            }
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", e.getMessage()
-            ));
-        }
-    }*/
 
     // ==================== INSTANCE VALIDATION ENDPOINTS ====================
 
@@ -311,6 +263,8 @@ public class AdminController {
     public ResponseEntity<?> createInstanceValidation(@RequestBody CreateInstanceValidationRequest request) {
         try {
             log.info("=== CRÉATION INSTANCE DE VALIDATION ===");
+            log.info("Structure reçue: {}", request.getStructure());
+
             UserDTO created = userService.createInstanceValidation(request);
 
             return ResponseEntity.ok(Map.of(

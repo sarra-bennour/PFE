@@ -1,5 +1,6 @@
 package com.tunisia.commerce.dto.user;
 
+import com.tunisia.commerce.dto.structure.StructureInterneDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,8 +15,6 @@ public class CreateInstanceValidationRequest {
     private String prenom;
     private String email;
     private String telephone;
-    private String nomOfficiel;
-    private String codeMinistere;
-    private String typeAutorite;
+    private StructureInterneDTO structure;
     private Integer slaTraitementJours;
 }

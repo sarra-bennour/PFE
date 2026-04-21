@@ -1,41 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import FormAlert from '../../components/FormAlert';
-import { CreateUserFormProps } from '../../types/CreateUserFormProps';
+import { InternalStructure } from '../../types/InternalStructure';
 
-const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) => {
+interface CreateUserFormProps {
+  onSuccess: () => void;
+  onCancel: () => void;
+  structures?: InternalStructure[]; // Ajout pour recevoir les structures
+}
+
+const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, structures = [] }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [availableStructures, setAvailableStructures] = useState<InternalStructure[]>([]);
+  const [loadingStructures, setLoadingStructures] = useState(false);
+  
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
+    nom: '',
+    prenom: '',
     email: '',
-    phone: '',
-    ministry: '',
-    nomOfficiel: '',
-    codeMinistere: '',
-    typeAutorite: 'MINISTERE',
-    slaTraitementJours: 5
+    telephone: '',
+    structureId: '',
+    slaTraitementJours: 30
   });
 
-  const authorityTypes = [
-    { value: 'MINISTERE', label: 'Ministère' },
-    { value: 'AGENCE_NATIONALE', label: 'Agence Nationale' },
-    { value: 'DIRECTION_GENERALE', label: 'Direction Générale' },
-    { value: 'AUTRE_ORGANISME_PUBLIC', label: 'Autre Organisme Public' }
-  ];
+  // Charger les structures si elles ne sont pas fournies en props
+  useEffect(() => {
+    if (structures.length > 0) {
+      setAvailableStructures(structures);
+    } else {
+      fetchStructures();
+    }
+  }, [structures]);
 
-  const ministries = [
-    "Ministère du Commerce",
-    "Ministère de l'Industrie",
-    "Ministère de l'Agriculture",
-    "Ministère de la Santé",
-    "Ministère des Finances",
-    "Douanes Tunisiennes"
-  ];
+  const fetchStructures = async () => {
+    try {
+      setLoadingStructures(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get('http://localhost:8080/api/admin/structures', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.data.success) {
+        setAvailableStructures(response.data.structures);
+      }
+    } catch (err) {
+      console.error('Erreur chargement structures:', err);
+      setError('Impossible de charger la liste des structures');
+    } finally {
+      setLoadingStructures(false);
+    }
+  };
 
-  // Récupérer le token d'authentification
   const getAuthToken = (): string | null => {
     return localStorage.getItem('token');
   };
@@ -55,15 +72,27 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         return;
       }
 
-      // Construction de la requête selon le format attendu par le backend
+      // Trouver la structure sélectionnée
+      const selectedStructure = availableStructures.find(s => s.id === Number(formData.structureId));
+      
+      if (!selectedStructure) {
+        setError("Veuillez sélectionner une structure valide");
+        setLoading(false);
+        return;
+      }
+
+      // Construction de la requête selon le nouveau format attendu par le backend
       const requestData = {
-        nom: formData.lastName,
-        prenom: formData.firstName,
+        nom: formData.nom,
+        prenom: formData.prenom,
         email: formData.email,
-        telephone: formData.phone,
-        nomOfficiel: formData.nomOfficiel,
-        codeMinistere: formData.codeMinistere.toUpperCase(),
-        typeAutorite: formData.typeAutorite,
+        telephone: formData.telephone,
+        structure: {
+          id: selectedStructure.id,
+          type: selectedStructure.type,
+          officialName: selectedStructure.officialName,
+          code: selectedStructure.code
+        },
         slaTraitementJours: formData.slaTraitementJours
       };
 
@@ -83,15 +112,12 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         
         // Réinitialiser le formulaire
         setFormData({
-          firstName: '',
-          lastName: '',
+          nom: '',
+          prenom: '',
           email: '',
-          phone: '',
-          ministry: '',
-          nomOfficiel: '',
-          codeMinistere: '',
-          typeAutorite: 'MINISTERE',
-          slaTraitementJours: 5
+          telephone: '',
+          structureId: '',
+          slaTraitementJours: 30
         });
         
         // Appeler le callback onSuccess après 2 secondes
@@ -108,34 +134,25 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
       
       // Gestion des erreurs
       if (err.response) {
-        // Erreur retournée par le serveur
         const errorMessage = err.response.data?.error || err.response.data?.message || "Erreur serveur";
         const errorCode = err.response.data?.errorCode;
         
         if (errorCode === 'INSTANCE_VALIDATION.EMAIL_EXISTS') {
           setError("Cet email est déjà utilisé par un autre utilisateur.");
-        } else if (errorCode === 'INSTANCE_VALIDATION.CODE_MINISTERE_EXISTS') {
-          setError("Ce code ministère est déjà utilisé.");
+        } else if (errorCode === 'INSTANCE_VALIDATION.MISSING_FIELD') {
+          setError("Tous les champs obligatoires doivent être remplis.");
         } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_EMAIL') {
           setError("Format d'email invalide.");
         } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_PHONE') {
           setError("Format de téléphone invalide. Utilisez le format international (+216XXXXXXXX).");
-        } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_CODE_MINISTERE') {
-          setError("Format de code ministère invalide. Utilisez 3-20 caractères, majuscules et underscores.");
         } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_SLA') {
           setError("Le SLA doit être compris entre 1 et 60 jours.");
-        } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_TYPE') {
-          setError("Type d'autorité invalide.");
-        } else if (errorCode === 'INSTANCE_VALIDATION.MISSING_FIELD') {
-          setError("Tous les champs obligatoires doivent être remplis.");
         } else {
           setError(errorMessage);
         }
       } else if (err.request) {
-        // Pas de réponse du serveur
         setError("Impossible de contacter le serveur. Vérifiez votre connexion.");
       } else {
-        // Autre erreur
         setError("Une erreur est survenue. Veuillez réessayer.");
       }
     } finally {
@@ -143,30 +160,29 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
     }
   };
 
-  // Validation du code ministère en temps réel (majuscules et underscores)
-  const handleCodeMinistereChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.toUpperCase();
-    // Supprimer les caractères non autorisés
-    value = value.replace(/[^A-Z_]/g, '');
-    setFormData({...formData, codeMinistere: value});
-  };
-
   // Validation du téléphone en temps réel
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
-    // Permettre seulement + et les chiffres
-    if (value === '' || /^\+?[0-9]*$/.test(value)) {
-      setFormData({...formData, phone: value});
+    if (value === '' || /^\+?[0-9\s]*$/.test(value)) {
+      setFormData({...formData, telephone: value});
     }
   };
 
-  // Fermer les alertes
   const closeError = () => setError(null);
   const closeSuccess = () => setSuccess(null);
 
+  // Obtenir le nom du type de structure en français
+  const getStructureTypeName = (type: string): string => {
+    switch (type) {
+      case 'MINISTRY': return 'Ministère';
+      case 'BANK': return 'Banque';
+      case 'CUSTOMS': return 'Douane';
+      default: return type;
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in-scale">
-      {/* Affichage des erreurs avec FormAlert */}
       {error && (
         <FormAlert 
           message={error} 
@@ -175,7 +191,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         />
       )}
 
-      {/* Affichage des succès avec FormAlert */}
       {success && (
         <FormAlert 
           message={success} 
@@ -190,8 +205,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
           <input 
             required
             type="text"
-            value={formData.firstName}
-            onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+            value={formData.prenom}
+            onChange={(e) => setFormData({...formData, prenom: e.target.value})}
             className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
             placeholder="Ex: Ahmed"
           />
@@ -201,8 +216,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
           <input 
             required
             type="text"
-            value={formData.lastName}
-            onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+            value={formData.nom}
+            onChange={(e) => setFormData({...formData, nom: e.target.value})}
             className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
             placeholder="Ex: Ben Ali"
           />
@@ -226,7 +241,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         <input 
           required
           type="tel"
-          value={formData.phone}
+          value={formData.telephone}
           onChange={handlePhoneChange}
           className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
           placeholder="+216 12 345 678"
@@ -234,86 +249,86 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel }) 
         <p className="text-[9px] text-slate-400 ml-1">Format: +216XXXXXXXX</p>
       </div>
 
+      {/* Sélection de la structure */}
       <div className="space-y-1.5">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ministère / Institution</label>
-        <select 
-          required
-          value={formData.ministry}
-          onChange={(e) => setFormData({...formData, ministry: e.target.value})}
-          className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm appearance-none"
-        >
-          <option value="">Sélectionnez un ministère</option>
-          {ministries.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom Officiel</label>
-          <input 
-            required
-            type="text"
-            value={formData.nomOfficiel}
-            onChange={(e) => setFormData({...formData, nomOfficiel: e.target.value})}
-            className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
-            placeholder="Ex: Direction Générale des Douanes"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Code Ministère</label>
-          <input 
-            required
-            type="text"
-            value={formData.codeMinistere}
-            onChange={handleCodeMinistereChange}
-            className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm uppercase"
-            placeholder="Ex: MIN_FIN_01"
-          />
-          <p className="text-[9px] text-slate-400 ml-1">Majuscules et underscores uniquement (3-20 caractères)</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Type d'Autorité</label>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+          Structure d'affectation <span className="text-red-500">*</span>
+        </label>
+        {loadingStructures ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-tunisia-red"></div>
+            <span className="ml-2 text-xs text-slate-400">Chargement des structures...</span>
+          </div>
+        ) : (
           <select 
             required
-            value={formData.typeAutorite}
-            onChange={(e) => setFormData({...formData, typeAutorite: e.target.value})}
+            value={formData.structureId}
+            onChange={(e) => setFormData({...formData, structureId: e.target.value})}
             className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm appearance-none"
           >
-            {authorityTypes.map(type => (
-              <option key={type.value} value={type.value}>{type.label}</option>
+            <option value="">Sélectionnez une structure</option>
+            {availableStructures.map(structure => (
+              <option key={structure.id} value={structure.id}>
+                {getStructureTypeName(structure.type)} - {structure.officialName} ({structure.code})
+              </option>
             ))}
           </select>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">SLA Traitement (Jours)</label>
-          <input 
-            required
-            type="number"
-            min="1"
-            max="60"
-            value={formData.slaTraitementJours}
-            onChange={(e) => setFormData({...formData, slaTraitementJours: parseInt(e.target.value) || 0})}
-            className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
-          />
-          <p className="text-[9px] text-slate-400 ml-1">Nombre maximum de jours pour traiter un dossier</p>
-        </div>
+        )}
+        <p className="text-[9px] text-slate-400 ml-1">
+          La structure détermine le nom officiel, le code et le type d'autorité
+        </p>
       </div>
+
+      {/* SLA */}
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">SLA Traitement (Jours)</label>
+        <input 
+          required
+          type="number"
+          min="1"
+          max="60"
+          value={formData.slaTraitementJours}
+          onChange={(e) => setFormData({...formData, slaTraitementJours: parseInt(e.target.value) || 30})}
+          className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
+        />
+        <p className="text-[9px] text-slate-400 ml-1">Nombre maximum de jours pour traiter un dossier</p>
+      </div>
+
+      {/* Aperçu des informations qui seront dérivées de la structure */}
+      {formData.structureId && (
+        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Aperçu des informations</p>
+          <div className="space-y-1 text-sm">
+            {(() => {
+              const selected = availableStructures.find(s => s.id === Number(formData.structureId));
+              if (selected) {
+                return (
+                  <>
+                    <p><span className="font-bold text-slate-600">Nom Officiel:</span> <span className="text-slate-500">{selected.officialName}</span></p>
+                    <p><span className="font-bold text-slate-600">Code:</span> <span className="text-slate-500 font-mono">{selected.code}</span></p>
+                    <p><span className="font-bold text-slate-600">Type:</span> <span className="text-slate-500">{getStructureTypeName(selected.type)}</span></p>
+                  </>
+                );
+              }
+              return null;
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Message d'information */}
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
         <p className="text-xs text-blue-800 font-medium">
           💡 <strong>Information :</strong> Un email avec les identifiants de connexion (email et mot de passe généré) 
-          sera envoyé automatiquement à l'adresse indiquée.
+          sera envoyé automatiquement à l'adresse indiquée. Les informations de la structure (nom officiel, code, type) 
+          seront automatiquement liées à l'instance.
         </p>
       </div>
 
       <div className="flex flex-col gap-3 pt-4">
         <button 
           type="submit"
-          disabled={loading}
+          disabled={loading || loadingStructures}
           className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50 active:scale-[0.98]"
         >
           {loading ? (

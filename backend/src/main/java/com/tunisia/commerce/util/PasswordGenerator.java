@@ -1,9 +1,6 @@
 package com.tunisia.commerce.util;
 
-import com.tunisia.commerce.entity.ExportateurEtranger;
-import com.tunisia.commerce.entity.ImportateurTunisien;
-import com.tunisia.commerce.entity.InstanceValidation;
-import com.tunisia.commerce.entity.User;
+import com.tunisia.commerce.entity.*;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
@@ -84,29 +81,31 @@ public class PasswordGenerator {
     private static String generatePasswordForInstanceValidation(InstanceValidation instance) {
         StringBuilder pwd = new StringBuilder();
 
-        // 2 premières lettres du nom officiel
-        if (instance.getNomOfficiel() != null && instance.getNomOfficiel().length() >= 2) {
-            pwd.append(instance.getNomOfficiel().substring(0, 2).toUpperCase());
-        } else if (instance.getNomOfficiel() != null && instance.getNomOfficiel().length() == 1) {
-            pwd.append(instance.getNomOfficiel().substring(0, 1).toUpperCase());
+        StructureInterne structure = instance.getStructure();
+
+        // 2 premières lettres du nom officiel de la structure
+        if (structure != null && structure.getOfficialName() != null && structure.getOfficialName().length() >= 2) {
+            pwd.append(structure.getOfficialName().substring(0, 2).toUpperCase());
+        } else if (structure != null && structure.getOfficialName() != null && structure.getOfficialName().length() == 1) {
+            pwd.append(structure.getOfficialName().substring(0, 1).toUpperCase());
             pwd.append("X");
         } else {
-            pwd.append("IV");
+            pwd.append("ST");
         }
 
-        // Première partie du code ministère
-        if (instance.getCodeMinistere() != null && instance.getCodeMinistere().contains("_")) {
-            String codePart = instance.getCodeMinistere().split("_")[0];
+        // Première partie du code de la structure
+        if (structure != null && structure.getCode() != null && structure.getCode().contains("_")) {
+            String codePart = structure.getCode().split("_")[0];
             if (codePart.length() >= 3) {
                 pwd.append(codePart.substring(0, 3));
             } else {
                 pwd.append(codePart);
                 pwd.append(getRandomChar(UPPERCASE));
             }
-        } else if (instance.getCodeMinistere() != null && instance.getCodeMinistere().length() >= 3) {
-            pwd.append(instance.getCodeMinistere().substring(0, 3));
+        } else if (structure != null && structure.getCode() != null && structure.getCode().length() >= 3) {
+            pwd.append(structure.getCode().substring(0, 3));
         } else {
-            pwd.append("VAL");
+            pwd.append("STR");
         }
 
         // SLA
@@ -125,20 +124,20 @@ public class PasswordGenerator {
             pwd.append(String.valueOf(LocalDate.now().getYear()).substring(2));
         }
 
-        // Type d'autorité
-        if (instance.getTypeAutorite() != null) {
-            switch (instance.getTypeAutorite()) {
-                case MINISTERE:
+        // Type de structure (MINISTRY, BANK, CUSTOMS)
+        if (structure != null && structure.getType() != null) {
+            switch (structure.getType()) {
+                case MINISTRY:
                     pwd.append("M");
                     break;
-                case AGENCE_NATIONALE:
-                    pwd.append("A");
+                case BANK:
+                    pwd.append("B");
                     break;
-                case DIRECTION_GENERALE:
-                    pwd.append("D");
+                case CUSTOMS:
+                    pwd.append("C");
                     break;
                 default:
-                    pwd.append("O");
+                    pwd.append("S");
                     break;
             }
         } else {

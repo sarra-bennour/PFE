@@ -12,7 +12,6 @@ import java.util.Optional;
 public interface InstanceValidationRepository extends JpaRepository<InstanceValidation, Long> {
 
     Optional<InstanceValidation> findByEmail(String email);
-    boolean existsByCodeMinistere(String codeMinistere);
     Optional<InstanceValidation> findByVerificationToken(String verificationToken);
 
 }

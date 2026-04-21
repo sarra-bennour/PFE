@@ -52,14 +52,17 @@ public class UserDTO {
     private String mobileIdPin;
 
     // Champs spécifiques aux instances de validation
-    private String nomOfficiel;
-    private String codeMinistere;
-    private InstanceValidationType typeAutorite;
+
     private Integer slaTraitementJours;
     private String verificationToken;
     private LocalDateTime verificationTokenExpiry;
     private LocalDateTime updatedAt;
 
     private List<ProduitDTO> produits;
+
+    private Long structureId;
+    private String structureName;
+    private String structureCode;
+    private StructureType structureType;
 
 }

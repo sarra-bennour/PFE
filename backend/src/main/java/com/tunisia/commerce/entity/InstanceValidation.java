@@ -22,15 +22,9 @@ public class InstanceValidation extends User {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
-    @Column(name = "nom_officiel", nullable = false)
-    private String nomOfficiel;
-
-    @Column(name = "code_ministere", nullable = false, unique = true)
-    private String codeMinistere;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "type_autorite", nullable = false)
-    private InstanceValidationType typeAutorite;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "structure_id", nullable = false)
+    private StructureInterne structure;
 
     @Column(name = "sla_traitement_jours", nullable = false)
     private Integer slaTraitementJours;

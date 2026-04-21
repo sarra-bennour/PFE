@@ -357,7 +357,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
                           ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
                           : 'bg-red-50 text-red-600 border-red-100'
                       }`}>
-                        {u.statut === 'ACTIF' ? 'Actif' : 'Inactif'}
+                        {u.statut === 'ACTIF' ? 'Actif' : 'INACTIF'}
                       </span>
                     </td>
                     <td className="px-8 py-5 text-[10px] font-bold text-slate-600">{u.paysOrigine || 'Tunisie'}</td>
