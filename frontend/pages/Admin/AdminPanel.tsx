@@ -1,15 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../App';
 import Sidebar from '../../components/Sidebar';
 import CreateUserForm from './CreateUserForm';
 import UserManagement from './UserManagement';
+import { InternalStructure, StructureType } from '../../types/InternalStructure';
+import InternalStructureList from './InternalStructureList';
+import InternalStructureForm from './InternalStructureForm';
+import axios from 'axios';
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'traffic' | 'security'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'traffic' | 'security' | 'structures'>('overview');
+  
+  // État pour les structures
+  const [structures, setStructures] = useState<InternalStructure[]>([]);
+  const [loadingStructures, setLoadingStructures] = useState(false);
   
   // Modals state
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -18,10 +26,93 @@ const AdminPanel: React.FC = () => {
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loadingPassword, setLoadingPassword] = useState(false);
+  const [showStructureForm, setShowStructureForm] = useState(false);
+  const [selectedStructure, setSelectedStructure] = useState<InternalStructure | null>(null);
+
+  // Configuration API
+  const API_URL = 'http://localhost:8080/api/admin/structures';
+  
+  const getAuthHeader = () => {
+    const token = localStorage.getItem('token');
+    return { Authorization: `Bearer ${token}` };
+  };
+
+  // Charger les structures depuis le backend
+  const loadStructures = async () => {
+    try {
+      setLoadingStructures(true);
+      const response = await axios.get(API_URL, { headers: getAuthHeader() });
+      if (response.data.success) {
+        setStructures(response.data.structures);
+      } else {
+        console.error('Erreur:', response.data.error);
+      }
+    } catch (error) {
+      console.error('Erreur chargement structures:', error);
+    } finally {
+      setLoadingStructures(false);
+    }
+  };
+
+  // Charger les structures au montage du composant et quand l'onglet structures est activé
+  useEffect(() => {
+    if (activeTab === 'structures') {
+      loadStructures();
+    }
+  }, [activeTab]);
+
+  // Créer une structure
+  const handleCreateStructure = async (data: { type: StructureType; officialName: string }) => {
+    try {
+      const response = await axios.post(API_URL, data, { headers: getAuthHeader() });
+      if (response.data.success) {
+        setStructures(prev => [response.data.data, ...prev]);
+        setShowStructureForm(false);
+      } else {
+        alert(response.data.error || 'Erreur lors de la création');
+      }
+    } catch (err: any) {
+      console.error('Erreur création:', err);
+      alert(err.response?.data?.error || 'Erreur lors de la création');
+    }
+  };
+
+  // Mettre à jour une structure
+  const handleUpdateStructure = async (id: number, data: { type: StructureType; officialName: string }) => {
+    try {
+      const response = await axios.put(`${API_URL}/${id}`, data, { headers: getAuthHeader() });
+      if (response.data.success) {
+        setStructures(prev => prev.map(s => s.id === id ? response.data.data : s));
+        setShowStructureForm(false);
+        setSelectedStructure(null);
+      } else {
+        alert(response.data.error || 'Erreur lors de la mise à jour');
+      }
+    } catch (err: any) {
+      console.error('Erreur mise à jour:', err);
+      alert(err.response?.data?.error || 'Erreur lors de la mise à jour');
+    }
+  };
+
+  // Supprimer une structure (sans confirmation, gérée par le modal du composant enfant)
+  const handleDeleteStructure = async (id: number) => {
+    try {
+      const response = await axios.delete(`${API_URL}/${id}/hard`, { headers: getAuthHeader() });
+      if (response.data.success) {
+        setStructures(prev => prev.filter(s => s.id !== id));
+      } else {
+        alert(response.data.error || 'Erreur lors de la suppression');
+      }
+    } catch (err: any) {
+      console.error('Erreur suppression:', err);
+      alert(err.response?.data?.error || 'Erreur lors de la suppression');
+    }
+  };
 
   const sidebarItems = [
     { id: 'overview', label: 'Surveillance', icon: 'fa-chart-line' },
     { id: 'users', label: 'Utilisateurs', icon: 'fa-user-cog' },
+    { id: 'structures', label: 'Structures', icon: 'fa-sitemap' },
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
     { id: 'security', label: 'Sécurité', icon: 'fa-lock' },
     { id: 'dashboard', label: 'Décisionnel', icon: 'fa-shield-halved', path: '/dashboard' },
@@ -50,6 +141,13 @@ const AdminPanel: React.FC = () => {
     { name: '12:00', in: 680, out: 590 },
     { name: '16:00', in: 520, out: 610 },
     { name: '20:00', in: 280, out: 340 },
+  ];
+
+  const structureStats = [
+    { label: "Entités Totales", value: structures.length, icon: "fa-sitemap", color: "text-slate-900", bg: "bg-slate-100" },
+    { label: "Utilisateurs Assignés", value: "1,248", icon: "fa-users-gear", color: "text-indigo-600", bg: "bg-indigo-50" },
+    { label: "Temps de Réponse", value: "4.2m", icon: "fa-bolt", color: "text-amber-500", bg: "bg-amber-50" },
+    { label: "Conformité SLA", value: "99.2%", icon: "fa-check-double", color: "text-emerald-500", bg: "bg-emerald-50" },
   ];
 
   // Fonction pour réinitialiser le mot de passe via l'API backend
@@ -125,13 +223,14 @@ const AdminPanel: React.FC = () => {
                 </button>
               </div>
               <div className="p-10 max-h-[70vh] overflow-y-auto scrollbar-hide">
-                <CreateUserForm 
+                {/* <CreateUserForm 
+                  InternalStructure={structures}
                   onSuccess={() => {
                     setShowCreateUser(false);
                     // Refresh logic here
                   }}
                   onCancel={() => setShowCreateUser(false)}
-                />
+                /> */}
               </div>
             </div>
           </div>
@@ -189,6 +288,26 @@ const AdminPanel: React.FC = () => {
           </div>
         )}
 
+        {/* Modal Structure Form */}
+        {showStructureForm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <InternalStructureForm 
+              initialData={selectedStructure || undefined}
+              onCancel={() => {
+                setShowStructureForm(false);
+                setSelectedStructure(null);
+              }}
+              onSuccess={(data) => {
+                if (selectedStructure) {
+                  handleUpdateStructure(selectedStructure.id, data);
+                } else {
+                  handleCreateStructure(data);
+                }
+              }}
+            />
+          </div>
+        )}
+
         {/* Header Content */}
         <div className="flex justify-between items-end">
           <div>
@@ -202,6 +321,7 @@ const AdminPanel: React.FC = () => {
             <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">
               {activeTab === 'overview' && "Tableau de Bord Stratégique"}
               {activeTab === 'users' && "Gestion des Utilisateurs"}
+              {activeTab === 'structures' && "Structures Internes"}
               {activeTab === 'traffic' && "Surveillance des Flux"}
               {activeTab === 'security' && "Centre de Sécurité"}
             </h2>
@@ -211,19 +331,44 @@ const AdminPanel: React.FC = () => {
             <button className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
               <i className="fas fa-download mr-2"></i> Rapport
             </button>
+            {activeTab === 'users' && (
             <button 
               onClick={() => setShowCreateUser(true)}
               className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
             >
               <i className="fas fa-user-plus mr-2"></i> Créer Utilisateur
             </button>
+            )}
+            {activeTab === 'structures' && (
+              <button 
+                onClick={() => {
+                  setSelectedStructure(null);
+                  setShowStructureForm(true);
+                }}
+                className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
+              >
+                <i className="fas fa-plus mr-2"></i> Ajouter Structure
+              </button>
+            )}
           </div>
         </div>
 
         {/* Stats Grid or Deactivation Requests Carousel */}
-        {activeTab !== 'users' ? (
+        {activeTab !== 'users' && activeTab !== 'structures' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {stats.map((stat, i) => (
+              <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 group hover:shadow-md transition-all">
+                <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4`}>
+                  <i className={`fas ${stat.icon}`}></i>
+                </div>
+                <div className="text-2xl font-black text-slate-900 tracking-tighter italic">{stat.value}</div>
+                <div className="text-[8px] font-black uppercase tracking-widest text-slate-400 mt-1">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        ) : activeTab === 'structures' ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {structureStats.map((stat, i) => (
               <div key={i} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 group hover:shadow-md transition-all">
                 <div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-xl flex items-center justify-center mb-4`}>
                   <i className={`fas ${stat.icon}`}></i>
@@ -297,6 +442,23 @@ const AdminPanel: React.FC = () => {
 
           {activeTab === 'users' && (
             <UserManagement onResetPassword={handleResetPassword} />
+          )}
+          
+          {activeTab === 'structures' && (
+            loadingStructures ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-tunisia-red"></div>
+              </div>
+            ) : (
+              <InternalStructureList 
+                structures={structures}
+                onEdit={(s) => {
+                  setSelectedStructure(s);
+                  setShowStructureForm(true);
+                }}
+                onDelete={handleDeleteStructure}
+              />
+            )
           )}
 
           {activeTab === 'traffic' && (
