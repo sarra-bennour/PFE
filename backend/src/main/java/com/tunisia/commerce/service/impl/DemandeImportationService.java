@@ -201,19 +201,23 @@ public class DemandeImportationService {
     }
 
     /**
-     * Modifier une demande d'importation (uniquement si elle est en brouillon)
+     * Modifier une demande d'importation avec ses documents
      * @param demandeId ID de la demande à modifier
      * @param importateurId ID de l'importateur (pour vérification des droits)
      * @param request DTO contenant les nouvelles données
+     * @param files Map des nouveaux fichiers à uploader (optionnel)
+     * @param documentsToDelete Liste des IDs de documents à supprimer (optionnel)
      * @return La demande modifiée
      */
     @Transactional
-    public DemandeEnregistrementDTO updateImportationDemande(
+    public DemandeEnregistrementDTO updateImportationDemandeWithDocuments(
             Long demandeId,
             Long importateurId,
-            DemandeImportationRequestDTO request) {
+            DemandeImportationRequestDTO request,
+            Map<String, MultipartFile> files,
+            List<Long> documentsToDelete) {
 
-        log.info("Modification de la demande d'importation ID: {} par l'importateur ID: {}", demandeId, importateurId);
+        log.info("Modification de la demande d'importation ID: {} avec documents", demandeId);
 
         // 1. Récupérer la demande
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
@@ -224,19 +228,19 @@ public class DemandeImportationService {
             throw new RuntimeException("Accès non autorisé: cette demande ne vous appartient pas");
         }
 
-        // 3. Vérifier que la demande est en brouillon (seules les demandes en brouillon peuvent être modifiées)
+        // 3. Vérifier que la demande est en brouillon
         if (demande.getStatus() != DemandeStatus.BROUILLON) {
             throw new RuntimeException("Impossible de modifier une demande qui n'est pas en brouillon. Statut actuel: " + demande.getStatus());
         }
 
-        // 4. Vérifier que la demande est du bon type (DemandeImportateur)
+        // 4. Vérifier que la demande est du bon type
         if (!(demande instanceof DemandeImportateur)) {
             throw new RuntimeException("Cette demande n'est pas une demande d'importation modifiable");
         }
 
         DemandeImportateur demandeImportateur = (DemandeImportateur) demande;
 
-        // 5. Mettre à jour les champs
+        // 5. Mettre à jour les champs de la demande
         if (request.getInvoiceNumber() != null) {
             demandeImportateur.setInvoiceNumber(request.getInvoiceNumber());
         }
@@ -265,18 +269,114 @@ public class DemandeImportationService {
             demandeImportateur.setArrivalDate(LocalDate.parse(request.getArrivalDate()));
         }
 
-        // 6. Sauvegarder les modifications
+        // 6. 🔥 NOUVEAU: Pour chaque nouveau fichier, supprimer l'ancien document du même type AVANT d'uploader
+        if (files != null && !files.isEmpty()) {
+            for (Map.Entry<String, MultipartFile> entry : files.entrySet()) {
+                String documentTypeStr = entry.getKey();
+                MultipartFile file = entry.getValue();
+
+                if (file != null && !file.isEmpty()) {
+                    DocumentType documentType;
+                    try {
+                        documentType = DocumentType.valueOf(documentTypeStr);
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Type de document invalide: {}, utilisation de OTHER_DOCUMENT", documentTypeStr);
+                        documentType = DocumentType.OTHER_DOCUMENT;
+                    }
+
+                    // Chercher et supprimer les documents existants du même type
+                    List<Document> existingDocs = documentRepository.findByDemandeIdAndDocumentType(demandeId, documentType);
+                    if (!existingDocs.isEmpty()) {
+                        for (Document oldDoc : existingDocs) {
+                            log.info("Remplacement du document existant ID: {} de type: {} pour la demande: {}",
+                                    oldDoc.getId(), documentType, demandeId);
+                            deleteDocumentSafely(oldDoc);
+                        }
+                    }
+
+                    // Uploader le nouveau document
+                    uploadDocument(demandeId, importateurId, file, documentTypeStr);
+                }
+            }
+        }
+
+        // 7. Supprimer les documents explicitement demandés (si nécessaire)
+        if (documentsToDelete != null && !documentsToDelete.isEmpty()) {
+            deleteSpecificDocuments(documentsToDelete, importateurId, demandeId);
+        }
+
+        // 8. Sauvegarder les modifications
         demandeImportateur = demandeImportateurRepository.save(demandeImportateur);
 
-        // 7. Ajouter l'historique
+        // 9. Ajouter l'historique
         addHistory(demandeImportateur, demandeImportateur.getStatus(), demandeImportateur.getStatus(),
-                "MODIFICATION", "Demande d'importation modifiée par l'importateur",
+                "MODIFICATION", "Demande d'importation modifiée par l'importateur (champs et documents)",
                 demandeImportateur.getImportateur());
 
         log.info("Demande d'importation ID: {} modifiée avec succès", demandeId);
 
         return mapToDTO(demandeImportateur);
     }
+
+    /**
+     * Supprimer un document en toute sécurité (fichier physique + base de données)
+     */
+    private void deleteDocumentSafely(Document document) {
+        try {
+            // Supprimer le fichier physique
+            String filePath = document.getFilePath();
+            if (filePath != null && !filePath.isEmpty()) {
+                Path path = Paths.get(filePath);
+                if (Files.exists(path)) {
+                    Files.delete(path);
+                    log.info("Fichier physique supprimé: {}", filePath);
+                } else {
+                    log.warn("Fichier physique non trouvé: {}", filePath);
+                }
+            }
+        } catch (IOException e) {
+            log.error("Erreur lors de la suppression du fichier {}: {}", document.getFilePath(), e.getMessage());
+            // On continue même si la suppression physique échoue
+        }
+
+        // Supprimer de la base de données
+        documentRepository.delete(document);
+        log.info("Document ID: {} supprimé de la base de données", document.getId());
+    }
+
+    /**
+     * Supprimer des documents spécifiques
+     */
+    private void deleteSpecificDocuments(List<Long> documentIds, Long importateurId, Long demandeId) {
+        for (Long documentId : documentIds) {
+            Document document = documentRepository.findById(documentId)
+                    .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
+
+            // Vérifier que le document appartient à la demande
+            if (!document.getDemande().getId().equals(demandeId)) {
+                throw new RuntimeException("Le document n'appartient pas à cette demande");
+            }
+
+            // Supprimer le fichier physique
+            try {
+                String filePath = document.getFilePath();
+                if (filePath != null && !filePath.isEmpty()) {
+                    Path path = Paths.get(filePath);
+                    if (Files.exists(path)) {
+                        Files.delete(path);
+                        log.info("Fichier physique supprimé: {}", filePath);
+                    }
+                }
+            } catch (IOException e) {
+                log.error("Erreur lors de la suppression du fichier: {}", e.getMessage());
+            }
+
+            // Supprimer de la base de données
+            documentRepository.delete(document);
+            log.info("Document ID: {} supprimé", documentId);
+        }
+    }
+
 
     /**
      * Supprimer une demande d'importation avec tous ses documents

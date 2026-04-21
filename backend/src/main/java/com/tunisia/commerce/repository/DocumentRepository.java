@@ -12,8 +12,9 @@ import java.util.Optional;
 @Repository
 public interface DocumentRepository extends JpaRepository<Document, Long> {
     List<Document> findByDemandeId(Long demandeId);
-    // Dans DocumentRepository.java
     List<Document> findByDemandeIdAndStatus(Long demandeId, DocumentStatus status);
     Optional<Document> findByDemandeIdAndProductIdAndDocumentType(Long demandeId, Long productId, DocumentType documentType);
+    List<Document> findByDemandeIdAndDocumentType(Long demandeId, DocumentType documentType);
+
 }
 

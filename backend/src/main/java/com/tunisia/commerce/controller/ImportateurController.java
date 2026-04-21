@@ -5,8 +5,10 @@ import com.tunisia.commerce.dto.importateur.ImportateurStatutsDTO;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
+import com.tunisia.commerce.entity.Document;
 import com.tunisia.commerce.entity.ImportateurTunisien;
 import com.tunisia.commerce.exception.ImportateurException;
+import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ImportateurRepository;
 import com.tunisia.commerce.service.ImportateurService;
 import com.tunisia.commerce.service.impl.DemandeImportationService;
@@ -37,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/importateur")
@@ -50,6 +53,7 @@ public class ImportateurController {
     private final DemandeImportationService demandeImportationService;
     private final JwtUtil jwtUtil;
     private final ImportateurRepository importateurRepository;
+    private final DocumentRepository documentRepository;
 
     private static final String UPLOAD_DIR = "uploads/importateur/documents/";
 
@@ -296,32 +300,101 @@ public class ImportateurController {
         }
     }
 
+
     /**
-     * Modifier une demande d'importation (uniquement si elle est en brouillon)
+     * Récupérer tous les documents d'une demande d'importation
+     */
+    @Operation(
+            summary = "Documents d'une demande",
+            description = "Récupère la liste de tous les documents associés à une demande d'importation"
+    )
+    @GetMapping("/demandes/{demandeId}/documents")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getDocumentsForDemande(
+            @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
+            @RequestHeader("Authorization") String authHeader) {
+
+        log.info("========== RÉCUPÉRATION DOCUMENTS ==========");
+        log.info("Demande ID: {}", demandeId);
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+
+            List<Document> documents = documentRepository.findByDemandeId(demandeId);
+
+            List<Map<String, Object>> result = documents.stream()
+                    .map(doc -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", doc.getId());
+                        map.put("fileName", doc.getFileName());
+                        map.put("documentType", doc.getDocumentType().toString());
+                        map.put("fileSize", doc.getFileSize());
+                        map.put("uploadedAt", doc.getUploadedAt());
+                        map.put("status", doc.getStatus().toString());
+                        return map;
+                    })
+                    .collect(Collectors.toList());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("documents", result);
+            response.put("count", result.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "RETRIEVAL_FAILED");
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+
+    /**
+     * Modifier une demande d'importation avec ses documents
      */
     @Operation(
             summary = "Modifier une demande d'importation",
-            description = "Modifie une demande d'importation existante (uniquement si elle est en brouillon)"
+            description = "Modifie une demande d'importation existante (uniquement si elle est en brouillon) avec possibilité de mettre à jour les documents"
     )
-    @PutMapping("/demandes/{demandeId}")
+    @PutMapping(value = "/demandes/{demandeId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<?> updateDemande(
+    public ResponseEntity<?> updateDemandeWithDocuments(
             @Parameter(description = "ID de la demande à modifier") @PathVariable Long demandeId,
-            @Valid @RequestBody DemandeImportationRequestDTO request,
+            @RequestPart("data") @Valid DemandeImportationRequestDTO request,
+            @RequestParam(value = "files", required = false) MultipartFile[] files,
+            @RequestParam(value = "documentTypes", required = false) String[] documentTypes,
+            @RequestParam(value = "documentsToDelete", required = false) List<Long> documentsToDelete,
             @RequestHeader("Authorization") String authHeader) {
 
-        log.info("========== MODIFICATION DEMANDE D'IMPORTATION ==========");
+        log.info("========== MODIFICATION DEMANDE AVEC DOCUMENTS ==========");
         log.info("Demande ID: {}", demandeId);
+        log.info("Documents à supprimer: {}", documentsToDelete);
+        log.info("Nouveaux documents: {}", files != null ? files.length : 0);
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            // Appeler le service pour modifier la demande
-            DemandeEnregistrementDTO demande = demandeImportationService.updateImportationDemande(
+            // Convertir le tableau de fichiers en Map avec les types de documents
+            Map<String, MultipartFile> filesMap = new HashMap<>();
+            if (files != null && documentTypes != null) {
+                for (int i = 0; i < files.length && i < documentTypes.length; i++) {
+                    String documentType = documentTypes[i];
+                    MultipartFile file = files[i];
+                    filesMap.put(documentType, file);  // ✅ Utilise le type exact envoyé
+                    log.info("Fichier: {} -> Type reçu: {}", file.getOriginalFilename(), documentType);
+                }
+            }
+
+            DemandeEnregistrementDTO demande = demandeImportationService.updateImportationDemandeWithDocuments(
                     demandeId,
                     importateur.getId(),
-                    request
+                    request,
+                    filesMap,
+                    documentsToDelete
             );
 
             log.info("Demande ID: {} modifiée avec succès", demandeId);
