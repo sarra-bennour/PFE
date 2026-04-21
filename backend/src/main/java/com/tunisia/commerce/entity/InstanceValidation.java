@@ -45,7 +45,6 @@ public class InstanceValidation extends User {
     @PostLoad
     protected void onLoad() {
         setRole(UserRole.INSTANCE_VALIDATION);
-        setUserStatut(UserStatus.ACTIF);
     }
 
     @PreUpdate
