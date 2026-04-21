@@ -1581,57 +1581,109 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void reactivateAccount(Long userId, String adminComment) {
         logger.info("=== RÉACTIVATION DE COMPTE ===");
-        logger.info("User ID: "+ userId);
-        logger.info("Comment: "+ adminComment);
+        logger.info("User ID: " + userId);
+        logger.info("Comment: " + adminComment);
 
         // 1. Récupérer l'utilisateur
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'id: " + userId));
 
-        // 2. Vérifier que l'utilisateur est un exportateur
-        if (!(user instanceof ExportateurEtranger)) {
-            throw new RuntimeException("Seuls les comptes exportateurs peuvent être réactivés");
+        // 2. Vérifier que ce n'est pas un administrateur
+        if (user.getRole() == UserRole.ADMIN) {
+            throw new RuntimeException("Les comptes administrateur ne peuvent pas être réactivés");
         }
 
-        ExportateurEtranger exportateur = (ExportateurEtranger) user;
-
         // 3. Vérifier que le compte est inactif
-        if (exportateur.getUserStatut() == UserStatus.ACTIF) {
+        if (user.getUserStatut() == UserStatus.ACTIF) {
             throw new RuntimeException("Le compte est déjà actif");
         }
 
-        // 4. Réactiver le compte
-        exportateur.setUserStatut(UserStatus.ACTIF);
-        exportateur.setFailedLoginAttempts(0);
-        exportateur.setLastFailedLoginAttempt(null);
+        // 4. Réactiver le compte selon le type
+        if (user instanceof ExportateurEtranger) {
+            ExportateurEtranger exportateur = (ExportateurEtranger) user;
+            exportateur.setUserStatut(UserStatus.ACTIF);
+            exportateur.setFailedLoginAttempts(0);
+            exportateur.setLastFailedLoginAttempt(null);
+            exportateurRepository.save(exportateur);
+            logger.info("✅ Compte exportateur réactivé: " + exportateur.getEmail());
 
-        // 5. Sauvegarder
-        exportateurRepository.save(exportateur);
+        } else if (user instanceof ImportateurTunisien) {
+            ImportateurTunisien importateur = (ImportateurTunisien) user;
+            importateur.setUserStatut(UserStatus.ACTIF);
+            importateur.setFailedLoginAttempts(0);
+            importateur.setLastFailedLoginAttempt(null);
+            importateurRepository.save(importateur);
+            logger.info("✅ Compte importateur réactivé: " + importateur.getEmail());
 
-        logger.info("✅ Compte réactivé pour: "+ exportateur.getEmail());
+        } else if (user instanceof InstanceValidation) {
+            InstanceValidation instance = (InstanceValidation) user;
+            instance.setUserStatut(UserStatus.ACTIF);
+            instance.setEmailVerified(true);
+            instance.setVerificationToken(null);
+            instance.setVerificationTokenExpiry(null);
+            instanceValidationRepository.save(instance);
+            logger.info("✅ Compte instance de validation réactivé: " + instance.getEmail());
 
-        // 6. Envoyer email de notification
-        sendAccountReactivatedEmail(exportateur, adminComment);
+        } else {
+            throw new RuntimeException("Type d'utilisateur non supporté pour la réactivation: " + user.getClass().getName());
+        }
+
+        // 5. Envoyer email de notification
+        sendAccountReactivatedEmail(user, adminComment);
     }
 
-    private void sendAccountReactivatedEmail(ExportateurEtranger exportateur, String adminComment) {
+    private void sendAccountReactivatedEmail(User user, String adminComment) {
         try {
             Map<String, Object> params = new HashMap<>();
-            params.put("companyName", exportateur.getRaisonSociale());
-            params.put("email", exportateur.getEmail());
             params.put("adminComment", adminComment != null ? adminComment : "Aucun commentaire");
             params.put("loginUrl", frontendUrl + "/login");
             params.put("supportEmail", "support@tunisia-commerce.gov.tn");
 
+            String email = user.getEmail();
+            String displayName = user.getPrenom() + " " + user.getNom();
+            String companyName = "";
+
+            // Déterminer le nom de l'entreprise/institution selon le type
+            if (user instanceof ExportateurEtranger) {
+                ExportateurEtranger exportateur = (ExportateurEtranger) user;
+                companyName = exportateur.getRaisonSociale();
+                params.put("companyName", companyName);
+                params.put("userName", displayName);
+
+            } else if (user instanceof ImportateurTunisien) {
+                ImportateurTunisien importateur = (ImportateurTunisien) user;
+                companyName = importateur.getRaisonSociale();
+                params.put("companyName", companyName);
+                params.put("userName", displayName);
+
+            } else if (user instanceof InstanceValidation) {
+                InstanceValidation instance = (InstanceValidation) user;
+                companyName = instance.getStructure() != null ?
+                        instance.getStructure().getOfficialName() :
+                        instance.getNom() + " " + instance.getPrenom();
+                params.put("companyName", companyName);
+                params.put("userName", displayName);
+                params.put("institutionName", companyName);
+
+            } else {
+                companyName = "Votre compte";
+                params.put("companyName", companyName);
+                params.put("userName", displayName);
+            }
+
+            params.put("email", email);
+
             emailService.sendValidationNotification(
-                    exportateur.getEmail(),
-                    exportateur.getRaisonSociale(),
+                    email,
+                    companyName,
                     ValidationNotificationType.ACCOUNT_REACTIVATED,
                     params
             );
-            logger.info("Email de réactivation envoyé à: "+ exportateur.getEmail());
+
+            logger.info("✅ Email de réactivation envoyé à: {}"+ email);
+
         } catch (Exception e) {
-            logger.warning("Erreur lors de l'envoi de l'email de réactivation: " + e.getMessage());
+            logger.warning("❌ Erreur lors de l'envoi de l'email de réactivation: " + e.getMessage());
         }
     }
 

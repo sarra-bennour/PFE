@@ -1192,6 +1192,31 @@ useEffect(() => {
         </button>
       </div>
 
+      {/* PIPELINE DE STATUT TYPE JENKINS */}
+      <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-12 text-center">Pipeline de Conformité : {selectedDoc?.name || "Dossier Global"}</h3>
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <PipelineNode
+            label="Soumission"
+            status={selectedDoc ? 'success' : (dossierInfo?.hasDossier ? 'success' : 'processing')}
+          />
+          <PipelineNode
+            label="Analyse IA"
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'processing') : (dossierInfo?.status === 'SOUMISE' ? 'processing' : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending'))}
+          />
+          <PipelineNode
+            label="Validation"
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
+          />
+          <PipelineNode
+            label="Décision"
+            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
+            isLast={true}
+          />
+        </div>
+        <br />
+      </div>
+
 
       {/* RUBRIQUE CATALOGUE PRODUITS INDEPENDANTE */}
       {dossierInfo?.status === 'VALIDEE' ? (
@@ -1250,32 +1275,6 @@ useEffect(() => {
         </div>
       )}
       
-
-      {/* PIPELINE DE STATUT TYPE JENKINS */}
-      <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
-        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-12 text-center">Pipeline de Conformité : {selectedDoc?.name || "Dossier Global"}</h3>
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <PipelineNode
-            label="Soumission"
-            status={selectedDoc ? 'success' : (dossierInfo?.hasDossier ? 'success' : 'processing')}
-          />
-          <PipelineNode
-            label="Analyse IA"
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'processing') : (dossierInfo?.status === 'SOUMISE' ? 'processing' : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending'))}
-          />
-          <PipelineNode
-            label="Validation"
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
-          />
-          <PipelineNode
-            label="Décision"
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
-            isLast={true}
-          />
-        </div>
-        <br />
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8 bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
           <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-8">Statut des Documents KYC</h3>

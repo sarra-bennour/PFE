@@ -43,7 +43,6 @@ const AdminPanel: React.FC = () => {
       
       if (response.data.success) {
         setUsers(response.data.users);
-        console.log('**********Utilisateurs chargés:', response.data.users);
         console.log('✅ Utilisateurs chargés:', response.data.users.length);
       } else {
         console.error('Erreur chargement utilisateurs:', response.data.error);
