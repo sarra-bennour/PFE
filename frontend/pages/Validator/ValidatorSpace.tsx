@@ -15,6 +15,7 @@ const ValidatorSpace: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'instruction' | 'stats' | 'archive'>('instruction');
   const [inboxTab, setInboxTab] = useState<RequestType>('REGISTRATION');
+  const [archiveTab, setArchiveTab] = useState<RequestType>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<ValidationRequest | null>(null);
   const [selectedAgency, setSelectedAgency] = useState('Ministère du Commerce');
   const [loading, setLoading] = useState(false);
@@ -61,6 +62,15 @@ const ValidatorSpace: React.FC = () => {
       const nonPending = allRequests.filter((req: ValidationRequest) => req.status !== 'PENDING');
       setArchivedRequests(nonPending);
       
+
+      console.log('📊 Toutes les demandes:', allData);
+      console.log('📊 Demandes non-pending:', nonPending);
+      console.log('📊 Archives par type:', {
+        REGISTRATION: nonPending.filter((r: ValidationRequest) => r.type === 'REGISTRATION').length,
+        PRODUCT_DECLARATION: nonPending.filter((r: ValidationRequest) => r.type === 'PRODUCT_DECLARATION').length,
+        IMPORT: nonPending.filter((r: ValidationRequest) => r.type === 'IMPORT').length
+      });
+
     } catch (error) {
       console.error('Error fetching requests:', error);
     } finally {
@@ -70,73 +80,77 @@ const ValidatorSpace: React.FC = () => {
 
   // Map backend data to frontend format
   const mapBackendRequestToFrontend = (backendReq: any): ValidationRequest => {
-    const isImportateur = backendReq.typeDemandeur === 'IMPORTATEUR';
-    const isExportateur = backendReq.typeDemandeur === 'EXPORTATEUR';
-    
-    // Determine request type
-    let requestType: RequestType = 'REGISTRATION';
-    if (backendReq.reference?.startsWith('IMP-')) {
-      requestType = 'IMPORT';
-    } else if (backendReq.reference?.startsWith('DEM-')) {
-      requestType = 'PRODUCT_DECLARATION';
-    } else if (backendReq.reference?.startsWith('DOS-')) {
-      requestType = 'REGISTRATION';
-    }
-    
-    // Map documents
-    const documents: AttachedDocument[] = (backendReq.documents || []).map((doc: any) => ({
-      id: doc.id.toString(),
-      name: doc.fileName,
-      status: mapDocumentStatus(doc.status),
-      comment: doc.validationComment,
-      fileUrl: doc.downloadUrl ? `${API_BASE_URL}${doc.downloadUrl}` : null,
-      documentType: doc.documentType
-    }));
-    
-    // Map products
-    const products: Product[] = (backendReq.products || []).map((prod: any) => ({
-      type: prod.productType === 'ALIMENTAIRE' ? 'ALIMENTAIRE' : 'INDUSTRIEL',
-      category: prod.category || '',
-      hscode: prod.hsCode || '',
-      name: prod.productName || '',
-      originCountry: prod.originCountry || '',
-      commercialBrand: prod.commercialBrandName || prod.brandName || '',
-      productState: prod.productState || prod.processingType,
-      brandName: prod.brandName,
-      annualQuantity: prod.annualQuantityValue,
-      unit: prod.annualQuantityUnit
-    }));
-    
-    // Map import details if applicable
-    let importDetails: ImportDetails | undefined;
-    if (requestType === 'IMPORT') {
-      importDetails = {
-        invoiceNum: backendReq.invoiceNumber || '',
-        invoiceDate: backendReq.invoiceDate || '',
-        amount: backendReq.amount?.toString() || '',
-        currency: backendReq.currency || 'TND',
-        incoterm: backendReq.incoterm || 'FOB',
-        transportMode: backendReq.transportMode || 'SEA',
-        departurePort: backendReq.loadingPort || '',
-        arrivalPort: backendReq.dischargePort || '',
-        arrivalDate: backendReq.arrivalDate || ''
-      };
-    }
-    
-    return {
-      id: backendReq.id.toString(),
-      reference: backendReq.reference || '',
-      submittedAt: backendReq.submittedAt ? new Date(backendReq.submittedAt).toLocaleString() : '',
-      paymentAmount: backendReq.paymentAmount ? `${backendReq.paymentAmount} TND` : '0 TND',
-      applicantType: isImportateur ? 'IMPORTATEUR' : 'EXPORTATEUR',
-      applicantName: backendReq.applicantName || (isImportateur ? 'Importateur' : 'Exportateur'),
-      type: requestType,
-      status: mapBackendStatus(backendReq.status),
-      documents,
-      products: products.length > 0 ? products : undefined,
-      importDetails
+  const isImportateur = backendReq.applicantType === 'IMPORTATEUR';
+  
+  // Déterminer le type de demande
+  let requestType: RequestType = 'REGISTRATION';
+  
+  if (backendReq.reference?.startsWith('IMP-')) {
+    requestType = 'IMPORT';
+  } else if (backendReq.reference?.startsWith('DEM-')) {
+    requestType = 'PRODUCT_DECLARATION';
+  } else if (backendReq.reference?.startsWith('DOS-')) {
+    requestType = 'REGISTRATION';
+  }
+  
+  // Mapper les documents
+  const documents: AttachedDocument[] = (backendReq.documents || []).map((doc: any) => ({
+    id: doc.id?.toString() || Math.random().toString(),
+    name: doc.name || doc.fileName || 'Document',
+    status: mapDocumentStatus(doc.status),
+    comment: doc.validationComment,
+    fileUrl: `http://localhost:8080/api/admin/document/${doc.id}/preview`,
+    documentType: doc.documentType
+  }));
+  
+  // Mapper les produits
+  const products: Product[] = (backendReq.products || []).map((prod: any) => ({
+    productType: prod.productType === 'ALIMENTAIRE' ? 'ALIMENTAIRE' : 'INDUSTRIEL',
+    category: prod.category || '',
+    hsCode: prod.hsCode || '',
+    productName: prod.productName || '',
+    originCountry: prod.originCountry || '',
+    commercialBrandName: prod.commercialBrandName || prod.brandName || '',
+    brandName: prod.brandName,
+    productState: prod.productState || prod.processingType,
+    annualQuantityValue: prod.annualQuantityValue,
+    annualQuantityUnit: prod.annualQuantityUnit,
+    isLinkedToBrand: prod.isLinkedToBrand,
+    isBrandOwner: prod.isBrandOwner,
+    hasBrandLicense: prod.hasBrandLicense,
+    productImage: prod.productImage
+  }));
+  
+  // Mapper les détails d'import
+  let importDetails: ImportDetails | undefined;
+  if (requestType === 'IMPORT') {
+    importDetails = {
+      invoiceNum: backendReq.importDetails?.invoiceNumber || backendReq.invoiceNumber || '',
+      invoiceDate: backendReq.importDetails?.invoiceDate || backendReq.invoiceDate || '',
+      amount: backendReq.importDetails?.amount?.toString() || backendReq.amount?.toString() || '',
+      currency: backendReq.importDetails?.currency || backendReq.currency || 'TND',
+      incoterm: backendReq.importDetails?.incoterm || backendReq.incoterm || 'FOB',
+      transportMode: backendReq.importDetails?.transportMode || backendReq.transportMode || 'SEA',
+      departurePort: backendReq.importDetails?.loadingPort || backendReq.loadingPort || '',
+      arrivalPort: backendReq.importDetails?.dischargePort || backendReq.dischargePort || '',
+      arrivalDate: backendReq.importDetails?.arrivalDate || backendReq.arrivalDate || ''
     };
+  }
+  
+  return {
+    id: backendReq.id?.toString() || '',
+    reference: backendReq.reference || '',
+    submittedAt: backendReq.submittedAt ? new Date(backendReq.submittedAt).toLocaleString('fr-TN') : '',
+    paymentAmount: backendReq.paymentAmount ? `${backendReq.paymentAmount} TND` : '0 TND',
+    applicantType: isImportateur ? 'IMPORTATEUR' : 'EXPORTATEUR',
+    applicantName: backendReq.applicantName || (isImportateur ? 'Importateur' : 'Exportateur'),
+    type: requestType,
+    status: mapBackendStatus(backendReq.status),
+    documents,
+    products: products.length > 0 ? products : undefined,
+    importDetails
   };
+};
   
   const mapDocumentStatus = (backendStatus: string): 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'NOT_SURE' => {
     switch (backendStatus) {
@@ -326,6 +340,7 @@ const ValidatorSpace: React.FC = () => {
               request={selectedRequest}
               onClose={() => setSelectedRequest(null)}
               onDecision={handleFinalDecision}
+              readOnly={selectedRequest.status !== 'PENDING'}
             />
           )}
         </AnimatePresence>
@@ -352,45 +367,126 @@ const ValidatorSpace: React.FC = () => {
         )}
 
         {activeTab === 'archive' && (
-          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 animate-fade-in">
-            <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter mb-8">Historique des Décisions</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-white">
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut Final</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Date Décision</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {archivedRequests.length > 0 ? archivedRequests.map(req => (
-                    <tr key={req.id}>
-                      <td className="px-8 py-4 font-black text-slate-900 italic tracking-tighter">{req.reference}</td>
-                      <td className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">{req.type}</td>
-                      <td className="px-8 py-4">
-                        <span className={`text-[9px] font-black uppercase tracking-widest ${
-                          req.status === 'APPROVED' ? 'text-emerald-500' : 
-                          req.status === 'REJECTED' ? 'text-tunisia-red' : 'text-amber-500'
-                        }`}>
-                          {req.status === 'APPROVED' ? 'Approuvé' : req.status === 'REJECTED' ? 'Rejeté' : 'Plus d\'infos'}
-                        </span>
-                      </td>
-                      <td className="px-8 py-4 text-[9px] font-black text-slate-500">{req.submittedAt}</td>
+          <div className="space-y-10 animate-fade-in">
+            {/* Archive Filter Tabs */}
+            <div className="flex gap-4 p-2 bg-slate-100 rounded-3xl w-fit">
+              {[
+                { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus' },
+                { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box' },
+                { id: 'IMPORT', label: 'Importations', icon: 'fa-ship' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setArchiveTab(tab.id as RequestType)}
+                  className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${
+                    archiveTab === tab.id 
+                      ? 'bg-white text-slate-900 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <i className={`fas ${tab.icon}`}></i>
+                  {tab.label}
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] bg-slate-200 text-slate-500">
+                    {archivedRequests.filter(r => r.type === tab.id).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
+                <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter">Historique des Décisions</h3>
+                <div className="flex gap-2">
+                  <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[8px] font-black uppercase tracking-widest border border-emerald-100">
+                    {archivedRequests.filter(r => r.status === 'APPROVED').length} Validés
+                  </span>
+                  <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-[8px] font-black uppercase tracking-widest border border-red-100">
+                    {archivedRequests.filter(r => r.status === 'REJECTED').length} Rejetés
+                  </span>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-white">
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Demandeur</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Soumis le</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut Final</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Décision</th>
+                      <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>
                     </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={4} className="px-8 py-20 text-center">
-                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
-                          <i className="fas fa-archive text-2xl"></i>
-                        </div>
-                        <p className="text-sm font-black text-slate-300 uppercase tracking-widest italic">Aucun dossier traité</p>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {archivedRequests.filter(r => r.type === archiveTab).length > 0 ? (
+                      archivedRequests.filter(r => r.type === archiveTab).map(req => (
+                        <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] ${
+                                req.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-500' : 
+                                req.status === 'REJECTED' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'
+                              }`}>
+                                <i className={`fas ${
+                                  req.status === 'APPROVED' ? 'fa-check-circle' : 
+                                  req.status === 'REJECTED' ? 'fa-times-circle' : 'fa-question-circle'
+                                }`}></i>
+                              </div>
+                              <span className="font-black text-slate-900 italic tracking-tighter">{req.reference}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6">
+                            <div className="text-xs font-bold text-slate-800 uppercase tracking-tight">{req.applicantName}</div>
+                            <div className="text-[8px] text-slate-400 font-black uppercase tracking-widest">{req.applicantType}</div>
+                          </td>
+                          <td className="px-8 py-6 text-[10px] font-bold text-slate-500">{req.submittedAt}</td>
+                          <td className="px-8 py-6">
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-md border ${
+                              req.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                              req.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100' : 
+                              'bg-amber-50 text-amber-600 border-amber-100'
+                            }`}>
+                              {req.status === 'APPROVED' ? 'Dossier Validé' : 
+                              req.status === 'REJECTED' ? 'Dossier Rejeté' : 'Plus d\'infos'}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6">
+                            {req.decisionComment && (
+                              <div className="text-[9px] text-slate-500 italic max-w-xs truncate" title={req.decisionComment}>
+                                <i className="fas fa-comment mr-1 text-slate-300"></i>
+                                {req.decisionComment}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <button 
+                              onClick={() => setSelectedRequest(req)}
+                              className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center ml-auto"
+                              title="Voir les détails"
+                            >
+                              <i className="fas fa-eye text-xs"></i>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-8 py-20 text-center">
+                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200">
+                            <i className="fas fa-archive text-2xl"></i>
+                          </div>
+                          <p className="text-sm font-black text-slate-300 uppercase tracking-widest italic">
+                            Aucune archive pour {archiveTab === 'REGISTRATION' ? 'les enregistrements' : 
+                                            archiveTab === 'PRODUCT_DECLARATION' ? 'les déclarations produits' : 
+                                            'les importations'}
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

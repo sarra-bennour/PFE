@@ -70,7 +70,7 @@ public class DemandeImportationService {
         demande.setExportateur(exportateur);
         demande.setReference(generateReference());
         demande.setStatus(DemandeStatus.BROUILLON);
-        demande.setTypeDemandeur(TypeDemandeur.IMPORTATEUR);
+        demande.setTypeDemande(TypeDemande.IMPORT);
         demande.setSubmittedAt(null);
         demande.setPaymentStatus(PaymentStatus.EN_ATTENTE);
 
@@ -547,7 +547,8 @@ public class DemandeImportationService {
                 .paymentReference(demande.getPaymentReference())
                 .paymentAmount(demande.getPaymentAmount())
                 .paymentStatus(demande.getPaymentStatus())
-                .assignedTo(demande.getAssignedTo())
+                // CORRECTION: assignedTo attend un Long, pas un InstanceValidation
+                .assignedTo(demande.getAssignedTo() != null ? demande.getAssignedTo().getId() : null)
                 .decisionDate(demande.getDecisionDate())
                 .decisionComment(demande.getDecisionComment())
                 .numeroAgrement(demande.getNumeroAgrement())
@@ -555,7 +556,6 @@ public class DemandeImportationService {
                         demande.getDateAgrement().atStartOfDay() : null)
                 .products(products)
                 .documents(documentDTOs)
-                // .history(historyDTOs)  // Commenté car pas de DTO
                 .build();
     }
 

@@ -15,7 +15,6 @@ export interface AttachedDocument {
   documentType?: string;
 }
 
-
 export type RequestType = 'REGISTRATION' | 'PRODUCT_DECLARATION' | 'IMPORT';
 
 export interface ValidationRequest {
@@ -27,6 +26,7 @@ export interface ValidationRequest {
   applicantName: string;
   type: RequestType;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'MORE_INFO';
+  decisionComment?: string;
   documents: AttachedDocument[];
   products?: Product[];
   importDetails?: ImportDetails;
@@ -36,11 +36,12 @@ interface InstructionModalProps {
   request: ValidationRequest;
   onClose: () => void;
   onDecision: (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => void;
+  readOnly?: boolean;
 }
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
-const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, onDecision }) => {
+const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, onDecision, readOnly = false }) => {
   const [localRequest, setLocalRequest] = React.useState<ValidationRequest>({ ...request });
   const [previewDoc, setPreviewDoc] = React.useState<AttachedDocument | null>(null);
   const [zoom, setZoom] = React.useState(1);
@@ -48,47 +49,42 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   const [decisionComment, setDecisionComment] = React.useState('');
   const [confirmationDecision, setConfirmationDecision] = React.useState<'APPROVED' | 'REJECTED' | 'MORE_INFO' | null>(null);
   
-  // 🔥 Ref pour suivre si une soumission est en cours
   const isSubmitting = React.useRef(false);
-  // 🔥 Compteur pour tracer les appels
   let callCounter = 0;
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 2));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.2, 0.5));
 
   const handleUpdateDocStatus = async (docId: string, status: DocStatus, comment?: string) => {
-  if (loading || isSubmitting.current) return;
-  
-  // 🔥 Mettre à jour localement immédiatement (optimiste)
-  const updatedDocs = localRequest.documents.map(doc => 
-    doc.id === docId ? { ...doc, status, comment } : doc
-  );
-  setLocalRequest({ ...localRequest, documents: updatedDocs });
-  
-  // 🔥 Envoyer la validation au backend
-  try {
-    const token = localStorage.getItem('token');
-    let backendStatus = '';
-    switch (status) {
-      case 'ACCEPTED': backendStatus = 'VALIDE'; break;
-      case 'REJECTED': backendStatus = 'REJETE'; break;
-      case 'NOT_SURE': backendStatus = 'A_COMPLETER'; break;
-      default: return;
-    }
+    if (loading || isSubmitting.current) return;
     
-    await axios.post(`${API_BASE_URL}/validation/documents/${docId}/validate`,
-      { status: backendStatus, comment: comment || '' },
-      { headers: { Authorization: `Bearer ${token}` } }
+    const updatedDocs = localRequest.documents.map(doc => 
+      doc.id === docId ? { ...doc, status, comment } : doc
     );
+    setLocalRequest({ ...localRequest, documents: updatedDocs });
     
-    console.log(`Document ${docId} validé avec statut ${backendStatus}`);
-  } catch (error) {
-    console.error('Erreur lors de la validation du document:', error);
-    // 🔥 Revert local change on error
-    setLocalRequest({ ...localRequest });
-    alert('Erreur lors de la validation du document');
-  }
-};
+    try {
+      const token = localStorage.getItem('token');
+      let backendStatus = '';
+      switch (status) {
+        case 'ACCEPTED': backendStatus = 'VALIDE'; break;
+        case 'REJECTED': backendStatus = 'REJETE'; break;
+        case 'NOT_SURE': backendStatus = 'A_COMPLETER'; break;
+        default: return;
+      }
+      
+      await axios.post(`${API_BASE_URL}/validation/documents/${docId}/validate`,
+        { status: backendStatus, comment: comment || '' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      console.log(`Document ${docId} validé avec statut ${backendStatus}`);
+    } catch (error) {
+      console.error('Erreur lors de la validation du document:', error);
+      setLocalRequest({ ...localRequest });
+      alert('Erreur lors de la validation du document');
+    }
+  };
 
   const handleAutoValidateAll = () => {
     if (loading || isSubmitting.current) return;
@@ -108,9 +104,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   };
 
   const recommendation = getRecommendation();
-
   const allDocumentsReviewed = !localRequest.documents.some(d => d.status === 'PENDING');
-  
   const hasRejected = localRequest.documents.some(d => d.status === 'REJECTED');
   const hasNotSure = localRequest.documents.some(d => d.status === 'NOT_SURE');
   const allAccepted = localRequest.documents.every(d => d.status === 'ACCEPTED');
@@ -127,145 +121,118 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   }
 
   const handleDecisionClick = (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO') => {
-    console.log('🔘 [handleDecisionClick]', { decision, loading, isSubmitting: isSubmitting.current });
-    if (loading || isSubmitting.current) {
-      console.log('⚠️ [handleDecisionClick] Bloqué - soumission en cours');
-      return;
-    }
+    if (loading || isSubmitting.current) return;
     setConfirmationDecision(decision);
   };
 
   const confirmDecision = async () => {
-  const callId = ++callCounter;
-  console.log(`🚀 [confirmDecision #${callId}] DEBUT`, { 
-    confirmationDecision, 
-    loading, 
-    isSubmitting: isSubmitting.current,
-    timestamp: new Date().toISOString()
-  });
-  
-  if (!confirmationDecision) {
-    console.log(`❌ [confirmDecision #${callId}] Aucune décision à confirmer`);
-    return;
-  }
-  
-  if (loading || isSubmitting.current) {
-    console.log(`⚠️ [confirmDecision #${callId}] SOUMISSION DÉJÀ EN COURS - IGNORÉE`);
-    return;
-  }
-  
-  isSubmitting.current = true;
-  setLoading(true);
-  console.log(`🔒 [confirmDecision #${callId}] Verrou acquis, début de la soumission`);
-  
-  try {
-    // 🔥 NE PAS modifier les documents ici !
-    // Le backend s'occupe de mettre à jour uniquement les documents PENDING
+    const callId = ++callCounter;
     
-    const decision = confirmationDecision;
-    setConfirmationDecision(null);
-    
-    console.log(`📤 [confirmDecision #${callId}] Appel de handleFinalDecision`);
-    await handleFinalDecision(decision, localRequest, callId);
-    
-  } catch (error) {
-    console.error(`💥 [confirmDecision #${callId}] Erreur:`, error);
-    isSubmitting.current = false;
-    setLoading(false);
-  }
-};
-
-  const handleViewDocument = async (doc: AttachedDocument) => {
+    if (!confirmationDecision) return;
     if (loading || isSubmitting.current) return;
     
-    if (!doc.fileUrl) {
-      console.error('No file URL for document:', doc);
-      alert('URL du document non disponible');
-      return;
-    }
+    isSubmitting.current = true;
+    setLoading(true);
     
-    let correctedUrl = doc.fileUrl;
-    if (correctedUrl.includes('/api/api/')) {
-      correctedUrl = correctedUrl.replace('/api/api/', '/api/');
-    }
-    
-    setPreviewDoc(doc);
     try {
-      const token = localStorage.getItem('token');
-      console.log('Fetching document from:', correctedUrl);
-      
-      const response = await axios.get(correctedUrl, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Accept': 'application/pdf,image/*,*/*'
-        },
-        responseType: 'blob'
-      });
-      
-      const blobUrl = URL.createObjectURL(response.data);
-      setPreviewDoc({ ...doc, fileUrl: blobUrl });
+      const decision = confirmationDecision;
+      setConfirmationDecision(null);
+      await handleFinalDecision(decision, localRequest, callId);
     } catch (error) {
-      console.error('Error fetching document:', error);
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 403) {
-          alert('Accès non autorisé au document. Vérifiez vos permissions.');
-        } else if (error.response?.status === 404) {
-          alert('Document non trouvé.');
-        } else {
-          alert(`Erreur lors du chargement du document: ${error.message}`);
-        }
-      } else {
-        alert('Erreur lors du chargement du document');
-      }
+      console.error(`Erreur:`, error);
+      isSubmitting.current = false;
+      setLoading(false);
     }
   };
 
-  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, callId?: number) => {
-    const requestId = callId || ++callCounter;
-    console.log(`🌐 [handleFinalDecision #${requestId}] DEBUT`, { decision, endpoint: '' });
+  const handleViewDocument = async (doc: AttachedDocument) => {
+  if (loading || isSubmitting.current) return;
+  
+  if (!doc.fileUrl) {
+    console.error('No file URL for document:', doc);
+    alert('URL du document non disponible');
+    return;
+  }
+  
+  console.log('🔍 URL originale du document:', doc.fileUrl);
+  
+  let correctedUrl = doc.fileUrl;
+  if (correctedUrl.includes('/api/api/')) {
+    correctedUrl = correctedUrl.replace('/api/api/', '/api/');
+  }
+  
+  // 🔥 Assurez-vous que l'URL commence par http
+  if (!correctedUrl.startsWith('http')) {
+    correctedUrl = `http://localhost:8080${correctedUrl}`;
+  }
+  
+  console.log('🔍 URL corrigée:', correctedUrl);
+  
+  setPreviewDoc(doc);
+  try {
+    const token = localStorage.getItem('token');
+    console.log('🔑 Token présent:', !!token);
     
+    const response = await axios.get(correctedUrl, {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Accept': 'application/pdf,image/*,*/*'
+      },
+      responseType: 'blob'
+    });
+    
+    console.log('✅ Document récupéré, taille:', response.data.size);
+    
+    const blobUrl = URL.createObjectURL(response.data);
+    setPreviewDoc({ ...doc, fileUrl: blobUrl });
+  } catch (error) {
+    console.error('❌ Error fetching document:', error);
+    if (axios.isAxiosError(error)) {
+      console.error('Status:', error.response?.status);
+      console.error('Message:', error.response?.data);
+      if (error.response?.status === 403) {
+        alert('Accès non autorisé au document. Vérifiez vos permissions.');
+      } else if (error.response?.status === 404) {
+        alert('Document non trouvé. Vérifiez que le document existe.');
+      } else {
+        alert(`Erreur lors du chargement du document: ${error.message}`);
+      }
+    } else {
+      alert('Erreur lors du chargement du document');
+    }
+  }
+};
+
+  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, callId?: number) => {
     try {
       const token = localStorage.getItem('token');
       let endpoint = '';
       
       if (decision === 'APPROVED') {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/approve`;
-        console.log(`📡 [handleFinalDecision #${requestId}] Appel API: POST ${endpoint}`);
       } else if (decision === 'REJECTED') {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/reject`;
-        console.log(`📡 [handleFinalDecision #${requestId}] Appel API: POST ${endpoint}`);
       } else {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/request-info`;
-        console.log(`📡 [handleFinalDecision #${requestId}] Appel API: POST ${endpoint}`);
       }
       
-      console.log(`⏳ [handleFinalDecision #${requestId}] Envoi de la requête...`);
-      
-      const response = await axios.post(endpoint, 
+      await axios.post(endpoint, 
         { comment: decisionComment },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
-      console.log(`✅ [handleFinalDecision #${requestId}] SUCCÈS API`, { status: response.status, data: response.data });
-      
-      console.log(`📞 [handleFinalDecision #${requestId}] Appel onDecision callback`);
       onDecision(decision, updatedRequest, decisionComment);
-      
-      console.log(`🚪 [handleFinalDecision #${requestId}] Fermeture du modal`);
       onClose();
       
     } catch (error) {
-      console.error(`❌ [handleFinalDecision #${requestId}] ÉCHEC API:`, error);
+      console.error(`Erreur API:`, error);
       if (axios.isAxiosError(error)) {
-        console.error(`   - Status: ${error.response?.status}`);
-        console.error(`   - Message: ${error.response?.data?.message || error.message}`);
         alert(`Erreur: ${error.response?.data?.message || error.message}`);
       } else {
         alert('Erreur lors de la soumission de la décision');
       }
       throw error;
     } finally {
-      console.log(`🔓 [handleFinalDecision #${requestId}] FIN - Nettoyage des verrous`);
       isSubmitting.current = false;
       setLoading(false);
     }
@@ -300,9 +267,10 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-10 space-y-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {/* Left Column: Details - inchangé */}
+            {/* Left Column: Details */}
             <div className="space-y-8">
-              {(localRequest.type === 'PRODUCT_DECLARATION' || localRequest.type === 'REGISTRATION') && localRequest.products && (
+              {/* PRODUCT DECLARATION - Style comme le premier code */}
+              {(localRequest.type === 'PRODUCT_DECLARATION' || localRequest.type === 'REGISTRATION') && localRequest.products && localRequest.products.length > 0 && (
                 <div className="space-y-6">
                   <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight flex items-center gap-2">
                     <i className="fas fa-box-open text-tunisia-red"></i> Liste des Produits
@@ -312,12 +280,16 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                       <div key={idx} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-tunisia-red px-2 py-0.5 bg-red-50 rounded-full">{p.productType}</span>
-                            <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight mt-1 italic">{p.productName}</h5>
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                              p.productType === 'ALIMENTAIRE' ? 'bg-red-50 text-tunisia-red' : 'bg-blue-50 text-blue-600'
+                            }`}>
+                              {p.productType === 'ALIMENTAIRE' ? 'Alimentaire' : 'Industriel'}
+                            </span>
+                            <h5 className="text-sm font-black text-slate-900 uppercase tracking-tight mt-2 italic">{p.productName}</h5>
                           </div>
                           <div className="text-right">
-                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">HSCODE</div>
-                            <div className="text-xs font-bold text-slate-900">{p.ngp}</div>
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Code HS / NGP</div>
+                            <div className="text-xs font-bold text-slate-900">{p.hsCode}</div>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-[10px]">
@@ -326,24 +298,22 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                             <span className="font-bold text-slate-700">{p.category}</span>
                           </div>
                           <div>
-                            <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Pays Origine</span>
+                            <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Pays d'Origine</span>
                             <span className="font-bold text-slate-700">{p.originCountry}</span>
                           </div>
                           <div>
                             <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Marque Commerciale</span>
-                            <span className="font-bold text-slate-700">{p.brandName}</span>
+                            <span className="font-bold text-indigo-600">{p.commercialBrandName || p.brandName || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">État du Produit</span>
+                            <span className="font-bold text-slate-700">{p.productState || 'N/A'}</span>
                           </div>
                           {p.productType === 'ALIMENTAIRE' && (
-                            <>
-                              <div>
-                                <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">État Produit</span>
-                                <span className="font-bold text-slate-700">{p.productState}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Quantité Annuelle</span>
-                                <span className="font-bold text-slate-700">{p.annualQuantityValue} {p.annualQuantityUnit}</span>
-                              </div>
-                            </>
+                            <div>
+                              <span className="text-slate-400 font-bold uppercase tracking-widest block mb-1">Quantité Annuelle</span>
+                              <span className="font-bold text-slate-900">{p.annualQuantityValue} {p.annualQuantityUnit}</span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -352,6 +322,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 </div>
               )}
 
+              {/* IMPORT Details - Style comme le premier code */}
               {localRequest.type === 'IMPORT' && localRequest.importDetails && (
                 <div className="space-y-6">
                   <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight flex items-center gap-2">
@@ -361,11 +332,11 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                     <div className="grid grid-cols-2 gap-8">
                       <div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Facture N°</p>
-                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.invoiceNum}</p>
+                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.invoiceNum || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Date Facture</p>
-                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.invoiceDate}</p>
+                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.invoiceDate || 'N/A'}</p>
                       </div>
                       <div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Montant</p>
@@ -373,7 +344,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                       </div>
                       <div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Incoterm</p>
-                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.incoterm}</p>
+                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.incoterm || 'N/A'}</p>
                       </div>
                     </div>
                     <div className="h-px bg-white/10 w-full"></div>
@@ -381,42 +352,49 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                       <div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Transport</p>
                         <p className="text-sm font-black italic tracking-tight flex items-center gap-2">
-                          <i className={`fas ${localRequest.importDetails.transportMode === 'SEA' ? 'fa-ship' : 'fa-plane'}`}></i>
-                          {localRequest.importDetails.transportMode}
+                          <i className={`fas ${localRequest.importDetails.transportMode === 'SEA' ? 'fa-ship' : localRequest.importDetails.transportMode === 'AIR' ? 'fa-plane' : 'fa-truck'}`}></i>
+                          {localRequest.importDetails.transportMode || 'N/A'}
                         </p>
                       </div>
                       <div>
                         <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Arrivée Prévue</p>
-                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.arrivalDate}</p>
+                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.arrivalDate || 'N/A'}</p>
                       </div>
                       <div>
-                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Port Départ</p>
-                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.departurePort}</p>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Port Chargement</p>
+                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.departurePort || 'N/A'}</p>
                       </div>
                       <div>
-                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Port Arrivée</p>
-                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.arrivalPort}</p>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Port Déchargement</p>
+                        <p className="text-sm font-black italic tracking-tight">{localRequest.importDetails.arrivalPort || 'N/A'}</p>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {localRequest.type === 'REGISTRATION' && !localRequest.products && (
+              {/* REGISTRATION Details - Style comme le premier code */}
+              {localRequest.type === 'REGISTRATION' && (!localRequest.products || localRequest.products.length === 0) && (
                 <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
-                  <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight">Informations Demandeur</h4>
+                  <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                    <i className="fas fa-building text-tunisia-red"></i> Informations Demandeur
+                  </h4>
                   <div className="space-y-4 text-[10px]">
                     <div className="flex justify-between border-b border-slate-50 pb-2">
-                      <span className="text-slate-400 font-black uppercase tracking-widest">Type</span>
-                      <span className="font-black text-slate-900">{localRequest.applicantType}</span>
+                      <span className="text-slate-400 font-black uppercase tracking-widest">Type de demandeur</span>
+                      <span className="font-black text-slate-900">{localRequest.applicantType === 'EXPORTATEUR' ? 'Exportateur' : 'Importateur'}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-50 pb-2">
-                      <span className="text-slate-400 font-black uppercase tracking-widest">Nom</span>
+                      <span className="text-slate-400 font-black uppercase tracking-widest">Raison Sociale</span>
                       <span className="font-black text-slate-900">{localRequest.applicantName}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-50 pb-2">
-                      <span className="text-slate-400 font-black uppercase tracking-widest">Paiement</span>
+                      <span className="text-slate-400 font-black uppercase tracking-widest">Montant Payé</span>
                       <span className="font-black text-emerald-600">{localRequest.paymentAmount}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-slate-50 pb-2">
+                      <span className="text-slate-400 font-black uppercase tracking-widest">Date Soumission</span>
+                      <span className="font-black text-slate-900">{localRequest.submittedAt}</span>
                     </div>
                   </div>
                 </div>
@@ -429,13 +407,15 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight flex items-center gap-2">
                   <i className="fas fa-file-shield text-tunisia-red"></i> Documents Attachés
                 </h4>
-                <button 
-                  onClick={handleAutoValidateAll}
-                  disabled={loading || isSubmitting.current}
-                  className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <i className="fas fa-magic mr-1"></i> Validation Auto
-                </button>
+                {!readOnly && (
+                  <button 
+                    onClick={handleAutoValidateAll}
+                    disabled={loading || isSubmitting.current}
+                    className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <i className="fas fa-magic mr-1"></i> Validation Auto
+                  </button>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -457,31 +437,44 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <button 
-                          onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
-                          disabled={loading || isSubmitting.current}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          <i className="fas fa-check"></i>
-                        </button>
-                        <button 
-                          onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
-                          disabled={loading || isSubmitting.current}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          <i className="fas fa-question"></i>
-                        </button>
-                        <button 
-                          onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
-                          disabled={loading || isSubmitting.current}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                        >
-                          <i className="fas fa-times"></i>
-                        </button>
+                        {readOnly ? (
+                          <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                            doc.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-500 border border-emerald-100' :
+                            doc.status === 'REJECTED' ? 'bg-red-50 text-red-500 border border-red-100' :
+                            'bg-amber-50 text-amber-500 border border-amber-100'
+                          }`}>
+                            {doc.status === 'ACCEPTED' ? 'VALIDÉ' : doc.status === 'REJECTED' ? 'REJETÉ' : 'EN ATTENTE'}
+                          </div>
+                        ) : (
+                          <>
+                            <button 
+                              onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
+                              disabled={loading || isSubmitting.current}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all 
+                                ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <i className="fas fa-check"></i>
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
+                              disabled={loading || isSubmitting.current}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <i className="fas fa-question"></i>
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
+                              disabled={loading || isSubmitting.current}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    {(doc.status === 'REJECTED' || doc.status === 'NOT_SURE') && (
+                    {(doc.status === 'REJECTED' || doc.status === 'NOT_SURE') && !readOnly && (
                       <textarea 
                         placeholder="Pourquoi ? (Commentaire obligatoire)"
                         value={doc.comment || ''}
@@ -495,18 +488,20 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
               </div>
 
               {/* Decision Comment Section */}
-              <div className="mt-6 p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-3">
-                  Commentaire général (optionnel)
-                </label>
-                <textarea
-                  value={decisionComment}
-                  onChange={(e) => setDecisionComment(e.target.value)}
-                  disabled={loading || isSubmitting.current}
-                  placeholder="Ajoutez un commentaire global pour cette décision..."
-                  className="w-full p-4 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-tunisia-red transition-all h-24 resize-none disabled:opacity-50"
-                />
-              </div>
+              {!readOnly && (
+                <div className="mt-6 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-3">
+                    Commentaire général (optionnel)
+                  </label>
+                  <textarea
+                    value={decisionComment}
+                    onChange={(e) => setDecisionComment(e.target.value)}
+                    disabled={loading || isSubmitting.current}
+                    placeholder="Ajoutez un commentaire global pour cette décision..."
+                    className="w-full p-4 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-tunisia-red transition-all h-24 resize-none disabled:opacity-50"
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -514,8 +509,18 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
         {/* Modal Footer */}
         <div className="p-8 border-t border-slate-50 bg-slate-50/50 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Recommandation Système :</div>
-            {recommendation ? (
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              {readOnly ? 'Décision Finale :' : 'Recommandation Système :'}
+            </div>
+            {readOnly ? (
+              <span className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                localRequest.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                localRequest.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100' :
+                'bg-amber-50 text-amber-600 border-amber-100'
+              }`}>
+                {localRequest.status === 'APPROVED' ? 'Demande Acceptée' : localRequest.status === 'REJECTED' ? 'Demande Rejetée' : 'Compléments requis'}
+              </span>
+            ) : recommendation ? (
               <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
                 recommendation === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                 recommendation === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100' :
@@ -528,167 +533,207 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
             )}
           </div>
 
-          <div className="flex gap-4">
+          {!readOnly && (
+            <div className="flex gap-4">
+              <button 
+                onClick={() => handleDecisionClick('MORE_INFO')}
+                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'MORE_INFO')}
+                className={`px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {loading ? 'Traitement...' : 'Demander plus d\'infos'}
+              </button>
+              <button 
+                onClick={() => handleDecisionClick('REJECTED')}
+                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'REJECTED')}
+                className={`px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {loading ? 'Traitement...' : 'Rejeter Dossier'}
+              </button>
+              <button 
+                onClick={() => handleDecisionClick('APPROVED')}
+                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'APPROVED')}
+                className={`px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                {loading ? 'Traitement...' : 'Valider Dossier'}
+              </button>
+            </div>
+          )}
+          
+          {readOnly && (
             <button 
-              onClick={() => handleDecisionClick('MORE_INFO')}
-              disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'MORE_INFO')}
-              className={`px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
+              onClick={onClose}
+              className="px-10 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all"
             >
-              {loading ? 'Traitement...' : 'Demander plus d\'infos'}
+              Fermer l'archive
             </button>
-            <button 
-              onClick={() => handleDecisionClick('REJECTED')}
-              disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'REJECTED')}
-              className={`px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {loading ? 'Traitement...' : 'Rejeter Dossier'}
-            </button>
-            <button 
-              onClick={() => handleDecisionClick('APPROVED')}
-              disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'APPROVED')}
-              className={`px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {loading ? 'Traitement...' : 'Valider Dossier'}
-            </button>
-          </div>
+          )}
         </div>
       </motion.div>
 
-      {/* Document Preview Overlay - inchangé */}
-      <AnimatePresence>
-        {previewDoc && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-10"
+      {/* Document Preview Overlay */}
+      {/* Document Preview Overlay - Version avec affichage du dossier */}
+<AnimatePresence>
+  {previewDoc && (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-10"
+    >
+      <div className="relative w-full max-w-4xl h-full flex flex-col">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-tunisia-red text-white flex items-center justify-center shadow-lg">
+              <i className="fas fa-file-pdf text-xl"></i>
+            </div>
+            <div>
+              <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">{previewDoc.name}</h4>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visualisation Sécurisée</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => {
+              if (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(previewDoc.fileUrl);
+              }
+              setPreviewDoc(null);
+            }}
+            className="w-12 h-12 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all flex items-center justify-center"
           >
-            <div className="relative w-full max-w-4xl h-full flex flex-col">
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-tunisia-red text-white flex items-center justify-center shadow-lg">
-                    <i className="fas fa-file-pdf text-xl"></i>
-                  </div>
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div className="flex-1 bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col">
+          <div className="p-4 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
+            <div className="flex gap-2">
+              <button onClick={handleZoomIn} className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all">
+                <i className="fas fa-search-plus"></i>
+              </button>
+              <button onClick={handleZoomOut} className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all">
+                <i className="fas fa-search-minus"></i>
+              </button>
+              <button onClick={() => setZoom(1)} className="px-3 h-8 rounded-lg bg-white border border-slate-200 text-[8px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all">
+                Reset
+              </button>
+            </div>
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Zoom: {Math.round(zoom * 100)}%</div>
+            {previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:') && (
+              <a href={previewDoc.fileUrl} download={previewDoc.name} className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all">
+                <i className="fas fa-download"></i>
+              </a>
+            )}
+          </div>
+          
+          <div className="flex-1 p-12 overflow-y-auto bg-slate-200 flex justify-center">
+            {previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:') ? (
+              <iframe src={previewDoc.fileUrl} className="w-full h-full min-h-[600px]" title={previewDoc.name} />
+            ) : (
+              <div 
+                className="w-full max-w-2xl bg-white shadow-lg p-16 min-h-[1000px] relative transition-transform duration-200 origin-top"
+                style={{ transform: `scale(${zoom})` }}
+              >
+                {/* En-tête officiel */}
+                <div className="absolute top-10 right-10 opacity-10">
+                  <i className="fas fa-shield-halved text-8xl"></i>
+                </div>
+                <div className="border-b-4 border-slate-900 pb-8 mb-12 flex justify-between items-start">
                   <div>
-                    <h4 className="text-xl font-black text-white uppercase italic tracking-tighter">{previewDoc.name}</h4>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Visualisation Sécurisée</p>
+                    <h1 className="text-2xl font-black uppercase tracking-tighter italic mb-2">République Tunisienne</h1>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ministère du Commerce et de l'Exportation</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Document Officiel</p>
+                    <p className="text-xs font-bold text-slate-900">REF: {localRequest.reference}</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => {
-                    if (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:')) {
-                      URL.revokeObjectURL(previewDoc.fileUrl);
-                    }
-                    setPreviewDoc(null);
-                  }}
-                  className="w-12 h-12 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all flex items-center justify-center"
-                >
-                  <i className="fas fa-times"></i>
-                </button>
-              </div>
-              
-              <div className="flex-1 bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col">
-                <div className="p-4 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={handleZoomIn}
-                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all"
-                    >
-                      <i className="fas fa-search-plus"></i>
-                    </button>
-                    <button 
-                      onClick={handleZoomOut}
-                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all"
-                    >
-                      <i className="fas fa-search-minus"></i>
-                    </button>
-                    <button 
-                      onClick={() => setZoom(1)}
-                      className="px-3 h-8 rounded-lg bg-white border border-slate-200 text-[8px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all"
-                    >
-                      Reset
-                    </button>
+                
+                {/* Contenu du document */}
+                <div className="space-y-8">
+                  <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-3xl">
+                    <h2 className="text-xl font-black uppercase italic tracking-tight text-slate-900 mb-2">{previewDoc.name}</h2>
+                    <div className="w-20 h-1 bg-tunisia-red mx-auto"></div>
                   </div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Zoom: {Math.round(zoom * 100)}%</div>
-                  {previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:') && (
-                    <a 
-                      href={previewDoc.fileUrl}
-                      download={previewDoc.name}
-                      className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-400 flex items-center justify-center hover:text-slate-600 transition-all"
-                    >
-                      <i className="fas fa-download"></i>
-                    </a>
+                  
+                  {/* Informations du demandeur */}
+                  <div className="bg-slate-50 p-6 rounded-2xl space-y-3">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Informations du demandeur</h3>
+                    <div className="grid grid-cols-2 gap-4 text-[10px]">
+                      <div>
+                        <span className="text-slate-400 font-black uppercase tracking-widest block">Type</span>
+                        <span className="font-bold text-slate-900">{localRequest.applicantType === 'EXPORTATEUR' ? 'Exportateur' : 'Importateur'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-black uppercase tracking-widest block">Nom / Raison Sociale</span>
+                        <span className="font-bold text-slate-900">{localRequest.applicantName}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-black uppercase tracking-widest block">Date de soumission</span>
+                        <span className="font-bold text-slate-900">{localRequest.submittedAt}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 font-black uppercase tracking-widest block">Montant payé</span>
+                        <span className="font-bold text-emerald-600">{localRequest.paymentAmount}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Détails du dossier selon le type */}
+                  {localRequest.type === 'PRODUCT_DECLARATION' && localRequest.products && (
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Produits déclarés</h3>
+                      {localRequest.products.map((p, idx) => (
+                        <div key={idx} className="border border-slate-100 rounded-xl p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                              p.productType === 'ALIMENTAIRE' ? 'bg-red-50 text-tunisia-red' : 'bg-blue-50 text-blue-600'
+                            }`}>
+                              {p.productType === 'ALIMENTAIRE' ? 'Alimentaire' : 'Industriel'}
+                            </span>
+                            <span className="text-[8px] font-black text-slate-400">HS Code: {p.hsCode}</span>
+                          </div>
+                          <p className="font-bold text-slate-900 mb-2">{p.productName}</p>
+                          <div className="grid grid-cols-2 gap-2 text-[9px]">
+                            <div><span className="text-slate-400">Catégorie:</span> {p.category}</div>
+                            <div><span className="text-slate-400">Origine:</span> {p.originCountry}</div>
+                            <div><span className="text-slate-400">Marque:</span> {p.commercialBrandName || p.brandName || 'N/A'}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </div>
-                <div className="flex-1 p-12 overflow-y-auto bg-slate-200 flex justify-center">
-                  {previewDoc.fileUrl && previewDoc.fileUrl.startsWith('blob:') ? (
-                    <iframe 
-                      src={previewDoc.fileUrl}
-                      className="w-full h-full min-h-[600px]"
-                      title={previewDoc.name}
-                    />
-                  ) : (
-                    <div 
-                      className="w-full max-w-2xl bg-white shadow-lg p-16 min-h-[1000px] relative transition-transform duration-200 origin-top"
-                      style={{ transform: `scale(${zoom})` }}
-                    >
-                      <div className="absolute top-10 right-10 opacity-10">
-                        <i className="fas fa-shield-halved text-8xl"></i>
-                      </div>
-                      <div className="border-b-4 border-slate-900 pb-8 mb-12 flex justify-between items-start">
-                        <div>
-                          <h1 className="text-2xl font-black uppercase tracking-tighter italic mb-2">République Tunisienne</h1>
-                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ministère du Commerce et de l'Exportation</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Document Officiel</p>
-                          <p className="text-xs font-bold text-slate-900">REF: {localRequest.reference}</p>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-8">
-                        <div className="text-center py-10 border-2 border-dashed border-slate-100 rounded-3xl">
-                          <h2 className="text-xl font-black uppercase italic tracking-tight text-slate-900 mb-2">{previewDoc.name}</h2>
-                          <div className="w-20 h-1 bg-tunisia-red mx-auto"></div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-10">
-                          <div className="space-y-4">
-                            <div className="h-4 bg-slate-50 rounded-full w-3/4"></div>
-                            <div className="h-4 bg-slate-50 rounded-full w-full"></div>
-                            <div className="h-4 bg-slate-50 rounded-full w-5/6"></div>
-                          </div>
-                          <div className="space-y-4">
-                            <div className="h-4 bg-slate-50 rounded-full w-full"></div>
-                            <div className="h-4 bg-slate-50 rounded-full w-2/3"></div>
-                            <div className="h-4 bg-slate-50 rounded-full w-full"></div>
-                          </div>
-                        </div>
-                        
-                        <div className="pt-20 space-y-6">
-                          <div className="h-32 bg-slate-50 rounded-3xl w-full"></div>
-                          <div className="flex justify-between items-end pt-20">
-                            <div className="space-y-4">
-                              <div className="h-4 bg-slate-50 rounded-full w-40"></div>
-                              <div className="w-32 h-32 border-4 border-slate-50 rounded-2xl flex items-center justify-center text-slate-100">
-                                <i className="fas fa-stamp text-5xl"></i>
-                              </div>
-                            </div>
-                            <div className="text-right space-y-4">
-                              <div className="h-4 bg-slate-50 rounded-full w-40 ml-auto"></div>
-                              <div className="italic text-slate-300 font-serif text-4xl opacity-50">Signature</div>
-                            </div>
-                          </div>
+                  
+                  {localRequest.type === 'IMPORT' && localRequest.importDetails && (
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Détails de l'importation</h3>
+                      <div className="bg-slate-900 text-white p-6 rounded-2xl">
+                        <div className="grid grid-cols-2 gap-4 text-[10px]">
+                          <div><span className="text-slate-400">Facture N°</span><br/>{localRequest.importDetails.invoiceNum}</div>
+                          <div><span className="text-slate-400">Date</span><br/>{localRequest.importDetails.invoiceDate}</div>
+                          <div><span className="text-slate-400">Montant</span><br/>{localRequest.importDetails.amount} {localRequest.importDetails.currency}</div>
+                          <div><span className="text-slate-400">Incoterm</span><br/>{localRequest.importDetails.incoterm}</div>
+                          <div><span className="text-slate-400">Transport</span><br/>{localRequest.importDetails.transportMode}</div>
+                          <div><span className="text-slate-400">Arrivée</span><br/>{localRequest.importDetails.arrivalDate}</div>
                         </div>
                       </div>
                     </div>
                   )}
+                  
+                  {/* Signature */}
+                  <div className="pt-20 flex justify-end">
+                    <div className="w-40 h-20 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center italic text-[9px] text-slate-300">
+                      Signature et cachet
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )}
+</AnimatePresence>
 
       {/* Confirmation Modal */}
       <AnimatePresence>
@@ -721,10 +766,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 <h3 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">Êtes-vous sûr ?</h3>
                 <p className="text-xs font-bold text-slate-500 leading-relaxed">
                   {!allDocumentsReviewed && (
-                    <>
-                      Certains documents n'ont pas encore été vérifiés. 
-                      <br />
-                    </>
+                    <>Certains documents n'ont pas encore été vérifiés.<br /></>
                   )}
                   <span className="text-slate-900">
                     {!allDocumentsReviewed ? (

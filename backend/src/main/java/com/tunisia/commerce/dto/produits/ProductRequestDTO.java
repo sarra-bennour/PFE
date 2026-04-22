@@ -25,7 +25,7 @@ public class ProductRequestDTO {
     private Boolean hasBrandLicense; // Disposez-vous d'une licence pour exploiter la marque ?
     private String productState; // État du produit (Brut, Transformé, etc.)
     private String originCountry; // Pays d'origine
-    private String annualQuantityValue; // Quantité annuelle exportée (valeur)
+    private Double annualQuantityValue; // Quantité annuelle exportée (valeur)
     private String annualQuantityUnit; // Unité (Tonnes, Kilogrammes, etc.)
     private String commercialBrandName; // Marque commerciale (pour industriel)
 

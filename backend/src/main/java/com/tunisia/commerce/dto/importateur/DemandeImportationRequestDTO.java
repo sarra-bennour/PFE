@@ -22,7 +22,7 @@ public class DemandeImportationRequestDTO {
     // Informations facture
     private String invoiceNumber;
     private String invoiceDate;
-    private BigDecimal amount;
+    private Double amount;
     private String currency;
 
     // Informations logistiques

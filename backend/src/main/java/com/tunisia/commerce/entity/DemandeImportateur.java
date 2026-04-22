@@ -24,7 +24,7 @@ public class DemandeImportateur extends DemandeEnregistrement {
     private LocalDate invoiceDate;
 
     @Column(name = "amount")
-    private BigDecimal amount;
+    private Double amount;
 
     @Column(name = "currency")
     private String currency;

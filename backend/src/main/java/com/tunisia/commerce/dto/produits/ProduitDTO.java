@@ -23,7 +23,7 @@ public class ProduitDTO {
     private Boolean hasBrandLicense;
     private String productState; // État du produit
     private String originCountry;
-    private String annualQuantityValue;
+    private Double annualQuantityValue;
     private String annualQuantityUnit;
     private String commercialBrandName; // Pour industriel
 

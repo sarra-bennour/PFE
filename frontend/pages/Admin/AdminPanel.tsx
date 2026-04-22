@@ -8,12 +8,13 @@ import UserManagement from './UserManagement';
 import { InternalStructure, StructureType } from '../../types/InternalStructure';
 import InternalStructureList from './InternalStructureList';
 import InternalStructureForm from './InternalStructureForm';
+import AdminRequestList from './AdminRequestList';
 import axios from 'axios';
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'traffic' | 'security' | 'structures'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'traffic' | 'security' | 'structures' | 'requests'>('overview');
   
   // État pour les structures
   const [structures, setStructures] = useState<InternalStructure[]>([]);
@@ -145,6 +146,7 @@ const AdminPanel: React.FC = () => {
     { id: 'overview', label: 'Surveillance', icon: 'fa-chart-line' },
     { id: 'users', label: 'Utilisateurs', icon: 'fa-user-cog' },
     { id: 'structures', label: 'Structures', icon: 'fa-sitemap' },
+    { id: 'requests', label: 'Demandes', icon: 'fa-file-invoice' },
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
     { id: 'security', label: 'Sécurité', icon: 'fa-lock' },
     { id: 'dashboard', label: 'Décisionnel', icon: 'fa-shield-halved', path: '/dashboard' },
@@ -355,6 +357,7 @@ const AdminPanel: React.FC = () => {
               {activeTab === 'overview' && "Tableau de Bord Stratégique"}
               {activeTab === 'users' && "Gestion des Utilisateurs"}
               {activeTab === 'structures' && "Structures Internes"}
+              {activeTab === 'requests' && "Suivi des Demandes"}
               {activeTab === 'traffic' && "Surveillance des Flux"}
               {activeTab === 'security' && "Centre de Sécurité"}
             </h2>
@@ -493,7 +496,9 @@ const AdminPanel: React.FC = () => {
               />
             )
           )}
-
+          {activeTab === 'requests' && (
+            <AdminRequestList />
+          )}
           {activeTab === 'traffic' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-slate-900 p-10 rounded-[3rem] shadow-xl relative overflow-hidden border border-white/5">

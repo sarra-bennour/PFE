@@ -66,7 +66,7 @@ public class DemandeEnregistrementService {
                     .status(DemandeStatus.BROUILLON)
                     .submittedAt(null)
                     .paymentStatus(PaymentStatus.EN_ATTENTE)
-                    .typeDemandeur(TypeDemandeur.EXPORTATEUR)
+                    .typeDemande(TypeDemande.PRODUCT_DECLARATION)
                     .build();
 
             demande = demandeRepository.save(demande);
@@ -1136,7 +1136,7 @@ public class DemandeEnregistrementService {
         log.info("Récupération des déclarations de produits pour l'exportateur ID: {}", exportateurId);
 
         List<DemandeEnregistrement> demandes = demandeRepository
-                .findDeclarationsProduitsByExportateurId(exportateurId);
+                .findDemandeByExportateurIdetTypeDemande(exportateurId,TypeDemande.PRODUCT_DECLARATION);
 
         return demandes.stream()
                 .map(this::mapToDTO)
@@ -1257,7 +1257,7 @@ public class DemandeEnregistrementService {
                 .paymentReference(demande.getPaymentReference())
                 .paymentAmount(demande.getPaymentAmount())
                 .paymentStatus(demande.getPaymentStatus())
-                .assignedTo(demande.getAssignedTo())
+                .assignedTo(demande.getAssignedTo() != null ? demande.getAssignedTo().getId() : null)
                 .decisionDate(demande.getDecisionDate())
                 .decisionComment(demande.getDecisionComment())
                 .numeroAgrement(demande.getNumeroAgrement())

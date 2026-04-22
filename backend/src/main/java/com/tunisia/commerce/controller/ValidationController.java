@@ -54,6 +54,7 @@ public class ValidationController {
         try {
             List<DemandeEnregistrementDTO> demandes = validationService.getAllDemandes(type, status);
             log.info("Nombre de demandes trouvées: {}", demandes.size());
+            System.out.println("***demandes"+demandes);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -71,115 +72,6 @@ public class ValidationController {
         }
     }
 
-    /*@GetMapping("/demandes/dossier-conformite")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Récupérer les dossiers de conformité", description = "Retourne la liste des demandes d'enregistrement exportateur (préfixe DOS-)")
-    public ResponseEntity<?> getDossierConformiteDemandes(
-            @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
-
-        log.info("========== RÉCUPÉRATION DOSSIERS DE CONFORMITÉ (DOS-) ==========");
-
-        try {
-            List<DemandeEnregistrementDTO> demandes = validationService.getDemandesByReferencePrefix("DOS-", status);
-            log.info("Nombre de dossiers de conformité trouvés: {}", demandes.size());
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", demandes);
-            response.put("count", demandes.size());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Erreur: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "RETRIEVAL_FAILED");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }*/
-
-    /*@GetMapping("/demandes/declaration-produits")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Récupérer les déclarations de produits", description = "Retourne la liste des demandes de déclaration de produits (préfixe DEM-)")
-    public ResponseEntity<?> getDeclarationProduitsDemandes(
-            @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
-
-        log.info("========== RÉCUPÉRATION DÉCLARATIONS DE PRODUITS (DEM-) ==========");
-
-        try {
-            List<DemandeEnregistrementDTO> demandes = validationService.getDemandesByReferencePrefix("DEM-", status);
-            log.info("Nombre de déclarations de produits trouvées: {}", demandes.size());
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", demandes);
-            response.put("count", demandes.size());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Erreur: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "RETRIEVAL_FAILED");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }*/
-
-    /*@GetMapping("/demandes/importation")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Récupérer les demandes d'importation", description = "Retourne la liste des demandes d'importation (préfixe IMP-)")
-    public ResponseEntity<?> getImportationDemandes(
-            @RequestParam(required = false) @Parameter(description = "Statut de la demande") String status) {
-
-        log.info("========== RÉCUPÉRATION DEMANDES D'IMPORTATION (IMP-) ==========");
-
-        try {
-            List<DemandeEnregistrementDTO> demandes = validationService.getDemandesByReferencePrefix("IMP-", status);
-            log.info("Nombre de demandes d'importation trouvées: {}", demandes.size());
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", demandes);
-            response.put("count", demandes.size());
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Erreur: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "RETRIEVAL_FAILED");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }*/
-
-    /*@GetMapping("/demandes/{id}")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Récupérer une demande par ID", description = "Retourne les détails complets d'une demande spécifique")
-    public ResponseEntity<?> getDemandeById(
-            @Parameter(description = "ID de la demande") @PathVariable Long id) {
-
-        log.info("========== RÉCUPÉRATION DEMANDE ID: {} ==========", id);
-
-        try {
-            DemandeEnregistrementDTO demande = validationService.getDemandeById(id);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", demande);
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Erreur: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "NOT_FOUND");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
-        }
-    }*/
 
     // ==================== ENDPOINTS POUR LES DÉCISIONS ====================
 
@@ -344,85 +236,6 @@ public class ValidationController {
             errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
-    }*/
-
-    /*@GetMapping("/documents/{documentId}/telecharger")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Télécharger un document", description = "Télécharge le fichier d'un document spécifique")
-    public ResponseEntity<?> downloadDocument(
-            @Parameter(description = "ID du document") @PathVariable Long documentId) {  // 🔥 RETIRER @AuthenticationPrincipal
-
-        log.info("========== TÉLÉCHARGEMENT DOCUMENT ID: {} ==========", documentId);
-
-        try {
-            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
-
-            org.springframework.core.io.Resource resource = validationService.getDocumentFile(documentId, agentId);
-            DocumentDTO documentInfo = validationService.getDocumentDTOById(documentId, agentId);
-
-            log.info("Document téléchargé: {}", documentInfo.getFileName());
-
-            String contentType = determineContentType(documentInfo.getFileType());
-
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=\"" + documentInfo.getFileName() + "\"")
-                    .body(resource);
-
-        } catch (ValidationException e) {
-            log.error("Erreur: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", e.getErrorCode());
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
-        } catch (Exception e) {
-            log.error("Erreur inattendue: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "DOWNLOAD_FAILED");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }*/
-
-    /*@GetMapping("/documents/{documentId}")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Informations d'un document")
-    public ResponseEntity<?> getDocumentInfo(
-            @Parameter(description = "ID du document") @PathVariable Long documentId) {  // 🔥 RETIRER @AuthenticationPrincipal
-
-        log.info("========== INFOS DOCUMENT ID: {} ==========", documentId);
-
-        try {
-            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
-            DocumentDTO documentInfo = validationService.getDocumentDTOById(documentId, agentId);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", documentInfo);
-
-            return ResponseEntity.ok(response);
-        } catch (ValidationException e) {
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", e.getErrorCode());
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
-        }
-    }*/
-
-    /*private String determineContentType(String fileType) {
-        if (fileType == null) return "application/octet-stream";
-
-        String type = fileType.toLowerCase();
-        if (type.contains("pdf")) return "application/pdf";
-        if (type.contains("jpg") || type.contains("jpeg")) return "image/jpeg";
-        if (type.contains("png")) return "image/png";
-        if (type.contains("gif")) return "image/gif";
-
-        return "application/octet-stream";
     }*/
 
     // ==================== MÉTHODES PRIVÉES ====================

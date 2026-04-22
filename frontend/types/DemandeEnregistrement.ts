@@ -15,10 +15,23 @@ export interface DemandeEnregistrement {
   decisionComment?: string | null;
   numeroAgrement?: string | null;
   dateAgrement?: string | null;
+  applicantType: 'IMPORTATEUR' | 'EXPORTATEUR';
+  type: 'REGISTRATION' | 'PRODUCT_DECLARATION' | 'IMPORT';
+  importateur?: any;
   exportateur?: any;
   products?: Product[];
   documents?: Document[];
   history?: DemandeHistory[];
+
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  amount?: string;
+  currency?: string;
+  incoterm?: string;
+  transportMode?: 'MARITIME' | 'AERIEN' | 'TERRESTRE';
+  loadingPort?: string;
+  dischargePort?: string;
+  arrivalDate?: string;
 }
 
 

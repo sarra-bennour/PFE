@@ -1,21 +1,31 @@
 package com.tunisia.commerce.controller;
 
+import com.tunisia.commerce.dto.admin.AdminDemandeDTO;
 import com.tunisia.commerce.dto.user.CreateInstanceValidationRequest;
 import com.tunisia.commerce.dto.user.DeactivationRequestAdminDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.entity.Administrateur;
+import com.tunisia.commerce.entity.Document;
+import com.tunisia.commerce.entity.InstanceValidation;
+import com.tunisia.commerce.entity.User;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.exception.InstanceValidationException;
 import com.tunisia.commerce.repository.AdministrateurRepository;
+import com.tunisia.commerce.repository.DocumentRepository;
+import com.tunisia.commerce.repository.UserRepository;
 import com.tunisia.commerce.service.UserService;
 import com.tunisia.commerce.config.JwtUtil;
+import com.tunisia.commerce.service.impl.AdminServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +39,9 @@ public class AdminController {
     private final UserService userService;
     private final JwtUtil jwtUtil;
     private final AdministrateurRepository administrateurRepository;
+    private final DocumentRepository documentRepository;
+    private final AdminServiceImpl adminService;
+    private final UserRepository userRepository;
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
     /**
@@ -56,6 +69,158 @@ public class AdminController {
         }
     }
 
+    /**
+     * Récupérer TOUTES les demandes sans filtre
+     */
+    @GetMapping("/all-demandes")
+    public ResponseEntity<?> getAllDemandes(@RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== RÉCUPÉRATION DE TOUTES LES DEMANDES ===");
+            validateAdmin(authHeader);
+
+            List<AdminDemandeDTO> demandes = adminService.getAllDemandes();
+
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", demandes,
+                    "count", demandes.size()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des demandes: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Récupérer une demande par ID avec tous les détails
+     */
+    @GetMapping("/demande/{id}")
+    public ResponseEntity<?> getDemandeById(
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== RÉCUPÉRATION DEMANDE ID: {} ===", id);
+            validateAdmin(authHeader);
+
+            AdminDemandeDTO demande = adminService.getDemandeById(id);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", demande
+            ));
+        } catch (RuntimeException e) {
+            log.error("Demande non trouvée: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Erreur interne: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Prévisualiser un document (affiche dans le navigateur)
+     * Accessible par ADMIN et INSTANCE_VALIDATION
+     */
+    @GetMapping("/document/{documentId}/preview")
+    public ResponseEntity<?> previewDocument(
+            @PathVariable Long documentId,
+            @RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== PRÉVISUALISATION DOCUMENT ID: {} ===", documentId);
+
+            // 🔥 MODIFICATION : Vérifier le rôle au lieu d'appeler validateAdmin()
+            String token = extractToken(authHeader);
+            String email = jwtUtil.extractUsername(token);
+
+            // Récupérer l'utilisateur
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé avec l'email: " + email));
+
+            // Vérifier si l'utilisateur est ADMIN ou INSTANCE_VALIDATION
+            boolean isAdmin = user instanceof Administrateur;
+            boolean isInstanceValidation = user instanceof InstanceValidation;
+
+            if (!isAdmin && !isInstanceValidation) {
+                log.error("Accès non autorisé pour l'utilisateur: {}", email);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "success", false,
+                        "error", "Accès non autorisé. Seuls les administrateurs et validateurs peuvent visualiser les documents."
+                ));
+            }
+
+            Document document = documentRepository.findById(documentId)
+                    .orElseThrow(() -> new RuntimeException("Document non trouvé avec l'ID: " + documentId));
+
+            byte[] fileContent = adminService.getDocumentContent(document);
+
+            String contentType = document.getFileType();
+            if (contentType == null) {
+                String fileName = document.getFileName().toLowerCase();
+                if (fileName.endsWith(".pdf")) contentType = "application/pdf";
+                else if (fileName.endsWith(".png")) contentType = "image/png";
+                else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) contentType = "image/jpeg";
+                else contentType = "application/octet-stream";
+            }
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + document.getFileName() + "\"")
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .body(fileContent);
+
+        } catch (RuntimeException e) {
+            log.error("Document non trouvé: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        } catch (IOException e) {
+            log.error("Erreur lecture fichier: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Erreur lors de la lecture du fichier"
+            ));
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Récupérer les statistiques des demandes
+     */
+    @GetMapping("/demandes-statistics")
+    public ResponseEntity<?> getDemandesStatistics(@RequestHeader("Authorization") String authHeader) {
+        try {
+            log.info("=== RÉCUPÉRATION STATISTIQUES DES DEMANDES ===");
+            validateAdmin(authHeader);
+
+            Map<String, Object> stats = adminService.getDemandesStatistics();
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", stats
+            ));
+        } catch (Exception e) {
+            log.error("Erreur: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
 
     /**
      * Récupérer toutes les demandes de désactivation en attente
@@ -288,186 +453,7 @@ public class AdminController {
         }
     }
 
-    /*@GetMapping("/instance-validation/all")
-    public ResponseEntity<?> getAllInstanceValidations(@RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== RÉCUPÉRATION DE TOUTES LES INSTANCES DE VALIDATION ===");
-            validateAdmin(authHeader);
 
-            List<UserDTO> instances = userService.getAllInstanceValidations();
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "instances", instances,
-                    "count", instances.size()
-            ));
-        } catch (Exception e) {
-            log.error("Erreur: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage()
-            ));
-        }
-    }*/
-
-    /*@GetMapping("/instance-validation/{id}")
-    public ResponseEntity<?> getInstanceValidationById(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== RÉCUPÉRATION INSTANCE ID: {} ===", id);
-            validateAdmin(authHeader);
-
-            UserDTO instance = userService.getInstanceValidationById(id);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "instance", instance
-            ));
-        } catch (InstanceValidationException e) {
-            log.error("Erreur métier: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage(),
-                    "errorCode", e.getErrorCode()
-            ));
-        } catch (Exception e) {
-            log.error("Erreur technique: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "error", "Une erreur technique est survenue"
-            ));
-        }
-    }*/
-
-    /*@GetMapping("/instance-validation/email/{email}")
-    public ResponseEntity<?> getInstanceValidationByEmail(
-            @PathVariable String email,
-            @RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== RÉCUPÉRATION INSTANCE PAR EMAIL: {} ===", email);
-            validateAdmin(authHeader);
-
-            UserDTO instance = userService.getInstanceValidationByEmail(email);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "instance", instance
-            ));
-        } catch (InstanceValidationException e) {
-            log.error("Erreur métier: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage(),
-                    "errorCode", e.getErrorCode()
-            ));
-        } catch (Exception e) {
-            log.error("Erreur technique: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "error", "Une erreur technique est survenue"
-            ));
-        }
-    }*/
-
-    /*@PutMapping("/instance-validation/{id}/status")
-    public ResponseEntity<?> updateInstanceValidationStatus(
-            @PathVariable Long id,
-            @RequestBody Map<String, String> request,
-            @RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== MISE À JOUR STATUT INSTANCE ID: {} ===", id);
-            validateAdmin(authHeader);
-
-            String status = request.get("status");
-            if (status == null || (!status.equals("ACTIF") && !status.equals("INACTIF"))) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "error", "Statut invalide. Utilisez 'ACTIF' ou 'INACTIF'"
-                ));
-            }
-
-            userService.updateInstanceValidationStatus(id, status);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Statut mis à jour avec succès"
-            ));
-        } catch (InstanceValidationException e) {
-            log.error("Erreur métier: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage(),
-                    "errorCode", e.getErrorCode()
-            ));
-        } catch (Exception e) {
-            log.error("Erreur technique: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "error", "Une erreur technique est survenue"
-            ));
-        }
-    }*/
-
-    /*@DeleteMapping("/instance-validation/{id}")
-    public ResponseEntity<?> deleteInstanceValidation(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== SUPPRESSION LOGIQUE INSTANCE ID: {} ===", id);
-            validateAdmin(authHeader);
-
-            userService.deleteInstanceValidation(id);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Instance de validation désactivée avec succès"
-            ));
-        } catch (InstanceValidationException e) {
-            log.error("Erreur métier: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage(),
-                    "errorCode", e.getErrorCode()
-            ));
-        } catch (Exception e) {
-            log.error("Erreur technique: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "error", "Une erreur technique est survenue"
-            ));
-        }
-    }*/
-
-    /*@DeleteMapping("/instance-validation/{id}/hard")
-    public ResponseEntity<?> hardDeleteInstanceValidation(
-            @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
-        try {
-            log.info("=== SUPPRESSION PHYSIQUE INSTANCE ID: {} ===", id);
-            validateAdmin(authHeader);
-
-            userService.hardDeleteInstanceValidation(id);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Instance de validation supprimée définitivement"
-            ));
-        } catch (InstanceValidationException e) {
-            log.error("Erreur métier: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage(),
-                    "errorCode", e.getErrorCode()
-            ));
-        } catch (Exception e) {
-            log.error("Erreur technique: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "error", "Une erreur technique est survenue"
-            ));
-        }
-    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 

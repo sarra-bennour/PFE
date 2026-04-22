@@ -8,6 +8,7 @@ import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.entity.User;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.DocumentType;
+import com.tunisia.commerce.enums.TypeDemande;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
@@ -54,17 +55,19 @@ public class ExportateurController {
             System.out.println("✅ Exportateur trouvé ID: " + exportateur.getId());
 
             // 2. RECHERCHER UNIQUEMENT LE DOSSIER DE CONFORMITÉ (KYC)
-            Optional<DemandeEnregistrement> dossierConformiteOpt =
-                    demandeRepository.findDossierConformiteByExportateurId(exportateur.getId());
-
+            List<DemandeEnregistrement> dossierConformiteOpt =
+                    demandeRepository.findDemandeByExportateurIdetTypeDemande(exportateur.getId(), TypeDemande.REGISTRATION);
+            System.out.println("***dossier"+dossierConformiteOpt);
             // 3. Chercher aussi les déclarations de produits (pour info)
             List<DemandeEnregistrement> declarationsProduits =
-                    demandeRepository.findDeclarationsProduitsByExportateurId(exportateur.getId());
+                    demandeRepository.findDemandeByExportateurIdetTypeDemande(exportateur.getId(),TypeDemande.PRODUCT_DECLARATION);
 
-            System.out.println("📊 Dossier conformité présent: " + dossierConformiteOpt.isPresent());
-            System.out.println("📊 Déclarations produits trouvées: " + declarationsProduits.size());
+
+            System.out.println("📊 Dossier conformité présent: " + dossierConformiteOpt.isEmpty());
+            System.out.println("📊 Déclarations produits trouvées: " + dossierConformiteOpt.size());
 
             DossierResponseDTO response;
+
 
             if (dossierConformiteOpt.isEmpty()) {
                 // PAS DE DOSSIER DE CONFORMITÉ
@@ -82,12 +85,12 @@ public class ExportateurController {
                                 "Télécharger les documents requis",
                                 "Soumettre le dossier pour validation"
                         ))
-                        .declarationsCount(declarationsProduits.size())
+                        .declarationsCount(dossierConformiteOpt.size())
                         .timestamp(LocalDateTime.now())
                         .build();
             } else {
                 // DOSSIER DE CONFORMITÉ EXISTANT
-                DemandeEnregistrement dossier = dossierConformiteOpt.get();
+                DemandeEnregistrement dossier = dossierConformiteOpt.get(0);
                 System.out.println("✅ Dossier conformité trouvé ID: " + dossier.getId());
                 System.out.println("   - Référence: " + dossier.getReference());
                 System.out.println("   - Statut: " + dossier.getStatus());
@@ -106,7 +109,7 @@ public class ExportateurController {
                         .prochainesEtapes(getProchainesEtapes(dossier.getStatus()))
                         .exportateurInfo(ExportateurInfoDTO.fromEntity(exportateur))
                         .documentsCount(getDocumentsCount(exportateur))
-                        .declarationsCount(declarationsProduits.size())
+                        .declarationsCount(dossierConformiteOpt.size())
                         .timestamp(LocalDateTime.now())
                         .build();
             }

@@ -80,7 +80,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT p, d.exportateur FROM Product p " +
             "JOIN p.demandeProduits dp " +
             "JOIN dp.demande d " +
-            "WHERE d.status = 'SOUMISE' OR d.status = 'VALIDEE'")
+            "WHERE  d.status = 'VALIDEE' AND dp.type = 'EXPORTATEUR'")
     List<Object[]> findAllProductsWithExporterInfo();
 
     /**

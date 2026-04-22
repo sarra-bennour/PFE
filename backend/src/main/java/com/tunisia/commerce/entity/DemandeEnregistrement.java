@@ -3,6 +3,7 @@ package com.tunisia.commerce.entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.PaymentStatus;
+import com.tunisia.commerce.enums.TypeDemande;
 import com.tunisia.commerce.enums.TypeDemandeur;
 import jakarta.persistence.*;
 import lombok.*;
@@ -46,8 +47,9 @@ public class DemandeEnregistrement {
     @Builder.Default
     private PaymentStatus paymentStatus = PaymentStatus.EN_ATTENTE;
 
-    @Column(name = "assigned_to")
-    private Long assignedTo; // Agent de validation assigné
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to_id")
+    private InstanceValidation assignedTo;
 
     @Column(name = "decision_date")
     private LocalDateTime decisionDate;
@@ -61,9 +63,9 @@ public class DemandeEnregistrement {
     @Column(name = "date_agrement")
     private LocalDate dateAgrement;
 
-    @Column(name = "type_demandeur")
+    @Column(name = "type_demande")
     @Enumerated(EnumType.STRING)
-    private TypeDemandeur typeDemandeur;
+    private TypeDemande typeDemande;
 
     @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL)
     @JsonIgnore

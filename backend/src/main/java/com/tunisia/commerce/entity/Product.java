@@ -51,7 +51,7 @@ public class Product {
     private String originCountry;
 
     @Column(name = "annual_quantity_value")
-    private String annualQuantityValue;
+    private Double annualQuantityValue;
 
     @Column(name = "annual_quantity_unit")
     private String annualQuantityUnit;

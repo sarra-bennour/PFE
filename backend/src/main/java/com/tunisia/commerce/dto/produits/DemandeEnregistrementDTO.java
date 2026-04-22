@@ -4,6 +4,7 @@ import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.PaymentStatus;
+import com.tunisia.commerce.enums.TypeDemande;
 import lombok.Data;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
@@ -31,10 +32,11 @@ public class DemandeEnregistrementDTO {
     private String decisionComment;
     private String numeroAgrement;
     private LocalDateTime dateAgrement;
+    private TypeDemande typeDemande;
 
     private String invoiceNumber;
     private LocalDate invoiceDate;
-    private BigDecimal amount;
+    private Double amount;
     private String currency;
     private String incoterm;
     private String transportMode;

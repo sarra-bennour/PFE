@@ -63,7 +63,7 @@ public class ExportateurDossierService {
                 .exportateur(exportateur)
                 .reference(generateReference())
                 .status(DemandeStatus.BROUILLON)
-                .typeDemandeur(TypeDemandeur.EXPORTATEUR)
+                .typeDemande(TypeDemande.REGISTRATION)
                 .submittedAt(null)
                 .paymentStatus(PaymentStatus.EN_ATTENTE)
                 .build();
@@ -277,15 +277,15 @@ public class ExportateurDossierService {
         logger.info("Récupération des documents du dossier d'agrément pour l'exportateur ID: " + exportateurId);
 
         // Récupérer la demande d'agrément
-        Optional<DemandeEnregistrement> demandeOpt = demandeRepository
-                .findDossierConformiteByExportateurId(exportateurId);
+        List<DemandeEnregistrement> demandeOpt = demandeRepository
+                .findDemandeByExportateurIdetTypeDemande(exportateurId, TypeDemande.REGISTRATION);
 
         if (demandeOpt.isEmpty()) {
             logger.info("Aucun dossier d'agrément trouvé pour l'exportateur: " + exportateurId);
             return List.of(); // Retourner une liste vide
         }
 
-        DemandeEnregistrement demande = demandeOpt.get();
+        DemandeEnregistrement demande = demandeOpt.get(0);
         logger.info("Dossier d'agrément trouvé: " + demande.getReference());
 
         // Récupérer les documents de cette demande
