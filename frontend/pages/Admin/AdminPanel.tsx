@@ -10,11 +10,12 @@ import InternalStructureList from './InternalStructureList';
 import InternalStructureForm from './InternalStructureForm';
 import AdminRequestList from './AdminRequestList';
 import axios from 'axios';
+import UserHistory from './UserHistory';
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'traffic' | 'security' | 'structures' | 'requests'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests'>('overview');
   
   // État pour les structures
   const [structures, setStructures] = useState<InternalStructure[]>([]);
@@ -145,6 +146,7 @@ const AdminPanel: React.FC = () => {
   const sidebarItems = [
     { id: 'overview', label: 'Surveillance', icon: 'fa-chart-line' },
     { id: 'users', label: 'Utilisateurs', icon: 'fa-user-cog' },
+    { id: 'user-history', label: 'Historique Users', icon: 'fa-clock-rotate-left' },
     { id: 'structures', label: 'Structures', icon: 'fa-sitemap' },
     { id: 'requests', label: 'Demandes', icon: 'fa-file-invoice' },
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
@@ -356,6 +358,7 @@ const AdminPanel: React.FC = () => {
             <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">
               {activeTab === 'overview' && "Tableau de Bord Stratégique"}
               {activeTab === 'users' && "Gestion des Utilisateurs"}
+              {activeTab === 'user-history' && "Historique et Audit Utilisateurs"}
               {activeTab === 'structures' && "Structures Internes"}
               {activeTab === 'requests' && "Suivi des Demandes"}
               {activeTab === 'traffic' && "Surveillance des Flux"}
@@ -478,6 +481,10 @@ const AdminPanel: React.FC = () => {
 
           {activeTab === 'users' && (
             <UserManagement onResetPassword={handleResetPassword} />
+          )}
+
+          {activeTab === 'user-history' && (
+            <UserHistory />
           )}
           
           {activeTab === 'structures' && (

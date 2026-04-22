@@ -7,13 +7,14 @@ import Sidebar from '../../components/Sidebar';
 import InstructionModal, { ValidationRequest, RequestType, AttachedDocument } from './InstructionModal';
 import { Product } from '@/types/Product';
 import { ImportDetails } from '@/types/DemandeEnregistrement';
+import ValidatorProfile from './ValidatorProfile';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const ValidatorSpace: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'instruction' | 'stats' | 'archive'>('instruction');
+  const [activeTab, setActiveTab] = useState<'instruction' | 'stats' | 'archive' | 'profile'>('instruction');
   const [inboxTab, setInboxTab] = useState<RequestType>('REGISTRATION');
   const [archiveTab, setArchiveTab] = useState<RequestType>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<ValidationRequest | null>(null);
@@ -34,6 +35,7 @@ const ValidatorSpace: React.FC = () => {
     { id: 'instruction', label: 'Instruction', icon: 'fa-folder-open' },
     { id: 'stats', label: 'Statistiques', icon: 'fa-chart-bar' },
     { id: 'archive', label: 'Archives', icon: 'fa-archive' },
+    { id: 'profile', label: 'Mon Profil', icon: 'fa-user' },
     { id: 'admin', label: 'Admin Panel', icon: 'fa-shield-halved', path: '/admin', roles: ['admin'] as any },
   ];
 
@@ -221,6 +223,7 @@ const ValidatorSpace: React.FC = () => {
               {activeTab === 'instruction' && "Instruction des Dossiers"}
               {activeTab === 'stats' && "Analyse des Performances"}
               {activeTab === 'archive' && "Historique des Décisions"}
+              {activeTab === 'profile' && "Profil Validateur"}
             </h2>
           </div>
           
@@ -489,6 +492,10 @@ const ValidatorSpace: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'profile' && (
+          <ValidatorProfile />
         )}
       </main>
     </div>
