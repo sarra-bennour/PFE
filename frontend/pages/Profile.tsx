@@ -85,9 +85,9 @@ const mapBackendUserToFrontendUser = (backendUser: any): User => {
     userStatut: backendUser.statut === 'ACTIF' ? 'ACTIF' : 
                 backendUser.statut === 'INACTIF' ? 'INACTIF' : 'EN_ATTENTE',
     
-    nomOfficiel: backendUser.nomOfficiel,
-    codeMinistere: backendUser.codeMinistere,
-    typeAutorite: backendUser.typeAutorite,
+    structureName: backendUser.structureName,
+    structureCode: backendUser.structureCode,
+    structureType: backendUser.structureType,
     slaTraitementJours: backendUser.slaTraitementJours,
     
     mobileIdMatricule: backendUser.mobileIdMatricule,
@@ -147,7 +147,7 @@ const Profile: React.FC = () => {
   const [formData, setFormData] = useState({
     // Champs communs
     companyName: user?.companyName || user?.raisonSociale || '',
-    phone: user?.telephone || '',
+    telephone: user?.telephone || '',
     address: user?.adresseLegale || '',
     city: user?.ville || '',
     legalRep: user?.representantLegal || `${user?.prenom || ''} ${user?.nom || ''}`.trim() || '',
@@ -202,7 +202,7 @@ const Profile: React.FC = () => {
           
           setFormData({
             companyName: mappedUser.companyName || '',
-            phone: mappedUser.telephone || '',
+            telephone: mappedUser.telephone || '',
             address: mappedUser.adresseLegale || '',
             city: mappedUser.ville || '',
             legalRep: mappedUser.representantLegal || `${mappedUser.prenom || ''} ${mappedUser.nom || ''}`.trim() || '',
@@ -346,6 +346,8 @@ const Profile: React.FC = () => {
             id: data.demandeId,
             reference: data.reference || 'N/A',
             status: data.status,
+            applicantType: data.applicantType || 'EXPORTATEUR',
+            type: data.type || 'REGIST',
             submittedAt: data.submittedAt
           });
           
@@ -577,7 +579,7 @@ const Profile: React.FC = () => {
       const token = localStorage.getItem('token');
       
       let requestBody: any = {
-        phone: formData.phone,
+        telephone: formData.telephone,
         city: formData.city,
       };
       
@@ -631,7 +633,7 @@ const Profile: React.FC = () => {
           setFormData({
             ...formData,
             companyName: mappedUser.companyName || '',
-            phone: mappedUser.telephone || '',
+            telephone: mappedUser.telephone || '',
             address: mappedUser.adresseLegale || '',
             city: mappedUser.ville || '',
             legalRep: mappedUser.representantLegal || '',
@@ -648,7 +650,7 @@ const Profile: React.FC = () => {
           setFormData({
             ...formData,
             companyName: mappedUser.raisonSociale || '',
-            phone: mappedUser.telephone || '',
+            telephone: mappedUser.telephone || '',
             address: mappedUser.adresseLegale || '',
             city: mappedUser.ville || '',
             legalRep: `${mappedUser.prenom || ''} ${mappedUser.nom || ''}`.trim(),
@@ -1352,8 +1354,8 @@ const Profile: React.FC = () => {
                         </label>
                         <input 
                           type="tel" 
-                          value={formData.phone} 
-                          onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                          value={formData.telephone} 
+                          onChange={(e) => setFormData({...formData, telephone: e.target.value})}
                           disabled={isLoading}
                           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
                         />
@@ -1596,8 +1598,8 @@ const Profile: React.FC = () => {
                         </label>
                         <input 
                           type="tel" 
-                          value={formData.phone} 
-                          onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                          value={formData.telephone} 
+                          onChange={(e) => setFormData({...formData, telephone: e.target.value})}
                           disabled={isLoading}
                           className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50/50 focus:border-tunisia-red transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
                         />

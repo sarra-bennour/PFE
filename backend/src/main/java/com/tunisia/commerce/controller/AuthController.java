@@ -358,6 +358,7 @@ public class AuthController {
             @RequestHeader("Authorization") String authHeader,
             @RequestBody UpdateProfileRequest request) {
         try {
+            System.out.println("***update***");
             // Vérifier l'authentification
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

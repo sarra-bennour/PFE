@@ -42,6 +42,14 @@ public class InstanceValidation extends User {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "reset_password_token", length = 64)
+    private String resetPasswordToken;
+
+    @Column(name = "reset_password_token_expiry")
+    private LocalDateTime resetPasswordTokenExpiry;
+    @Column(name = "last_password_change")
+    private LocalDateTime lastPasswordChange;
+
     @PostLoad
     protected void onLoad() {
         setRole(UserRole.INSTANCE_VALIDATION);

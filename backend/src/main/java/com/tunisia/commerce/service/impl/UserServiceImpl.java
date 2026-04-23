@@ -624,14 +624,20 @@ public class UserServiceImpl implements UserService {
             dto.setPreKycCompleted(exportateur.isPreKycCompleted());
             dto.setCapaciteAnnuelle(exportateur.getCapaciteAnnuelle());
             dto.setDocumentsCount(exportateur.getDocuments() != null ? exportateur.getDocuments().size() : 0);
-        }
-
-        if (user instanceof ImportateurTunisien) {
+        }else if (user instanceof ImportateurTunisien) {
             ImportateurTunisien importateur = (ImportateurTunisien) user;
             dto.setMobileIdMatricule(importateur.getMobileIdMatricule());
             dto.setMobileIdPin(importateur.getMobileIdPin());
             dto.setRaisonSociale(importateur.getRaisonSociale());
             dto.setEmailVerified(true);
+        }else if(user instanceof InstanceValidation){
+            InstanceValidation instanceValidation = (InstanceValidation) user;
+            dto.setSlaTraitementJours(instanceValidation.getSlaTraitementJours());
+            dto.setStructureName(instanceValidation.getStructure().getOfficialName());
+            dto.setStructureCode(instanceValidation.getStructure().getCode());
+            dto.setStructureType(instanceValidation.getStructure().getType());
+
+
         }
 
         return dto;
@@ -698,59 +704,111 @@ public class UserServiceImpl implements UserService {
         logger.info("=== CHANGEMENT DE MOT DE PASSE ===");
         logger.info("Email: " + email);
 
-        // Récupérer l'exportateur
-        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
+        // Chercher l'utilisateur dans les deux tables
+        Optional<ExportateurEtranger> exportateurOpt = exportateurRepository.findByEmail(email);
+        Optional<InstanceValidation> instanceValidationOpt = instanceValidationRepository.findByEmail(email);
 
-        logger.info("Exportateur trouvé: " + exportateur.getEmail());
-
-        // Vérifier le mot de passe actuel
-        if (!passwordEncoder.matches(request.getCurrentPassword(), exportateur.getPasswordHash())) {
-            logger.severe("Mot de passe actuel incorrect");
-            throw new IllegalArgumentException("Mot de passe actuel incorrect");
+        if (exportateurOpt.isEmpty() && instanceValidationOpt.isEmpty()) {
+            throw new RuntimeException("Utilisateur non trouvé");
         }
 
-        logger.info("Mot de passe actuel validé");
+        if (exportateurOpt.isPresent()) {
+            // Cas ExportateurEtranger
+            ExportateurEtranger exportateur = exportateurOpt.get();
+            logger.info("Exportateur trouvé: " + exportateur.getEmail());
 
-        // Vérifier que le nouveau mot de passe est différent de l'ancien
-        if (passwordEncoder.matches(request.getNewPassword(), exportateur.getPasswordHash())) {
-            logger.warning("Le nouveau mot de passe est identique à l'ancien");
-            throw new IllegalArgumentException("Le nouveau mot de passe doit être différent de l'actuel");
-        }
+            // Vérifier le mot de passe actuel
+            if (!passwordEncoder.matches(request.getCurrentPassword(), exportateur.getPasswordHash())) {
+                logger.severe("Mot de passe actuel incorrect");
+                throw new IllegalArgumentException("Mot de passe actuel incorrect");
+            }
 
-        // Vérifier la force du mot de passe
-        validatePasswordStrength(request.getNewPassword());
+            logger.info("Mot de passe actuel validé");
 
-        // Mettre à jour le mot de passe
-        exportateur.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+            // Vérifier que le nouveau mot de passe est différent de l'ancien
+            if (passwordEncoder.matches(request.getNewPassword(), exportateur.getPasswordHash())) {
+                logger.warning("Le nouveau mot de passe est identique à l'ancien");
+                throw new IllegalArgumentException("Le nouveau mot de passe doit être différent de l'actuel");
+            }
 
-        // Mettre à jour la date de changement (si ce champ existe dans l'entité)
-        try {
-            exportateur.getClass().getMethod("setLastPasswordChange", LocalDateTime.class);
-            exportateur.setLastPasswordChange(LocalDateTime.now());
-        } catch (NoSuchMethodException e) {
-            // Le champ n'existe pas, ce n'est pas grave
-            logger.info("Le champ lastPasswordChange n'existe pas dans l'entité");
-        }
+            // Vérifier la force du mot de passe
+            validatePasswordStrength(request.getNewPassword());
 
-        // Si l'utilisateur avait un token de réinitialisation, le nettoyer
-        exportateur.setResetPasswordToken(null);
-        exportateur.setResetPasswordTokenExpiry(null);
+            // Mettre à jour le mot de passe
+            exportateur.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
 
-        ExportateurEtranger saved = exportateurRepository.save(exportateur);
+            // Mettre à jour la date de changement
+            if (exportateur.getLastPasswordChange() != null) {
+                exportateur.setLastPasswordChange(LocalDateTime.now());
+            }
 
-        logger.info("Mot de passe changé avec succès pour: " + saved.getEmail());
+            // Nettoyer le token de réinitialisation s'il existe
+            exportateur.setResetPasswordToken(null);
+            exportateur.setResetPasswordTokenExpiry(null);
 
-        // Envoyer une notification par email
-        try {
-            emailService.sendPasswordChangeNotification(
-                    email,
-                    exportateur.getRaisonSociale()
-            );
-            logger.info("Notification de changement de mot de passe envoyée à: " + email);
-        } catch (Exception e) {
-            logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
-            // Ne pas lancer d'exception, le changement de mot de passe a réussi
+            exportateurRepository.save(exportateur);
+
+            logger.info("Mot de passe changé avec succès pour Exportateur: " + exportateur.getEmail());
+
+            // Envoyer une notification par email
+            try {
+                emailService.sendPasswordChangeNotification(
+                        email,
+                        exportateur.getRaisonSociale()
+                );
+                logger.info("Notification de changement de mot de passe envoyée à: " + email);
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            }
+
+        } else if (instanceValidationOpt.isPresent()) {
+            // Cas InstanceValidation
+            InstanceValidation instanceValidation = instanceValidationOpt.get();
+            logger.info("InstanceValidation trouvé: " + instanceValidation.getEmail());
+
+            // Vérifier le mot de passe actuel
+            if (!passwordEncoder.matches(request.getCurrentPassword(), instanceValidation.getPasswordHash())) {
+                logger.severe("Mot de passe actuel incorrect");
+                throw new IllegalArgumentException("Mot de passe actuel incorrect");
+            }
+
+            logger.info("Mot de passe actuel validé");
+
+            // Vérifier que le nouveau mot de passe est différent de l'ancien
+            if (passwordEncoder.matches(request.getNewPassword(), instanceValidation.getPasswordHash())) {
+                logger.warning("Le nouveau mot de passe est identique à l'ancien");
+                throw new IllegalArgumentException("Le nouveau mot de passe doit être différent de l'actuel");
+            }
+
+            // Vérifier la force du mot de passe
+            validatePasswordStrength(request.getNewPassword());
+
+            // Mettre à jour le mot de passe
+            instanceValidation.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+
+            // Mettre à jour la date de changement
+            if (instanceValidation.getLastPasswordChange() != null) {
+                instanceValidation.setLastPasswordChange(LocalDateTime.now());
+            }
+
+            // Nettoyer le token de réinitialisation s'il existe
+            instanceValidation.setResetPasswordToken(null);
+            instanceValidation.setResetPasswordTokenExpiry(null);
+
+            instanceValidationRepository.save(instanceValidation);
+
+            logger.info("Mot de passe changé avec succès pour InstanceValidation: " + instanceValidation.getEmail());
+
+            // Envoyer une notification par email
+            try {
+                emailService.sendPasswordChangeNotification(
+                        email,
+                        instanceValidation.getStructure().getOfficialName()
+                );
+                logger.info("Notification de changement de mot de passe envoyée à: " + email);
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            }
         }
     }
 
@@ -790,48 +848,88 @@ public class UserServiceImpl implements UserService {
     public void resetPassword(String token, String newPassword) {
         logger.info("=== RÉINITIALISATION MOT DE PASSE ===");
 
-        ExportateurEtranger exportateur = exportateurRepository.findByResetPasswordToken(token)
-                .orElseThrow(() -> new RuntimeException("Token de réinitialisation invalide"));
+        // Chercher d'abord dans ExportateurEtranger
+        Optional<ExportateurEtranger> exportateurOpt = exportateurRepository.findByResetPasswordToken(token);
+        Optional<InstanceValidation> instanceValidationOpt = instanceValidationRepository.findByResetPasswordToken(token);
 
-        // Vérifier si le token a expiré
-        if (exportateur.getResetPasswordTokenExpiry().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("Le token de réinitialisation a expiré");
+        if (exportateurOpt.isEmpty() && instanceValidationOpt.isEmpty()) {
+            throw new RuntimeException("Token de réinitialisation invalide");
         }
 
         // Vérifier la force du mot de passe
         validatePasswordStrength(newPassword);
 
-        // Mettre à jour le mot de passe
-        exportateur.setPasswordHash(passwordEncoder.encode(newPassword));
+        if (exportateurOpt.isPresent()) {
+            // Cas ExportateurEtranger
+            ExportateurEtranger exportateur = exportateurOpt.get();
 
-        // Mettre à jour la date de changement (si ce champ existe dans l'entité)
-        try {
-            exportateur.getClass().getMethod("setLastPasswordChange", LocalDateTime.class);
-            exportateur.setLastPasswordChange(LocalDateTime.now());
-        } catch (NoSuchMethodException e) {
-            // Le champ n'existe pas, ce n'est pas grave
-            logger.info("Le champ lastPasswordChange n'existe pas dans l'entité");
-        }
+            // Vérifier si le token a expiré
+            if (exportateur.getResetPasswordTokenExpiry().isBefore(LocalDateTime.now())) {
+                throw new RuntimeException("Le token de réinitialisation a expiré");
+            }
 
-        // Invalider le token
-        exportateur.setResetPasswordToken(null);
-        exportateur.setResetPasswordTokenExpiry(null);
+            // Mettre à jour le mot de passe
+            exportateur.setPasswordHash(passwordEncoder.encode(newPassword));
 
-        exportateurRepository.save(exportateur);
+            // Mettre à jour la date de changement
+            if (exportateur.getLastPasswordChange() != null) {
+                exportateur.setLastPasswordChange(LocalDateTime.now());
+            }
 
-        logger.info("Mot de passe réinitialisé pour: " + exportateur.getEmail());
+            // Invalider le token
+            exportateur.setResetPasswordToken(null);
+            exportateur.setResetPasswordTokenExpiry(null);
 
-        // Envoyer une notification
-        try {
-            emailService.sendPasswordChangeNotification(
-                    exportateur.getEmail(),
-                    exportateur.getRaisonSociale()
-            );
-        } catch (Exception e) {
-            logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            exportateurRepository.save(exportateur);
+
+            logger.info("Mot de passe réinitialisé pour Exportateur: " + exportateur.getEmail());
+
+            // Envoyer une notification
+            try {
+                emailService.sendPasswordChangeNotification(
+                        exportateur.getEmail(),
+                        exportateur.getRaisonSociale()
+                );
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            }
+
+        } else if (instanceValidationOpt.isPresent()) {
+            // Cas InstanceValidation
+            InstanceValidation instanceValidation = instanceValidationOpt.get();
+
+            // Vérifier si le token a expiré
+            if (instanceValidation.getResetPasswordTokenExpiry().isBefore(LocalDateTime.now())) {
+                throw new RuntimeException("Le token de réinitialisation a expiré");
+            }
+
+            // Mettre à jour le mot de passe
+            instanceValidation.setPasswordHash(passwordEncoder.encode(newPassword));
+
+            // Mettre à jour la date de changement
+            if (instanceValidation.getLastPasswordChange() != null) {
+                instanceValidation.setLastPasswordChange(LocalDateTime.now());
+            }
+
+            // Invalider le token
+            instanceValidation.setResetPasswordToken(null);
+            instanceValidation.setResetPasswordTokenExpiry(null);
+
+            instanceValidationRepository.save(instanceValidation);
+
+            logger.info("Mot de passe réinitialisé pour InstanceValidation: " + instanceValidation.getEmail());
+
+            // Envoyer une notification
+            try {
+                emailService.sendPasswordChangeNotification(
+                        instanceValidation.getEmail(),
+                        instanceValidation.getStructure().getOfficialName()
+                );
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            }
         }
     }
-
     private void validatePasswordStrength(String password) {
         if (password == null || password.length() < 6) {
             throw new IllegalArgumentException("Le mot de passe doit contenir au moins 6 caractères");
@@ -876,8 +974,8 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
         // Mettre à jour les champs communs
-        if (request.getPhone() != null && !request.getPhone().isEmpty()) {
-            user.setTelephone(request.getPhone());
+        if (request.getTelephone() != null && !request.getTelephone().isEmpty()) {
+            user.setTelephone(request.getTelephone());
         }
 
 
@@ -956,27 +1054,38 @@ public class UserServiceImpl implements UserService {
             savedUser = importateurRepository.save(importateur);
             logger.info("Profil importateur mis à jour avec succès pour: " + savedUser.getEmail());
 
-        } else if (user instanceof InstanceValidation) {
-            InstanceValidation instance = instanceValidationRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Instance de validation non trouvée"));
+        }  else if (user instanceof InstanceValidation) {
+        InstanceValidation instance = instanceValidationRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Instance de validation non trouvée"));
 
-            if (request.getStructureInterne() != null && request.getStructureInterne().getId() != null) {
-                StructureInterne structure = structureRepository.findById(request.getStructureInterne().getId())
-                        .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructureInterne().getId()));
-                instance.setStructure(structure);
-
-                // Mettre à jour les champs dérivés de la structure
-                instance.setStructure(structure);
-            }
-
-            if (request.getSlaTraitementJours() != null) {
-                instance.setSlaTraitementJours(request.getSlaTraitementJours());
-            }
-
-
-            savedUser = instanceValidationRepository.save(instance);
-            logger.info("Profil instance de validation mis à jour avec succès pour: " + savedUser.getEmail());
+        // ✅ AJOUTER LA MISE À JOUR DES CHAMPS COMMUNS
+        if (request.getNom() != null && !request.getNom().isEmpty()) {
+            instance.setNom(request.getNom());
         }
+
+        if (request.getPrenom() != null && !request.getPrenom().isEmpty()) {
+            instance.setPrenom(request.getPrenom());
+        }
+
+        if (request.getTelephone() != null && !request.getTelephone().isEmpty()) {
+            instance.setTelephone(request.getTelephone());
+        }
+
+        // Mise à jour de la structure (si nécessaire)
+        if (request.getStructureInterne() != null && request.getStructureInterne().getId() != null) {
+            StructureInterne structure = structureRepository.findById(request.getStructureInterne().getId())
+                    .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructureInterne().getId()));
+            instance.setStructure(structure);
+        }
+
+        // Mise à jour du SLA (si nécessaire)
+        if (request.getSlaTraitementJours() != null) {
+            instance.setSlaTraitementJours(request.getSlaTraitementJours());
+        }
+
+        savedUser = instanceValidationRepository.save(instance);
+        logger.info("Profil instance de validation mis à jour avec succès pour: " + savedUser.getEmail());
+    }
 
         return mapToUserDTO(savedUser != null ? savedUser : user);
     }

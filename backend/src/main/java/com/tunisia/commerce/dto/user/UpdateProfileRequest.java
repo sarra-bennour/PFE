@@ -8,7 +8,7 @@ import lombok.Data;
 @Data
 public class UpdateProfileRequest {
     // Champs communs
-    private String phone;
+    private String telephone;
     private String city;
     private String companyName;
     private String address;

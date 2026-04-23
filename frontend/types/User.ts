@@ -1,5 +1,12 @@
 import { Product } from "./Product";
 
+export enum UserRoleType {
+  EXPORTATEUR = 'EXPORTATEUR',
+  IMPORTATEUR = 'IMPORTATEUR',
+  INSTANCE_VALIDATION = 'INSTANCE_VALIDATION',
+  ADMIN = 'ADMIN'
+}
+
 export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'INSTANCE_VALIDATION' | 'ADMIN';
 
 export interface User {
@@ -50,9 +57,9 @@ export interface User {
   userStatut?: 'ACTIF' | 'INACTIF' | 'EN_ATTENTE';
   
   // Champs spécifiques aux instances (null pour exportateur)
-  nomOfficiel?: string | null;
-  codeMinistere?: string | null;
-  typeAutorite?: string | null;
+  structureName?: string | null;
+  structureCode?: string | null;
+  structureType?: string | null;
   slaTraitementJours?: number | null;
   products?: Product[];
   
@@ -70,6 +77,7 @@ export interface User {
   username?: string | null;
   verificationToken?: string | null;
   verificationTokenExpiry?: string | null;
+
 }
 
 export interface ExporterDirectoryProps {

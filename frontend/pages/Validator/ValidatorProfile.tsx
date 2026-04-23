@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ResetPasswordForm from '../../components/ResetPasswordForm';
+import { useAuth } from '../../App'; // Assure-toi d'avoir le bon chemin
+import { User, UserRoleType } from '@/types/User';
+
 
 interface ProfileStat {
   label: string;
@@ -10,19 +13,39 @@ interface ProfileStat {
   bg: string;
 }
 
+// Interface pour l'utilisateur InstanceValidation
+interface InstanceValidationUser {
+  id: number;
+  email: string;
+  role: string;
+  nom: string;
+  prenom: string;
+  telephone: string;
+  structureName: string;
+  structureCode: string;
+  structureType: string;
+  slaTraitementJours: number;
+  statut: string;
+  lastLogin: string;
+  updatedAt: string;
+}
+
 const ValidatorProfile: React.FC = () => {
+  const { user: authUser, updateUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPwd, setIsChangingPwd] = useState(false);
   const [isDeclaringAbsence, setIsDeclaringAbsence] = useState(false);
-  
+  const [loadingProfile, setLoadingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
-    name: 'Ahmed Trabelsi',
-    email: 'a.trabelsi@commerce.gov.tn',
-    phone: '+216 71 888 222',
-    currentPost: 'Chef de service Validation',
-    institution: 'Ministère du Commerce',
-    direction: 'Direction des Agrégats',
-    id: 'VAL-TUN-88229'
+    nom: '',
+    prenom: '',
+    email: '',
+    telephone: '',
+    structureName: '',
+    structureCode: '',
+    structureType: '',
+    slaTraitementJours: 0,
+    statut: ''
   });
 
   const [absenceData, setAbsenceData] = useState({
@@ -31,6 +54,95 @@ const ValidatorProfile: React.FC = () => {
     reason: ''
   });
 
+  // Fonction pour mapper les données backend vers frontend
+  const mapBackendUserToFrontend = (backendUser: any): Partial<User> => {
+  // Normaliser le rôle pour correspondre à l'enum
+  let role: UserRoleType = UserRoleType.EXPORTATEUR; // Valeur par défault
+  
+  switch (backendUser.role?.toUpperCase()) {
+    case 'EXPORTATEUR':
+    case 'EXPORTATEUR_ETRANGER':
+      role = UserRoleType.EXPORTATEUR;
+      break;
+    case 'IMPORTATEUR':
+      role = UserRoleType.IMPORTATEUR;
+      break;
+    case 'INSTANCE_VALIDATION':
+      role = UserRoleType.INSTANCE_VALIDATION;
+      break;
+    case 'ADMIN':
+      role = UserRoleType.ADMIN;
+      break;
+    default:
+      role = UserRoleType.EXPORTATEUR;
+  }
+  
+  return {
+    id: backendUser.id,
+    email: backendUser.email,
+    role: role,
+    nom: backendUser.nom || '',
+    prenom: backendUser.prenom || '',
+    telephone: backendUser.telephone || '',
+    structureName: backendUser.structureName || '',
+    structureCode: backendUser.structureCode || '',
+    structureType: backendUser.structureType || '',
+    slaTraitementJours: backendUser.slaTraitementJours || 0,
+    statut: backendUser.statut || 'ACTIF',
+    // Ajouter d'autres champs si nécessaire
+    isTwoFactorEnabled: backendUser.twoFactorEnabled || false,
+    emailVerified: backendUser.emailVerified || false,
+  };
+};
+
+  // Charger les données du profil
+  useEffect(() => {
+    const fetchProfileData = async () => {
+      if (!authUser?.email) return;
+      
+      setLoadingProfile(true);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`http://localhost:8080/api/auth/profile`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        console.log('****Données du profil:', data);
+        if (data.success && data.user) {
+          const mappedUser = mapBackendUserToFrontend(data.user);
+          
+          setProfileData({
+            nom: mappedUser.nom || '',
+            prenom: mappedUser.prenom || '',
+            email: mappedUser.email || '',
+            telephone: mappedUser.telephone || '',
+            structureName: mappedUser.structureName || '',
+            structureCode: mappedUser.structureCode || '',
+            structureType: mappedUser.structureType || '',
+            slaTraitementJours: mappedUser.slaTraitementJours || 0,
+            statut: mappedUser.statut || 'ACTIF'
+          });
+          
+          // Mettre à jour le contexte auth si nécessaire
+          if (updateUser) {
+            updateUser(mappedUser);
+          }
+        }
+      } catch (err) {
+        console.error('Erreur chargement profil:', err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+    
+    fetchProfileData();
+  }, [authUser?.email]);
+
   const profileStats: ProfileStat[] = [
     { label: 'Dossiers Traités', value: '1,428', icon: 'fa-box-archive', color: 'text-emerald-500', bg: 'bg-emerald-50' },
     { label: 'Temps Moyen', value: '18m', icon: 'fa-bolt', color: 'text-amber-500', bg: 'bg-amber-50' },
@@ -38,10 +150,101 @@ const ValidatorProfile: React.FC = () => {
     { label: 'Score Qualité', value: '4.9/5', icon: 'fa-star', color: 'text-purple-500', bg: 'bg-purple-50' },
   ];
 
-  const handleUpdateProfile = (e: React.FormEvent) => {
+  const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsEditing(false);
+    setLoadingProfile(true);
+    
+    try {
+      const token = localStorage.getItem('token');
+      const requestBody = {
+        nom: profileData.nom,
+        prenom: profileData.prenom,
+        telephone: profileData.telephone,
+      };
+
+      const response = await fetch('http://localhost:8080/api/auth/update-profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors de la mise à jour');
+      }
+
+      if (data.user) {
+        const mappedUser = mapBackendUserToFrontend(data.user);
+        setProfileData({
+          nom: mappedUser.nom || '',
+          prenom: mappedUser.prenom || '',
+          email: mappedUser.email || '',
+          telephone: mappedUser.telephone || '',
+          structureName: mappedUser.structureName || '',
+          structureCode: mappedUser.structureCode || '',
+          structureType: mappedUser.structureType || '',
+          slaTraitementJours: mappedUser.slaTraitementJours || 0,
+          statut: mappedUser.statut || 'ACTIF'
+        });
+        
+        if (updateUser) {
+          updateUser(mappedUser);
+        }
+      }
+      
+      setIsEditing(false);
+    } catch (err: any) {
+      console.error('Erreur mise à jour:', err);
+    } finally {
+      setLoadingProfile(false);
+    }
   };
+
+  const handleDeclareAbsence = async () => {
+    if (!absenceData.startDate || !absenceData.endDate) {
+      console.error('Dates requises');
+      return;
+    }
+    
+    setLoadingProfile(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:8080/api/auth/declare-absence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(absenceData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erreur lors de la déclaration');
+      }
+
+      setIsDeclaringAbsence(false);
+      setAbsenceData({ startDate: '', endDate: '', reason: '' });
+    } catch (err: any) {
+      console.error('Erreur déclaration absence:', err);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  if (loadingProfile && !profileData.email) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <i className="fas fa-spinner fa-spin text-tunisia-red text-3xl"></i>
+        <span className="ml-3 text-sm font-bold text-slate-400">Chargement du profil...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 animate-fade-in pb-20">
@@ -65,36 +268,74 @@ const ValidatorProfile: React.FC = () => {
               <form onSubmit={handleUpdateProfile} className="p-10 space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nom Complet</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Prénom</label>
                     <input 
                       type="text" 
-                      value={profileData.name}
-                      onChange={(e) => setProfileData({...profileData, name: e.target.value})}
+                      value={profileData.prenom}
+                      onChange={(e) => setProfileData({...profileData, prenom: e.target.value})}
                       className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Poste</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nom</label>
                     <input 
                       type="text" 
-                      value={profileData.currentPost}
-                      onChange={(e) => setProfileData({...profileData, currentPost: e.target.value})}
+                      value={profileData.nom}
+                      onChange={(e) => setProfileData({...profileData, nom: e.target.value})}
                       className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all"
                     />
                   </div>
                 </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nom Officiel de l'Autorité</label>
+                  <input 
+                    type="text" 
+                    value={profileData.structureName}
+                    disabled
+                    onChange={(e) => setProfileData({...profileData, structureName: e.target.value})}
+                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all cursor-not-allowed"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Code Ministère</label>
+                    <input 
+                      type="text" 
+                      value={profileData.structureCode}
+                      disabled
+                      onChange={(e) => setProfileData({...profileData, structureCode: e.target.value})}
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Téléphone</label>
+                  <input 
+                    type="tel" 
+                    value={profileData.telephone}
+                    onChange={(e) => setProfileData({...profileData, telephone: e.target.value})}
+                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all"
+                  />
+                </div>
+                
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">E-mail Professionnel</label>
                   <input 
                     type="email" 
                     value={profileData.email}
-                    onChange={(e) => setProfileData({...profileData, email: e.target.value})}
-                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all"
+                    disabled
+                    className="w-full px-6 py-4 bg-slate-100 border-2 border-slate-50 rounded-2xl text-xs font-bold cursor-not-allowed opacity-70"
                   />
                 </div>
+                
                 <div className="grid grid-cols-2 gap-4 pt-4">
                   <button type="button" onClick={() => setIsEditing(false)} className="py-4 bg-slate-100 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest">Annuler</button>
-                  <button type="submit" className="py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Enregistrer</button>
+                  <button type="submit" disabled={loadingProfile} className="py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl disabled:opacity-50">
+                    {loadingProfile ? <i className="fas fa-spinner fa-spin"></i> : 'Enregistrer'}
+                  </button>
                 </div>
               </form>
             </motion.div>
@@ -117,6 +358,7 @@ const ValidatorProfile: React.FC = () => {
               </div>
               <div className="p-10">
                 <ResetPasswordForm 
+                  requireCurrentPassword={true}
                   onSuccess={() => setIsChangingPwd(false)}
                   onCancel={() => setIsChangingPwd(false)}
                 />
@@ -143,23 +385,44 @@ const ValidatorProfile: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date de début</label>
-                    <input type="date" className="w-full px-6 py-4 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-slate-50 focus:border-tunisia-red transition-all" />
+                    <input 
+                      type="date" 
+                      value={absenceData.startDate}
+                      onChange={(e) => setAbsenceData({...absenceData, startDate: e.target.value})}
+                      className="w-full px-6 py-4 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-slate-50 focus:border-tunisia-red transition-all" 
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Date de fin</label>
-                    <input type="date" className="w-full px-6 py-4 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-slate-50 focus:border-tunisia-red transition-all" />
+                    <input 
+                      type="date" 
+                      value={absenceData.endDate}
+                      onChange={(e) => setAbsenceData({...absenceData, endDate: e.target.value})}
+                      className="w-full px-6 py-4 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-slate-50 focus:border-tunisia-red transition-all" 
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Motif</label>
-                  <select className="w-full px-6 py-4 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-slate-50 focus:border-tunisia-red transition-all appearance-none">
-                    <option>Congé Annuel</option>
-                    <option>Maladie</option>
-                    <option>Formation</option>
-                    <option>Autre</option>
+                  <select 
+                    value={absenceData.reason}
+                    onChange={(e) => setAbsenceData({...absenceData, reason: e.target.value})}
+                    className="w-full px-6 py-4 bg-slate-50 rounded-2xl text-xs font-bold outline-none border-2 border-slate-50 focus:border-tunisia-red transition-all appearance-none"
+                  >
+                    <option value="">Sélectionner un motif</option>
+                    <option value="CONGE_ANNUEL">Congé Annuel</option>
+                    <option value="MALADIE">Maladie</option>
+                    <option value="FORMATION">Formation</option>
+                    <option value="AUTRE">Autre</option>
                   </select>
                 </div>
-                <button onClick={() => setIsDeclaringAbsence(false)} className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl">Confirmer Absence</button>
+                <button 
+                  onClick={handleDeclareAbsence} 
+                  disabled={loadingProfile}
+                  className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl disabled:opacity-50"
+                >
+                  {loadingProfile ? <i className="fas fa-spinner fa-spin"></i> : 'Confirmer Absence'}
+                </button>
               </div>
             </motion.div>
           </div>
@@ -179,7 +442,7 @@ const ValidatorProfile: React.FC = () => {
             <div className="relative">
               <div className="w-40 h-40 rounded-[2.5rem] bg-white p-2 shadow-xl shadow-blue-900/5">
                 <div className="w-full h-full rounded-[2rem] bg-blue-50/30 flex items-center justify-center overflow-hidden border-4 border-white">
-                  <i className="fas fa-user-tie text-6xl text-blue-200"></i>
+                  <i className="fas fa-landmark text-6xl text-blue-200"></i>
                 </div>
               </div>
               <div className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-emerald-400 border-4 border-white shadow-lg flex items-center justify-center">
@@ -189,15 +452,22 @@ const ValidatorProfile: React.FC = () => {
             
             <div className="flex-1 space-y-2 mb-4">
               <div className="flex items-center gap-3">
-                <h2 className="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">{profileData.name}</h2>
-                <span className="px-3 py-1 bg-blue-50 text-blue-600/70 border border-blue-100 rounded-full text-[8px] font-black uppercase tracking-widest">Validateur Senior</span>
+                <h2 className="text-3xl font-black text-slate-800 uppercase italic tracking-tighter">
+                  {profileData.prenom} {profileData.nom}
+                </h2>
+                <span className="px-3 py-1 bg-blue-50 text-blue-600/70 border border-blue-100 rounded-full text-[8px] font-black uppercase tracking-widest">
+                  {profileData.structureType || 'Validateur Senior'}
+                </span>
               </div>
               <p className="text-sm font-bold text-slate-400 flex items-center gap-2 uppercase tracking-wide">
-                <i className="fas fa-building text-blue-200"></i> {profileData.institution} &bull; {profileData.direction}
+                <i className="fas fa-building text-blue-200"></i> {profileData.structureName || profileData.structureCode || 'Ministère du Commerce'}
               </p>
-              <div className="flex gap-4 pt-2">
+              <div className="flex gap-4 pt-2 flex-wrap">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                   <i className="fas fa-id-card text-blue-100"></i> ID: {profileData.id}
+                   <i className="fas fa-code-branch text-blue-100"></i> Code: {profileData.structureCode || 'N/A'}
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                   <i className="fas fa-tachometer-alt text-blue-100"></i> SLA: {profileData.slaTraitementJours} jours
                 </span>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                    <i className="fas fa-envelope text-blue-100"></i> {profileData.email}
@@ -240,18 +510,32 @@ const ValidatorProfile: React.FC = () => {
             </h3>
             <div className="space-y-4 text-[11px]">
                 <div className="flex justify-between border-b border-slate-50 pb-3">
-                  <span className="text-slate-400 font-black uppercase tracking-widest">Poste Actuel</span>
-                  <span className="font-black text-slate-600 uppercase italic tracking-tight">{profileData.currentPost}</span>
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Autorité</span>
+                  <span className="font-black text-slate-600 uppercase italic tracking-tight">{profileData.structureName || profileData.structureType || 'Non défini'}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-50 pb-3">
-                  <span className="text-slate-400 font-black uppercase tracking-widest">Niveau d'Accès</span>
-                  <span className="font-black text-blue-500/70 uppercase tracking-widest bg-blue-50/50 px-2 py-0.5 rounded-md border border-blue-100/50">Niveau 3 - Souverain</span>
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Code Ministère</span>
+                  <span className="font-black text-slate-600 uppercase italic tracking-tight">{profileData.structureCode || 'Non défini'}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-50 pb-3">
-                  <span className="text-slate-400 font-black uppercase tracking-widest">Mobile ID (TunTrust)</span>
-                  <span className="font-black text-emerald-500/80 uppercase tracking-widest flex items-center gap-2">
-                      <i className="fas fa-lock text-blue-200"></i> LIÉ
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Type d'Autorité</span>
+                  <span className="font-black text-slate-600 uppercase italic tracking-tight">{profileData.structureType || 'Non défini'}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-50 pb-3">
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Délai SLA (jours)</span>
+                  <span className="font-black text-blue-500/70 uppercase tracking-widest">{profileData.slaTraitementJours} jours</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-50 pb-3">
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Statut du Compte</span>
+                  <span className={`font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${
+                    profileData.statut === 'ACTIF' ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'
+                  }`}>
+                    {profileData.statut === 'ACTIF' ? 'ACTIF' : 'INACTIF'}
                   </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-50 pb-3">
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Téléphone</span>
+                  <span className="font-black text-slate-600">{profileData.telephone || 'Non défini'}</span>
                 </div>
             </div>
           </div>

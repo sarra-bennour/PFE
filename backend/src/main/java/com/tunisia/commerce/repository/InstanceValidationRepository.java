@@ -1,5 +1,6 @@
 package com.tunisia.commerce.repository;
 
+import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.entity.InstanceValidation;
 import com.tunisia.commerce.enums.InstanceValidationType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,5 +14,6 @@ public interface InstanceValidationRepository extends JpaRepository<InstanceVali
 
     Optional<InstanceValidation> findByEmail(String email);
     Optional<InstanceValidation> findByVerificationToken(String verificationToken);
+    Optional<InstanceValidation> findByResetPasswordToken(String token);
 
 }
