@@ -1,8 +1,6 @@
 package com.tunisia.commerce.repository;
 
-import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.entity.InstanceValidation;
-import com.tunisia.commerce.enums.InstanceValidationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

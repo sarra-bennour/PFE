@@ -10,6 +10,11 @@ import { PreKycData } from '../../types/PreKycData';
 import { KycData } from '../../types/KycData';
 import { DossierResponse } from '../../types/DemandeEnregistrement';
 import { PaymentResult } from '../../types/PaymentResult';
+import RequestArchive from '../RequestArchive';
+import { DemandeEnregistrement } from '../../types/DemandeEnregistrement';
+import {  ProductDeclarationDemande } from '../../types/ProductDeclarationFormProps';
+import { DemandeStatus } from '../../types/DemandeEnregistrement';
+import { PaymentStatus } from '../../types/PaymentResult';
 
 // Composant de nœud de pipeline style Jenkins
 const PipelineNode = ({ label, status, isLast = false }: {
@@ -108,6 +113,7 @@ const ExporterSpace: React.FC = () => {
 
   const [showInvoice, setShowInvoice] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -117,6 +123,78 @@ const ExporterSpace: React.FC = () => {
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const [isPreKycDone, setIsPreKycDone] = useState(false);
+
+  // Données des archives
+  const archivedRequests: DemandeEnregistrement[] = [
+    {
+      id: 1,
+      reference: 'DEC-2025-001',
+      status: DemandeStatus.VALIDEE,
+      submittedAt: '12/05/2025',
+      paymentReference: 'PAY-882299',
+      paymentAmount: 500,
+      paymentStatus: PaymentStatus.REUSSI,
+      assignedTo: 1,
+      decisionDate: '15/05/2025',
+      decisionComment: 'Dossier complet et produits conformes aux normes tunisiennes.',
+      numeroAgrement: 'AGR-2025-X01',
+      dateAgrement: '15/05/2025',
+      applicantType: 'EXPORTATEUR',
+      type: 'PRODUCT_DECLARATION',
+      exportateur: 'John Doe (Global Export Co.)',
+      products: [
+        {
+          id: 1,
+          productType: 'alimentaire',
+          category: 'Conserves',
+          hsCode: '2005',
+          productName: 'Tomate double concentrée',
+          isLinkedToBrand: true,
+          brandName: 'Sicam',
+          isBrandOwner: false,
+          hasBrandLicense: true,
+          productState: 'Transformé',
+          originCountry: 'Tunisie',
+          annualQuantityValue: '5000',
+          annualQuantityUnit: 'KG',
+          commercialBrandName: 'Sicam Gold',
+          productImage: 'https://picsum.photos/seed/tomato/200/200'
+        }
+      ]
+    },
+    {
+      id: 2,
+      reference: 'DEC-2025-002',
+      status: DemandeStatus.REJETEE,
+      submittedAt: '20/06/2025',
+      paymentReference: 'PAY-993311',
+      paymentAmount: 500,
+      paymentStatus: PaymentStatus.REUSSI,
+      assignedTo: 2,
+      decisionDate: '22/06/2025',
+      decisionComment: 'Absence du certificat d\'origine pour le lot 4B.',
+      applicantType: 'EXPORTATEUR',
+      type: 'REGISTRATION',
+      exportateur: 'Jean Dupont (EuroTrade)',
+      products: [
+        {
+          id: 2,  
+          productType: 'industriel',
+          category: 'Plastiques',
+          hsCode: '3901',
+          productName: 'Granulés polyéthylène',
+          isLinkedToBrand: false,
+          isBrandOwner: false,
+          hasBrandLicense: false,
+          productState: 'Matière première',
+          originCountry: 'Tunisie',
+          annualQuantityValue: '10000',
+          annualQuantityUnit: 'KG',
+          commercialBrandName: 'PolyTN',
+        }
+      ]
+    }
+  ];
 
   const [preKycData, setPreKycData] = useState<PreKycData>({
     username: '',
@@ -152,30 +230,29 @@ const ExporterSpace: React.FC = () => {
   });
 
   // Au début du composant
-  // Au début du composant ExporterSpace, vers les lignes 200-220
-useEffect(() => {
-  const token = localStorage.getItem('token');
+  useEffect(() => {
+    const token = localStorage.getItem('token');
 
-  if (token) {
-    try {
-      // Vérifier que le token a bien 3 parties
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        // Décoder le token pour voir son contenu
-        const base64Url = parts[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const payload = JSON.parse(window.atob(base64));
-        console.log('📦 Payload du token:', payload);
-      } else {
-        console.warn('⚠️ Token invalide - mauvais nombre de parties:', parts.length);
+    if (token) {
+      try {
+        // Vérifier que le token a bien 3 parties
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          // Décoder le token pour voir son contenu
+          const base64Url = parts[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const payload = JSON.parse(window.atob(base64));
+          console.log('📦 Payload du token:', payload);
+        } else {
+          console.warn('⚠️ Token invalide - mauvais nombre de parties:', parts.length);
+        }
+      } catch (error) {
+        console.error('❌ Erreur lors du décodage du token:', error);
+        // Nettoyer le token invalide
+        localStorage.removeItem('token');
       }
-    } catch (error) {
-      console.error('❌ Erreur lors du décodage du token:', error);
-      // Nettoyer le token invalide
-      localStorage.removeItem('token');
     }
-  }
-}, []);
+  }, []);
 
   const productDeclarations = [
     {
@@ -232,19 +309,11 @@ useEffect(() => {
             reference: response.data.reference
           }
         );
-
-        // Mettre à jour l'utilisateur avec des informations pertinentes
-        // mais sans statut statique
-        // updateUser({
-        //   dossierStatut: response.data.status,
-        //   dossierId: response.data.demandeId,
-        //   dossierReference: response.data.reference
-        // });
       }
     } catch (error) {
       console.error('Erreur lors de la récupération du dossier:', error);
     }
-  }, [dossierStatus, updateDossierStatus, updateUser]);
+  }, [dossierStatus, updateDossierStatus]);
 
 
   // Chargement initial - ne s'exécute qu'une fois
@@ -558,19 +627,15 @@ useEffect(() => {
           window.location.href = '/login';
         }, 2000);
       } else if (error.response?.data) {
-        // 🔴 CORRECTION IMPORTANTE ICI 🔴
-        // Le backend renvoie { "error": "message" }
         const errorData = error.response.data;
 
         if (typeof errorData === 'string') {
           setPaymentError(errorData);
         } else if (errorData.error) {
-          // Cas où le backend renvoie { "error": "message" }
           setPaymentError(errorData.error);
         } else if (errorData.message) {
           setPaymentError(errorData.message);
         } else if (errorData.userMessage) {
-          // Si vous utilisez PaymentException avec userMessage
           setPaymentError(errorData.userMessage);
         } else {
           setPaymentError('Erreur de paiement. Veuillez réessayer.');
@@ -585,13 +650,10 @@ useEffect(() => {
     }
   };
 
-  // MODIFICATION: Simplification de handlePayLater
   const handlePayLater = () => {
     // Fermer la facture
     setShowInvoice(false);
     setShowTerminal(false);
-
-    // Pas besoin de rafraîchir, le cache est déjà à jour
   };
 
   const handleBackToInvoice = () => {
@@ -717,6 +779,24 @@ useEffect(() => {
           amount: paymentSuccess.amount
         } : null}
       />
+    );
+  }
+
+  // --- RENDU : SECTION ARCHIVE ---
+  if (showArchive) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <button 
+            onClick={() => setShowArchive(false)}
+            className="px-6 py-2 bg-white border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center gap-2"
+          >
+            <i className="fas fa-arrow-left"></i> Retour Dashboard
+          </button>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Section Archivage</span>
+        </div>
+        <RequestArchive userRole="EXPORTATEUR" />
+      </div>
     );
   }
 
@@ -1220,7 +1300,7 @@ useEffect(() => {
 
       {/* RUBRIQUE CATALOGUE PRODUITS INDEPENDANTE */}
       {dossierInfo?.status === 'VALIDEE' ? (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col justify-between group cursor-pointer hover:border-tunisia-red transition-all relative overflow-hidden" onClick={() => navigate('/products')}>
           <div className="absolute -right-10 -bottom-10 opacity-[0.03] group-hover:scale-110 transition-transform">
             <i className="fas fa-barcode text-[12rem]"></i>
@@ -1254,6 +1334,25 @@ useEffect(() => {
           </div>
           <div className="mt-8 flex items-center gap-3 text-emerald-600 font-black uppercase text-[10px] tracking-widest group-hover:gap-5 transition-all">
             Voir mes déclarations < i className="fas fa-arrow-right"></i>
+          </div>
+        </div>
+
+        {/* Carte ARCHIVES - AJOUTÉE */}
+        <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col justify-between group cursor-pointer hover:border-tunisia-red transition-all relative overflow-hidden" onClick={() => setShowArchive(true)}>
+          <div className="absolute -right-10 -bottom-10 opacity-[0.03] group-hover:scale-110 transition-transform">
+            <i className="fas fa-archive text-[12rem]"></i>
+          </div>
+          <div>
+            <div className="w-12 h-12 bg-blue-500 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/20">
+              <i className="fas fa-history"></i>
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 italic tracking-tighter uppercase mb-2">Archives</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-relaxed">
+              Consultez l'historique de vos demandes validées ou rejetées.
+            </p>
+          </div>
+          <div className="mt-8 flex items-center gap-3 text-blue-600 font-black uppercase text-[10px] tracking-widest group-hover:gap-5 transition-all">
+            Consulter <i className="fas fa-arrow-right"></i>
           </div>
         </div>
       </div>

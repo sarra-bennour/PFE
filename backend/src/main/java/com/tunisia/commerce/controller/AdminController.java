@@ -78,7 +78,7 @@ public class AdminController {
             log.info("=== RÉCUPÉRATION DE TOUTES LES DEMANDES ===");
             validateAdmin(authHeader);
 
-            List<AdminDemandeDTO> demandes = adminService.getAllDemandes();
+            List<AdminDemandeDTO> demandes = adminService.getAllActiveDemandes();
 
 
             return ResponseEntity.ok(Map.of(
@@ -95,6 +95,24 @@ public class AdminController {
         }
     }
 
+    @GetMapping("/archived-demandes")
+    public ResponseEntity<?> getArchivedDemandes(@RequestHeader("Authorization") String authHeader) {
+        try {
+            validateAdmin(authHeader);
+
+            List<AdminDemandeDTO> archivedDemandes = adminService.getAllArchivedDemandes();
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "data", archivedDemandes,
+                    "count", archivedDemandes.size()
+            ));
+
+        } catch (Exception e) {
+            log.error("Erreur: " + e.getMessage());
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
     /**
      * Récupérer une demande par ID avec tous les détails
      */

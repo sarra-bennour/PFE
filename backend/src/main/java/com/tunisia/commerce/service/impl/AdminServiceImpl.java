@@ -35,16 +35,31 @@ public class AdminServiceImpl {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private static final DateTimeFormatter DATE_ONLY_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    public List<AdminDemandeDTO> getAllDemandes() {
-        log.info("Récupération de toutes les demandes sans filtre");
-        List<DemandeEnregistrement> allDemandes = demandeEnregistrementRepository.findAll();
+    public List<AdminDemandeDTO> getAllActiveDemandes() {
+        log.info("Récupération des demandes actives (non archivées)");
+        List<DemandeEnregistrement> activeDemandes = demandeEnregistrementRepository.findByArchivedFalse();
 
-        return allDemandes.stream()
+        return activeDemandes.stream()
                 .map(this::convertToAdminDTO)
                 .sorted((d1, d2) -> {
                     if (d1.getSubmittedAt() == null) return 1;
                     if (d2.getSubmittedAt() == null) return -1;
                     return d2.getSubmittedAt().compareTo(d1.getSubmittedAt());
+                })
+                .collect(Collectors.toList());
+    }
+
+    // Méthode pour récupérer uniquement les demandes ARCHIVÉES
+    public List<AdminDemandeDTO> getAllArchivedDemandes() {
+        log.info("Récupération des demandes archivées");
+        List<DemandeEnregistrement> archivedDemandes = demandeEnregistrementRepository.findByArchivedTrue();
+
+        return archivedDemandes.stream()
+                .map(this::convertToAdminDTO)
+                .sorted((d1, d2) -> {
+                    if (d1.getArchivedAt() == null) return 1;
+                    if (d2.getArchivedAt() == null) return -1;
+                    return d2.getArchivedAt().compareTo(d1.getArchivedAt());
                 })
                 .collect(Collectors.toList());
     }

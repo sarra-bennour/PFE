@@ -1,10 +1,7 @@
 package com.tunisia.commerce.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.tunisia.commerce.enums.DemandeStatus;
-import com.tunisia.commerce.enums.PaymentStatus;
-import com.tunisia.commerce.enums.TypeDemande;
-import com.tunisia.commerce.enums.TypeDemandeur;
+import com.tunisia.commerce.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -66,6 +63,33 @@ public class DemandeEnregistrement {
     @Column(name = "type_demande")
     @Enumerated(EnumType.STRING)
     private TypeDemande typeDemande;
+
+    @Column(name = "is_archived")
+    @Builder.Default
+    private boolean archived = false;
+
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
+
+    @Column(name = "archived_by")
+    private String archivedBy;  // email de l'admin ou référence système
+
+    @Column(name = "archive_reason")
+    private String archiveReason;
+
+    @Column(name = "archive_type")
+    @Enumerated(EnumType.STRING)
+    private ArchiveType archiveType;
+
+    @Column(name = "can_be_restored")
+    @Builder.Default
+    private boolean canBeRestored = true;
+
+    /*@Column(name = "retention_period_months")
+    private Integer retentionPeriodMonths;
+
+    @Column(name = "scheduled_deletion_date")
+    private LocalDateTime scheduledDeletionDate;*/
 
     @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL)
     @JsonIgnore

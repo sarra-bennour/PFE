@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
 
-// Types
+// Types (garde les mêmes)
 interface ProductAdmin {
   id: number;
   productName: string;
@@ -74,33 +74,48 @@ interface AdminDemande {
   products: ProductAdmin[];
   importDetails: ImportDetails | null;
   documents: DocumentAdmin[];
+  // Champs d'archivage
+  archived?: boolean;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archiveReason?: string | null;
+  archiveType?: string | null;
 }
 
 const AdminRequestList: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [loadingArchives, setLoadingArchives] = useState(false);
   const [requests, setRequests] = useState<AdminDemande[]>([]);
-  const [inboxTab, setInboxTab] = useState<'REGISTRATION' | 'PRODUCT_DECLARATION' | 'IMPORT'>('REGISTRATION');
+  const [archivedRequests, setArchivedRequests] = useState<AdminDemande[]>([]);
+  const [inboxTab, setInboxTab] = useState<'REGISTRATION' | 'PRODUCT_DECLARATION' | 'IMPORT' | 'ARCHIVE'>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<AdminDemande | null>(null);
   const [downloading, setDownloading] = useState<number | null>(null);
   const [previewDoc, setPreviewDoc] = useState<DocumentAdmin | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [archiving, setArchiving] = useState(false);
+  const [unarchiving, setUnarchiving] = useState(false);
+  const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
 
-
-  // Récupérer toutes les demandes
-  const fetchAllDemandes = async () => {
+  // Récupérer les demandes actives (non archivées)
+  const fetchActiveDemandes = async () => {
     setLoading(true);
     try {
-    const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token');
       const response = await axios.get(`${API_BASE_URL}/api/admin/all-demandes`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
+
+      console.log('*****Demandes actives:', response.data);
       if (response.data.success && response.data.data) {
-        setRequests(response.data.data);
+        // Filtrer uniquement les demandes non archivées
+        const active = response.data.data.filter((d: AdminDemande) => !d.archived);
+        setRequests(active);
       } else {
         console.error('Erreur:', response.data.error);
       }
@@ -109,6 +124,120 @@ const AdminRequestList: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Récupérer UNIQUEMENT les demandes archivées
+  const fetchArchivedDemandes = async () => {
+    setLoadingArchives(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/api/admin/archived-demandes`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      console.log('*****Demandes archivées:', response.data);
+      if (response.data.success && response.data.data) {
+        setArchivedRequests(response.data.data);
+      } else {
+        console.error('Erreur chargement archives:', response.data.error);
+        setArchivedRequests([]);
+      }
+    } catch (error: any) {
+      console.error('Erreur lors du chargement des archives:', error.response?.data?.error || error.message);
+      setArchivedRequests([]);
+    } finally {
+      setLoadingArchives(false);
+    }
+  };
+
+  // Archiver une ou plusieurs demandes
+  const handleArchive = async () => {
+    if (selectedIds.length === 0) return;
+    setArchiving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API_BASE_URL}/api/archive/bulk`, 
+        {
+          demandeIds: selectedIds.map(id => parseInt(id)),
+          reason: `Archivage manuel par administrateur - ${new Date().toLocaleDateString()}`
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data.success) {
+        alert(`${selectedIds.length} demande(s) ont été archivées avec succès.`);
+        setSelectedIds([]);
+        // Rafraîchir les deux listes
+        await fetchActiveDemandes();
+        await fetchArchivedDemandes();
+      } else {
+        alert('Erreur lors de l\'archivage');
+      }
+    } catch (error: any) {
+      console.error('Erreur archivage:', error);
+      alert(error.response?.data?.error || 'Erreur lors de l\'archivage');
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Désarchiver une ou plusieurs demandes
+  const handleUnarchive = async () => {
+    if (selectedIds.length === 0) return;
+    setUnarchiving(true);
+    try {
+      const token = localStorage.getItem('token');
+      // Pour chaque demande sélectionnée, la restaurer
+      for (const id of selectedIds) {
+        await axios.post(`${API_BASE_URL}/api/archive/restore/${parseInt(id)}`, 
+          {},
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+      }
+      
+      alert(`${selectedIds.length} demande(s) ont été restaurées avec succès.`);
+      setSelectedIds([]);
+      // Rafraîchir les deux listes
+      await fetchActiveDemandes();
+      await fetchArchivedDemandes();
+    } catch (error: any) {
+      console.error('Erreur désarchivage:', error);
+      alert(error.response?.data?.error || 'Erreur lors du désarchivage');
+    } finally {
+      setUnarchiving(false);
+    }
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      if (inboxTab === 'ARCHIVE') {
+        setSelectedIds(archivedRequests.map(r => r.id.toString()));
+      } else {
+        const eligibleIds = requests
+          .filter(r => r.typeDemande === inboxTab)
+          .map(r => r.id.toString());
+        setSelectedIds(eligibleIds);
+      }
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
   const getImageUrl = (imagePath: string | undefined | null): string => {
@@ -121,95 +250,76 @@ const AdminRequestList: React.FC = () => {
   };
 
   // Télécharger un document
-// Télécharger un document - Utilise l'endpoint /preview
-const handleDownloadDocument = async (doc: DocumentAdmin) => {
-  setDownloading(doc.id);
-  try {
-    const token = localStorage.getItem('token');
-    
-    // Utiliser l'endpoint /preview qui existe déjà
-    const response = await axios.get(`${API_BASE_URL}/api/admin/document/${doc.id}/preview`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      responseType: 'blob'
-    });
-    
-    // Créer un blob avec le bon type MIME
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    
-    // Créer un lien pour télécharger
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = doc.fileName;
-    document.body.appendChild(a);
-    a.click();
-    
-    // Nettoyer
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    
-  } catch (error) {
-    console.error('Erreur téléchargement:', error);
-    alert('Erreur lors du téléchargement du document');
-  } finally {
-    setDownloading(null);
-  }
-};
+  const handleDownloadDocument = async (doc: DocumentAdmin) => {
+    setDownloading(doc.id);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/api/admin/document/${doc.id}/preview`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.fileName;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Erreur téléchargement:', error);
+      alert('Erreur lors du téléchargement du document');
+    } finally {
+      setDownloading(null);
+    }
+  };
 
-// Télécharger depuis la prévisualisation
-const handleDownloadFromPreview = () => {
-  if (previewDoc) {
-    handleDownloadDocument(previewDoc);
-  }
-};
-
-  // Fonction pour prévisualiser un document
-    const handlePreviewDocument = async (doc: DocumentAdmin) => {
+  const handlePreviewDocument = async (doc: DocumentAdmin) => {
     setPreviewDoc(doc);
     setPreviewLoading(true);
     setPreviewUrl(null);
     
     try {
-        const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_BASE_URL}/api/admin/document/${doc.id}/preview`, {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/api/admin/document/${doc.id}/preview`, {
         headers: {
-            'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`
         },
         responseType: 'blob'
-        });
-        
-        // Créer une URL pour le blob
-        const url = URL.createObjectURL(response.data);
-        setPreviewUrl(url);
+      });
+      const url = URL.createObjectURL(response.data);
+      setPreviewUrl(url);
     } catch (error) {
-        console.error('Erreur lors du chargement du document:', error);
+      console.error('Erreur lors du chargement du document:', error);
     } finally {
-        setPreviewLoading(false);
+      setPreviewLoading(false);
     }
-    };
+  };
 
-    // Nettoyer l'URL lors de la fermeture
-    const handleClosePreview = () => {
+  const handleClosePreview = () => {
     if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
+      URL.revokeObjectURL(previewUrl);
     }
     setPreviewDoc(null);
     setPreviewUrl(null);
     setPreviewLoading(false);
-    };
+  };
 
-    // Déterminer le type de fichier
-    const getFileType = (fileName: string): 'pdf' | 'image' | 'other' => {
+  const getFileType = (fileName: string): 'pdf' | 'image' | 'other' => {
     const extension = fileName.split('.').pop()?.toLowerCase();
     if (extension === 'pdf') return 'pdf';
     if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension || '')) return 'image';
     return 'other';
-    };
+  };
 
+  // Chargement initial
   useEffect(() => {
-    fetchAllDemandes();
+    fetchActiveDemandes();
+    fetchArchivedDemandes();
   }, []);
 
   const getStatusStyle = (status: string) => {
@@ -263,6 +373,22 @@ const handleDownloadFromPreview = () => {
   };
 
   const filteredRequests = requests.filter(r => r.typeDemande === inboxTab);
+  
+  // Filtrer les archives par recherche
+  const filteredArchivedRequests = archivedRequests.filter(item =>
+    item.reference.toLowerCase().includes(archiveSearchTerm.toLowerCase()) ||
+    item.applicantName?.toLowerCase().includes(archiveSearchTerm.toLowerCase()) ||
+    item.exportateurEtrangerNom?.toLowerCase().includes(archiveSearchTerm.toLowerCase())
+  );
+
+  const handleTabChange = (tabId: 'REGISTRATION' | 'PRODUCT_DECLARATION' | 'IMPORT' | 'ARCHIVE') => {
+    setInboxTab(tabId);
+    setSelectedIds([]);
+    if (tabId === 'ARCHIVE') {
+      // Recharger les archives quand on clique sur l'onglet
+      fetchArchivedDemandes();
+    }
+  };
 
   if (loading) {
     return (
@@ -283,10 +409,11 @@ const handleDownloadFromPreview = () => {
           { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus', count: requests.filter(r => r.typeDemande === 'REGISTRATION').length },
           { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box', count: requests.filter(r => r.typeDemande === 'PRODUCT_DECLARATION').length },
           { id: 'IMPORT', label: 'Importations', icon: 'fa-ship', count: requests.filter(r => r.typeDemande === 'IMPORT').length },
+          { id: 'ARCHIVE', label: 'Archives', icon: 'fa-box-archive', count: archivedRequests.length },
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setInboxTab(tab.id as any)}
+            onClick={() => handleTabChange(tab.id as any)}
             className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${
               inboxTab === tab.id 
                 ? 'bg-white text-slate-900 shadow-sm scale-[1.02]' 
@@ -304,87 +431,269 @@ const handleDownloadFromPreview = () => {
         ))}
       </div>
 
-      {/* Tableau des demandes */}
-      <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
-          <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
-            {inboxTab === 'REGISTRATION' ? 'Enregistrements institutions' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations produits' : 'Importations'}
-          </h3>
-          <button 
-            onClick={fetchAllDemandes}
-            className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-tunisia-red transition-all"
-            title="Rafraîchir"
-          >
-            <i className="fas fa-sync-alt text-xs"></i>
-          </button>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-white">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Demandeur</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Soumis le</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Paiement</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filteredRequests.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-8 py-16 text-center text-slate-400">
-                    <i className="fas fa-inbox text-3xl mb-3 block"></i>
-                    <span className="text-xs">Aucune demande dans cette catégorie</span>
-                  </td>
-                </tr>
-              ) : (
-                filteredRequests.map((req) => (
-                  <tr key={req.id} className="group hover:bg-slate-50/50 transition-colors">
-                    <td className="px-8 py-6">
-                      <div className="font-black text-slate-900 italic tracking-tighter">{req.reference}</div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="text-xs font-bold text-slate-800 uppercase tracking-tight">
-                        {req.applicantName || req.exportateurEtrangerNom || 'N/A'}
-                      </div>
-                      <div className="text-[8px] text-slate-400 font-black uppercase tracking-widest">
-                        {req.applicantType === 'EXPORTATEUR' ? 'Exportateur' : 'Importateur'}
-                        {req.exportateurEtrangerNom && ` • ${req.exportateurEtrangerPays || ''}`}
-                      </div>
-                    </td>
-                    <td className="px-8 py-6 text-[10px] font-bold text-slate-500">
-                      {formatDate(req.submittedAt)}
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${getPaymentStatusStyle(req.paymentStatus)}`}>
-                        {req.paymentStatus || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6">
-                      <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-1 rounded-md border ${getStatusStyle(req.status)}`}>
-                        {req.status?.replace(/_/g, ' ') || 'N/A'}
-                      </span>
-                    </td>
-                    <td className="px-8 py-6 text-right">
+      {/* Section Archive */}
+      {inboxTab === 'ARCHIVE' ? (
+        <div className="space-y-6">
+          <div className="bg-white/80 backdrop-blur-md p-8 rounded-[3rem] shadow-sm border border-slate-100">
+            <div className="flex justify-between items-center mb-10">
+              <div className="flex items-center gap-6">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">Index des Archives Administratives</h3>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Dossiers traités et archivés</p>
+                </div>
+                {selectedIds.length > 0 && (
+                  <motion.button 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={handleUnarchive}
+                    disabled={unarchiving || loadingArchives}
+                    className="px-6 py-2 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/10 disabled:opacity-50"
+                  >
+                    <i className="fas fa-box-open"></i>
+                    {unarchiving ? 'Désarchivage...' : `Désarchiver (${selectedIds.length})`}
+                  </motion.button>
+                )}
+              </div>
+              <div className="flex gap-4">
+                <div className="px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-3">
+                  <i className="fas fa-search text-slate-300 text-[10px]"></i>
+                  <input 
+                    type="text" 
+                    placeholder="RECHERCHER DANS L'ARCHIVE..." 
+                    value={archiveSearchTerm}
+                    onChange={(e) => setArchiveSearchTerm(e.target.value)}
+                    className="bg-transparent outline-none text-[9px] font-bold uppercase tracking-widest text-slate-600 w-48" 
+                  />
+                </div>
+                <button 
+                  onClick={fetchArchivedDemandes}
+                  className="px-4 py-3 bg-slate-100 rounded-2xl text-slate-500 hover:text-tunisia-red transition-all"
+                  title="Rafraîchir les archives"
+                >
+                  <i className={`fas fa-sync-alt ${loadingArchives ? 'fa-spin' : ''}`}></i>
+                </button>
+              </div>
+            </div>
+
+            {loadingArchives ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="text-center">
+                  <i className="fas fa-spinner fa-spin text-3xl text-tunisia-red"></i>
+                  <p className="mt-4 text-slate-500">Chargement des archives...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {/* Selection Toggle for Archive */}
+                <div className="col-span-full mb-4 px-6 py-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-4">
+                  <input 
+                    type="checkbox" 
+                    onChange={handleSelectAll}
+                    checked={selectedIds.length > 0 && selectedIds.length === filteredArchivedRequests.length && filteredArchivedRequests.length > 0}
+                    className="w-4 h-4 rounded accent-tunisia-red cursor-pointer"
+                  />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Sélectionner tout</span>
+                  {selectedIds.length > 0 && (
+                    <span className="text-[9px] font-black text-tunisia-red">
+                      ({selectedIds.length} sélectionnée(s))
+                    </span>
+                  )}
+                </div>
+
+                {filteredArchivedRequests.length === 0 ? (
+                  <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-400">
+                    <i className="fas fa-box-archive text-5xl mb-4 opacity-50"></i>
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em]">
+                      {archiveSearchTerm ? 'Aucune archive correspondante' : 'Aucune demande archivée'}
+                    </p>
+                    {archiveSearchTerm && (
                       <button 
-                        onClick={() => setSelectedRequest(req)}
-                        className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center ml-auto"
-                        title="Voir Détails"
+                        onClick={() => setArchiveSearchTerm('')}
+                        className="mt-4 text-[8px] text-tunisia-red hover:underline"
                       >
-                        <i className="fas fa-eye text-xs"></i>
+                        Effacer la recherche
                       </button>
+                    )}
+                  </div>
+                ) : (
+                  filteredArchivedRequests.map((item) => (
+                    <motion.div 
+                      key={item.id} 
+                      whileHover={{ y: -5 }}
+                      className={`group relative cursor-pointer ${selectedIds.includes(item.id.toString()) ? 'scale-[0.98]' : ''}`}
+                      onClick={() => handleSelect(item.id.toString())}
+                    >
+                      <div className={`absolute -top-2 left-6 w-20 h-5 ${item.status === 'VALIDEE' ? 'bg-emerald-200' : 'bg-rose-200'} rounded-t-xl opacity-30 group-hover:opacity-100 transition-all duration-500`}></div>
+                      <div className={`relative ${selectedIds.includes(item.id.toString()) ? 'bg-tunisia-red/5 border-tunisia-red shadow-lg shadow-tunisia-red/10' : 'bg-white/50 border-slate-100'} p-8 rounded-[2rem] rounded-tl-none border-2 group-hover:bg-white group-hover:shadow-xl group-hover:shadow-slate-200/50 transition-all duration-500 min-h-[220px] flex flex-col justify-between`}>
+                        <div className="absolute top-4 right-4">
+                          <div className={`w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center ${
+                            selectedIds.includes(item.id.toString()) 
+                              ? 'bg-tunisia-red border-tunisia-red' 
+                              : 'border-slate-200 group-hover:border-slate-300'
+                          }`}>
+                            {selectedIds.includes(item.id.toString()) && <i className="fas fa-check text-[10px] text-white"></i>}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between items-start mb-6">
+                            <div className={`w-11 h-11 bg-white rounded-2xl flex items-center justify-center ${item.status === 'VALIDEE' ? 'text-emerald-400' : 'text-rose-400'} border border-slate-50`}>
+                              <i className={`fas ${item.typeDemande === 'PRODUCT_DECLARATION' ? 'fa-box' : item.typeDemande === 'IMPORT' ? 'fa-ship' : 'fa-building-shield'} text-lg opacity-60`}></i>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[8px] font-bold text-slate-300 uppercase tracking-[0.2em] block mb-0.5">Réf. Archive</span>
+                              <span className="text-[11px] font-bold text-slate-500 tracking-tight font-mono">{item.reference}</span>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-[12px] font-black text-slate-800 uppercase italic tracking-tighter">
+                              {item.typeDemande === 'REGISTRATION' ? 'ENREGISTREMENT' : 
+                               item.typeDemande === 'PRODUCT_DECLARATION' ? 'PRODUIT' : 'IMPORTATION'}
+                            </h4>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{item.applicantName || item.exportateurEtrangerNom}</p>
+                          </div>
+                        </div>
+                        <div className="pt-5 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-slate-300 uppercase italic tracking-widest">{formatDateOnly(item.submittedAt)}</span>
+                          <span className={`px-3 py-1 rounded-md border-2 border-dashed ${item.status === 'VALIDEE' ? 'border-emerald-100 text-emerald-500' : item.status === 'REJETEE' ? 'border-rose-100 text-rose-500' : 'border-slate-100 text-slate-400'} text-[8px] font-black uppercase tracking-widest`}>
+                            {item.status?.replace(/_/g, ' ') || 'N/A'}
+                          </span>
+                        </div>
+                        {item.archivedAt && (
+                          <div className="mt-3 pt-2 text-[7px] text-slate-300 border-t border-slate-50">
+                            Archivé le: {formatDateOnly(item.archivedAt)} par {item.archivedBy || 'admin'}
+                          </div>
+                        )}
+                        {item.archiveReason && (
+                          <div className="mt-1 text-[6px] text-slate-300 italic truncate">
+                            Raison: {item.archiveReason}
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+                
+                <div className="col-span-full py-12 flex flex-col items-center justify-center opacity-20 border-2 border-dashed border-slate-200 rounded-[3rem]">
+                  <i className="fas fa-boxes-packing text-4xl mb-4"></i>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em]">Accès restreint au coffre-fort numérique</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Tableau des demandes actives - reste inchangé */
+        <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
+            <div className="flex items-center gap-6">
+              <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
+                {inboxTab === 'REGISTRATION' ? 'Enregistrements institutions' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations produits' : 'Importations'}
+              </h3>
+              {selectedIds.length > 0 && (
+                <motion.button 
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  onClick={handleArchive}
+                  disabled={archiving}
+                  className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-black transition-all shadow-lg shadow-black/10 disabled:opacity-50"
+                >
+                  <i className="fas fa-archive"></i>
+                  {archiving ? 'Archivage...' : `Archiver (${selectedIds.length})`}
+                </motion.button>
+              )}
+            </div>
+            <button 
+              onClick={fetchActiveDemandes}
+              className="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-tunisia-red transition-all"
+              title="Rafraîchir"
+            >
+              <i className="fas fa-sync-alt text-xs"></i>
+            </button>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-white">
+                  <th className="px-8 py-5 w-10">
+                    <input 
+                      type="checkbox" 
+                      onChange={handleSelectAll}
+                      checked={selectedIds.length > 0 && selectedIds.length === filteredRequests.length && filteredRequests.length > 0}
+                      className="w-4 h-4 rounded accent-tunisia-red cursor-pointer"
+                    />
+                  </th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Référence</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Demandeur</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Soumis le</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Paiement</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Statut</th>
+                  <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                 </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-8 py-16 text-center text-slate-400">
+                      <i className="fas fa-inbox text-3xl mb-3 block"></i>
+                      <span className="text-xs">Aucune demande dans cette catégorie</span>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredRequests.map((req) => (
+                    <tr key={req.id} className={`group transition-colors ${selectedIds.includes(req.id.toString()) ? 'bg-tunisia-red/5' : 'hover:bg-slate-50/50'}`}>
+                      <td className="px-8 py-6">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIds.includes(req.id.toString())}
+                          onChange={() => handleSelect(req.id.toString())}
+                          className="w-4 h-4 rounded accent-tunisia-red cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="font-black text-slate-900 italic tracking-tighter">{req.reference}</div>
+                      </td>
+                      <td className="px-8 py-6">
+                        <div className="text-xs font-bold text-slate-800 uppercase tracking-tight">
+                          {req.applicantName || req.exportateurEtrangerNom || 'N/A'}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-black uppercase tracking-widest">
+                          {req.applicantType === 'EXPORTATEUR' ? 'Exportateur' : 'Importateur'}
+                          {req.exportateurEtrangerNom && ` • ${req.exportateurEtrangerPays || ''}`}
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 text-[10px] font-bold text-slate-500">
+                        {formatDate(req.submittedAt)}
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-md ${getPaymentStatusStyle(req.paymentStatus)}`}>
+                          {req.paymentStatus || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6">
+                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] px-2 py-1 rounded-md border ${getStatusStyle(req.status)}`}>
+                          {req.status?.replace(/_/g, ' ') || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <button 
+                          onClick={() => setSelectedRequest(req)}
+                          className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-900 hover:text-white transition-all flex items-center justify-center ml-auto"
+                          title="Voir Détails"
+                        >
+                          <i className="fas fa-eye text-xs"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Modal Détails */}
+      {/* Modal Détails - reste inchangé */}
       <AnimatePresence>
         {selectedRequest && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
@@ -417,7 +726,7 @@ const handleDownloadFromPreview = () => {
                 </button>
               </div>
 
-              {/* Content */}
+              {/* Content - reste inchangé */}
               <div className="p-8 space-y-8 overflow-y-auto max-h-[70vh]">
                 {/* Section 1: Demandeur & Status */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -525,9 +834,10 @@ const handleDownloadFromPreview = () => {
                         <div key={idx} className="flex gap-6 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                           {prod.productImage && (
                             <img
-                            src={getImageUrl(prod.productImage) || 'https://via.placeholder.com/150'}
-                            alt={prod.productName} 
-                            className="w-24 h-24 rounded-2xl object-cover shadow-md border-2 border-slate-50" />
+                              src={getImageUrl(prod.productImage) || 'https://via.placeholder.com/150'}
+                              alt={prod.productName} 
+                              className="w-24 h-24 rounded-2xl object-cover shadow-md border-2 border-slate-50" 
+                            />
                           )}
                           <div className="flex-1 grid grid-cols-2 md:grid-cols-3 gap-y-4">
                             <div className="col-span-2 md:col-span-3">
@@ -635,13 +945,13 @@ const handleDownloadFromPreview = () => {
                           </div>
                           <div className="flex gap-3 text-slate-300">
                             <button 
-                                onClick={(e) => {
+                              onClick={(e) => {
                                 e.stopPropagation();
                                 handlePreviewDocument(doc);
-                                }}
-                                className="w-8 h-8 rounded-full hover:bg-slate-50 flex items-center justify-center transition-all hover:text-tunisia-red"
+                              }}
+                              className="w-8 h-8 rounded-full hover:bg-slate-50 flex items-center justify-center transition-all hover:text-tunisia-red"
                             >
-                                <i className="fas fa-eye text-xs"></i>
+                              <i className="fas fa-eye text-xs"></i>
                             </button>
                             <button 
                               onClick={() => handleDownloadDocument(doc)}
@@ -682,132 +992,133 @@ const handleDownloadFromPreview = () => {
         )}
       </AnimatePresence>
 
-    <AnimatePresence>
-    {previewDoc && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-        <motion.div 
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="bg-white w-full max-w-4xl h-[90vh] rounded-[3rem] shadow-[0_0_100px_-20px_rgba(0,0,0,0.5)] overflow-hidden border border-slate-100 flex flex-col relative"
-        >
-            {/* Header */}
-            <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-            <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${
-                getFileType(previewDoc.fileName) === 'pdf' 
-                    ? 'bg-red-500 text-white shadow-red-500/20' 
-                    : getFileType(previewDoc.fileName) === 'image'
-                    ? 'bg-blue-500 text-white shadow-blue-500/20'
-                    : 'bg-slate-500 text-white shadow-slate-500/20'
-                }`}>
-                <i className={`text-xl ${
-                    getFileType(previewDoc.fileName) === 'pdf' ? 'fas fa-file-pdf' : 
-                    getFileType(previewDoc.fileName) === 'image' ? 'fas fa-file-image' : 'fas fa-file-alt'
-                }`}></i>
-                </div>
-                <div>
-                <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter">
-                    {previewDoc.name || previewDoc.fileName}
-                </h3>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                    {getFormattedFileSize(previewDoc.fileSize)} • {previewDoc.fileType}
-                </p>
-                </div>
-            </div>
-            <button 
-                onClick={handleClosePreview} 
-                className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm hover:rotate-90"
+      {/* Modal Prévisualisation Document - reste inchangé */}
+      <AnimatePresence>
+        {previewDoc && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-4xl h-[90vh] rounded-[3rem] shadow-[0_0_100px_-20px_rgba(0,0,0,0.5)] overflow-hidden border border-slate-100 flex flex-col relative"
             >
-                <i className="fas fa-times"></i>
-            </button>
-            </div>
-            
-            {/* Content - Visualisation réelle du document */}
-            <div className="flex-1 bg-slate-100 p-6 overflow-y-auto">
-            {previewLoading ? (
-                <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                    <i className="fas fa-spinner fa-spin text-3xl text-tunisia-red"></i>
-                    <p className="mt-4 text-slate-500">Chargement du document...</p>
+              {/* Header */}
+              <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${
+                    getFileType(previewDoc.fileName) === 'pdf' 
+                      ? 'bg-red-500 text-white shadow-red-500/20' 
+                      : getFileType(previewDoc.fileName) === 'image'
+                      ? 'bg-blue-500 text-white shadow-blue-500/20'
+                      : 'bg-slate-500 text-white shadow-slate-500/20'
+                  }`}>
+                    <i className={`text-xl ${
+                      getFileType(previewDoc.fileName) === 'pdf' ? 'fas fa-file-pdf' : 
+                      getFileType(previewDoc.fileName) === 'image' ? 'fas fa-file-image' : 'fas fa-file-alt'
+                    }`}></i>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter">
+                      {previewDoc.name || previewDoc.fileName}
+                    </h3>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {getFormattedFileSize(previewDoc.fileSize)} • {previewDoc.fileType}
+                    </p>
+                  </div>
                 </div>
-                </div>
-            ) : previewUrl ? (
-                <div className="w-full h-full">
-                {getFileType(previewDoc.fileName) === 'pdf' ? (
-                    <iframe
-                    src={previewUrl}
-                    className="w-full h-full rounded-xl border-0"
-                    title={previewDoc.fileName}
-                    />
-                ) : getFileType(previewDoc.fileName) === 'image' ? (
-                    <div className="flex items-center justify-center h-full">
-                    <img
-                        src={previewUrl}
-                        alt={previewDoc.fileName}
-                        className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
-                    />
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                    <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-lg">
-                        <i className="fas fa-file-alt text-5xl text-slate-400"></i>
-                    </div>
-                    <p className="text-slate-500 mb-2">Aperçu non disponible pour ce type de fichier</p>
-                    <p className="text-xs text-slate-400">Format: {previewDoc.fileType}</p>
-                    <button
-                        onClick={() => handleDownloadDocument(previewDoc)}
-                        className="mt-6 px-6 py-3 bg-tunisia-red text-white rounded-xl font-black uppercase tracking-widest text-[9px] shadow-lg hover:bg-red-700 transition-all flex items-center gap-2"
-                    >
-                        <i className="fas fa-download"></i> Télécharger le fichier
-                    </button>
-                    </div>
-                )}
-                </div>
-            ) : (
-                <div className="flex items-center justify-center h-full">
-                <div className="text-center text-red-500">
-                    <i className="fas fa-exclamation-triangle text-3xl mb-3"></i>
-                    <p>Erreur lors du chargement du document</p>
-                </div>
-                </div>
-            )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-slate-50 flex justify-between items-center bg-white">
-            <div className="flex gap-3">
-                <span className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${
-                previewDoc.status === 'VALIDE' ? 'bg-emerald-50 text-emerald-600' :
-                previewDoc.status === 'REJETE' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
-                }`}>
-                {previewDoc.status || 'EN_ATTENTE'}
-                </span>
-                {previewDoc.validatedByName && (
-                <span className="text-[8px] text-slate-400">
-                    Validé par: {previewDoc.validatedByName}
-                </span>
-                )}
-            </div>
-            <div className="flex gap-3">
-                <button
-                onClick={() => handleDownloadDocument(previewDoc)}
-                className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2"
-                >
-                <i className="fas fa-download"></i> Télécharger
-                </button>
                 <button 
-                onClick={handleClosePreview}
-                className="px-8 py-2.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[9px] shadow-xl hover:bg-black transition-all"
+                  onClick={handleClosePreview} 
+                  className="w-10 h-10 rounded-full bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-tunisia-red transition-all shadow-sm hover:rotate-90"
                 >
-                Fermer
+                  <i className="fas fa-times"></i>
                 </button>
-            </div>
-            </div>
-        </motion.div>
-        </div>
-    )}
-    </AnimatePresence>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 bg-slate-100 p-6 overflow-y-auto">
+                {previewLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <i className="fas fa-spinner fa-spin text-3xl text-tunisia-red"></i>
+                      <p className="mt-4 text-slate-500">Chargement du document...</p>
+                    </div>
+                  </div>
+                ) : previewUrl ? (
+                  <div className="w-full h-full">
+                    {getFileType(previewDoc.fileName) === 'pdf' ? (
+                      <iframe
+                        src={previewUrl}
+                        className="w-full h-full rounded-xl border-0"
+                        title={previewDoc.fileName}
+                      />
+                    ) : getFileType(previewDoc.fileName) === 'image' ? (
+                      <div className="flex items-center justify-center h-full">
+                        <img
+                          src={previewUrl}
+                          alt={previewDoc.fileName}
+                          className="max-w-full max-h-full object-contain rounded-xl shadow-lg"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-center">
+                        <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-lg">
+                          <i className="fas fa-file-alt text-5xl text-slate-400"></i>
+                        </div>
+                        <p className="text-slate-500 mb-2">Aperçu non disponible pour ce type de fichier</p>
+                        <p className="text-xs text-slate-400">Format: {previewDoc.fileType}</p>
+                        <button
+                          onClick={() => handleDownloadDocument(previewDoc)}
+                          className="mt-6 px-6 py-3 bg-tunisia-red text-white rounded-xl font-black uppercase tracking-widest text-[9px] shadow-lg hover:bg-red-700 transition-all flex items-center gap-2"
+                        >
+                          <i className="fas fa-download"></i> Télécharger le fichier
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center text-red-500">
+                      <i className="fas fa-exclamation-triangle text-3xl mb-3"></i>
+                      <p>Erreur lors du chargement du document</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-slate-50 flex justify-between items-center bg-white">
+                <div className="flex gap-3">
+                  <span className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                    previewDoc.status === 'VALIDE' ? 'bg-emerald-50 text-emerald-600' :
+                    previewDoc.status === 'REJETE' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+                  }`}>
+                    {previewDoc.status || 'EN_ATTENTE'}
+                  </span>
+                  {previewDoc.validatedByName && (
+                    <span className="text-[8px] text-slate-400">
+                      Validé par: {previewDoc.validatedByName}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleDownloadDocument(previewDoc)}
+                    className="px-6 py-2.5 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all flex items-center gap-2"
+                  >
+                    <i className="fas fa-download"></i> Télécharger
+                  </button>
+                  <button 
+                    onClick={handleClosePreview}
+                    className="px-8 py-2.5 bg-slate-900 text-white rounded-xl font-black uppercase tracking-widest text-[9px] shadow-xl hover:bg-black transition-all"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

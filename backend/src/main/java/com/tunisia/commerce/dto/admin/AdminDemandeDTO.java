@@ -1,10 +1,11 @@
 package com.tunisia.commerce.dto.admin;
 
-import com.tunisia.commerce.enums.DemandeStatus;
-import com.tunisia.commerce.enums.PaymentStatus;
-import com.tunisia.commerce.enums.TypeDemande;
+import com.tunisia.commerce.enums.*;
 
-import com.tunisia.commerce.enums.TypeDemandeur;
+import jakarta.persistence.Column;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -52,6 +53,13 @@ public class AdminDemandeDTO {
     private Long exportateurEtrangerId;
     private String exportateurEtrangerNom;
     private String exportateurEtrangerPays;
+
+    private boolean archived;
+    private LocalDateTime archivedAt;
+    private String archivedBy;  // email de l'admin ou référence système
+    private String archiveReason;
+    private ArchiveType archiveType;
+    private boolean canBeRestored ;
 
     // Produits (pour PRODUCT_DECLARATION)
     private List<ProductAdminDTO> products;

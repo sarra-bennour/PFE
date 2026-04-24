@@ -8,3 +8,8 @@ export interface ProductDeclarationFormProps {
   onSuccess: () => void;
   onDeclarationCreated?: (declarationId: number) => void;
 }
+
+export interface ProductDeclarationDemande {
+  exportateurEtranger?: string; // nom prenom exportateur
+  products: Product[];
+}

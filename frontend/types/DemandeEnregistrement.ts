@@ -64,3 +64,14 @@ export interface DemandeResponse {
   status: string;
   products: Product[];
 }
+
+export enum DemandeStatus {
+  // Nouveaux statuts officiels
+  BROUILLON = 'BROUILLON',
+  SOUMISE = 'SOUMISE',
+  EN_COURS_VALIDATION = 'EN_COURS_VALIDATION',
+  EN_ATTENTE_INFO = 'EN_ATTENTE_INFO',
+  VALIDEE = 'VALIDEE',
+  REJETEE = 'REJETEE',
+  SUSPENDUE = 'SUSPENDUE',
+}

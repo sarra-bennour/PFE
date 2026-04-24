@@ -1,7 +1,6 @@
 package com.tunisia.commerce.dto.user;
 
 import com.tunisia.commerce.dto.structure.StructureInterneDTO;
-import com.tunisia.commerce.enums.InstanceValidationType;
 import com.tunisia.commerce.enums.SiteType;
 import lombok.Data;
 

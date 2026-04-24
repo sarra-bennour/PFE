@@ -29,7 +29,7 @@ public class DemandeProduit {
     @JoinColumn(name = "produit_id", nullable = false)
     private Product produit;
 
-    @Column(name = "type_demande", nullable = false)
+    @Column(name = "type_demandeur", nullable = false)
     @Enumerated(EnumType.STRING)
     private TypeDemandeur type;
 

@@ -1,8 +1,6 @@
 package com.tunisia.commerce.entity;
 
-import com.tunisia.commerce.enums.InstanceValidationType;
 import com.tunisia.commerce.enums.UserRole;
-import com.tunisia.commerce.enums.UserStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
