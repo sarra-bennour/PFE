@@ -1071,6 +1071,10 @@ public class UserServiceImpl implements UserService {
             instance.setTelephone(request.getTelephone());
         }
 
+        if (request.getPoste() != null) {
+            instance.setPoste(request.getPoste());
+        }
+
         // Mise à jour de la structure (si nécessaire)
         if (request.getStructureInterne() != null && request.getStructureInterne().getId() != null) {
             StructureInterne structure = structureRepository.findById(request.getStructureInterne().getId())
@@ -1962,6 +1966,7 @@ public class UserServiceImpl implements UserService {
         instance.setPrenom(request.getPrenom());
         instance.setEmail(request.getEmail());
         instance.setTelephone(request.getTelephone());
+        instance.setPoste(request.getPoste());
         instance.setStructure(structure);
         instance.setSlaTraitementJours(request.getSlaTraitementJours());
         instance.setRole(UserRole.INSTANCE_VALIDATION);
@@ -2006,6 +2011,7 @@ public class UserServiceImpl implements UserService {
             params.put("userFirstName", instance.getPrenom());
             params.put("userLastName", instance.getNom());
             params.put("email", instance.getEmail());
+            params.put("poste", instance.getPoste() != null ? instance.getPoste() : "Non renseigné");
             params.put("generatedPassword", password);
             params.put("activationLink", activationLink);
             params.put("nomOfficiel", instance.getStructure().getOfficialName());
@@ -2035,6 +2041,7 @@ public class UserServiceImpl implements UserService {
         dto.setPrenom(instance.getPrenom());
         dto.setEmail(instance.getEmail());
         dto.setTelephone(instance.getTelephone());
+        dto.setPoste(instance.getPoste());
         dto.setRole(instance.getRole());
         dto.setStatut(instance.getUserStatut());
         dto.setDateCreation(instance.getDateCreation());

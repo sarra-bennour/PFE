@@ -2,25 +2,98 @@ import React, { useState, useEffect } from 'react';
 import { StructureType, InternalStructure } from '../../types/InternalStructure';
 import { X, Save, Building2, Landmark, ShieldCheck } from 'lucide-react';
 
+const MINISTRIES = [
+  { fr: "Ministère du Commerce et du Développement des Exportations", ar: "وزارة التجارة وتنمية الصادرات" },
+  { fr: "Ministère de l'Industrie, des Mines et de l'Énergie", ar: "وزارة الصناعة والمناجم والطاقة" },
+  { fr: "Ministère de l'Agriculture, des Ressources Hydrauliques et de la Pêche", ar: "وزارة الفلاحة والموارد المائية والصيد البحري" },
+  { fr: "Ministère de la Santé", ar: "وزارة الصحة" },
+  { fr: "Ministère de l'Environnement", ar: "وزارة البيئة" },
+  { fr: "Ministère des Technologies de la Communication", ar: "وزارة تكنولوجيات الاتصال" },
+  { fr: "Ministère du Transport", ar: "وزارة النقل" },
+  { fr: "Ministère de l'Équipement et de l'Habitat", ar: "وزارة التجهيز والإسكان" },
+  { fr: "Ministère de l'Éducation", ar: "وزارة التربية" },
+  { fr: "Ministère de l'Enseignement Supérieur et de la Recherche Scientifique", ar: "وزارة التعليم العالي والبحث العلمي" },
+  { fr: "Ministère des Affaires Sociales", ar: "وزارة الشؤون الاجتماعية" },
+  { fr: "Ministère du Tourisme", ar: "وزارة السياحة" },
+  { fr: "Ministère de la Famille, de la Femme, de l'Enfance et des Personnes Âgées", ar: "وزارة الأسرة والمرأة والطفولة وكبار السن" },
+  { fr: "Ministère des Affaires Culturelles", ar: "وزارة الشؤون الثقافية" },
+  { fr: "Ministère de la Jeunesse et des Sports", ar: "وزارة الشباب والرياضة" },
+  { fr: "Ministère de l'Intérieur", ar: "وزارة الداخلية" },
+  { fr: "Ministère des Affaires Étrangères, de la Migration et des Tunisiens à l'Étranger", ar: "وزارة الشؤون الخارجية والهجرة والتونسيين بالخارج" },
+  { fr: "Ministère de la Justice", ar: "وزارة العدل" },
+  { fr: "Ministère de la Défense Nationale", ar: "وزارة الدفاع الوطني" },
+  { fr: "Ministère des Finances", ar: "وزارة المالية" },
+  { fr: "Ministère de l'Économie et de la Planification", ar: "وزارة الاقتصاد والتخطيط" },
+  { fr: "Ministère des Affaires Religieuses", ar: "وزارة الشؤون الدينية" },
+  { fr: "Autre Ministère (Saisie manuelle)", ar: "" }
+];
+
 interface InternalStructureFormProps {
-  onSuccess: (data: { type: StructureType; officialName: string }) => void;
+  onSuccess: (data: { type: StructureType; officialName: string; officialNameAr: string }) => void;
   onCancel: () => void;
   initialData?: InternalStructure;
 }
 
 const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess, onCancel, initialData }) => {
+  const isEditMode = !!initialData;
+  
   const [formData, setFormData] = useState({
     type: initialData?.type || StructureType.MINISTRY,
-    officialName: initialData?.officialName || '',
+    officialNameFr: initialData?.officialName || '',
+    officialNameAr: initialData?.officialNameAr || '',
     code: initialData?.code || ''
   });
 
+  const [selectedMinistry, setSelectedMinistry] = useState('');
+
+  // Initialiser la sélection du ministère si on est en mode création avec un ministère pré-sélectionné
+  useEffect(() => {
+    if (!isEditMode && formData.type === StructureType.MINISTRY && formData.officialNameFr) {
+      const found = MINISTRIES.find(m => m.fr === formData.officialNameFr);
+      if (found) {
+        setSelectedMinistry(formData.officialNameFr);
+      }
+    }
+  }, [isEditMode, formData.type, formData.officialNameFr]);
+
+  // Gérer la sélection du ministère (uniquement en mode création)
+  const handleMinistrySelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    setSelectedMinistry(value);
+    
+    const ministry = MINISTRIES.find(m => m.fr === value);
+    if (ministry && value !== 'Autre Ministère (Saisie manuelle)') {
+      setFormData(prev => ({ 
+        ...prev, 
+        officialNameFr: ministry.fr,
+        officialNameAr: ministry.ar 
+      }));
+    } else if (value === 'Autre Ministère (Saisie manuelle)') {
+      // Vider les champs pour permettre la saisie manuelle
+      setFormData(prev => ({ 
+        ...prev, 
+        officialNameFr: '',
+        officialNameAr: ''
+      }));
+    }
+  };
+
+  // Gérer le changement du nom français (en mode modification, c'est un champ texte libre)
+  const handleOfficialNameFrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, officialNameFr: e.target.value });
+  };
+
+  // Gérer le changement du nom arabe
+  const handleOfficialNameArChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, officialNameAr: e.target.value });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSuccess({
       type: formData.type,
-      officialName: formData.officialName
+      officialName: formData.officialNameFr,
+      officialNameAr: formData.officialNameAr
     });
   };
 
@@ -47,7 +120,9 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
           <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
             {initialData ? 'Modifier la structure' : 'Créer une structure'}
           </h3>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Saisie des informations officielles</p>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+            {initialData ? 'Modifiez les informations officielles' : 'Saisie des informations officielles'}
+          </p>
         </div>
         <button onClick={onCancel} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-all">
           <X size={20} />
@@ -76,28 +151,86 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
           </div>
         </div>
 
+        {/* Nom officiel en français - Conditionnel selon le mode */}
         <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom Officiel</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+            Nom Officiel (Français)
+            {isEditMode && <span className="text-xs text-slate-300 ml-2">(Modifiable librement)</span>}
+          </label>
+          
+          {!isEditMode && formData.type === StructureType.MINISTRY ? (
+            // Mode CRÉATION avec MINISTRY : Liste déroulante
+            <>
+              <select
+                value={selectedMinistry}
+                onChange={handleMinistrySelect}
+                className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm appearance-none"
+              >
+                <option value="">-- Choisir un ministère --</option>
+                {MINISTRIES.map(m => (
+                  <option key={m.fr} value={m.fr}>{m.fr}</option>
+                ))}
+              </select>
+              {selectedMinistry === 'Autre Ministère (Saisie manuelle)' && (
+                <input 
+                  type="text"
+                  value={formData.officialNameFr}
+                  onChange={handleOfficialNameFrChange}
+                  className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm mt-2"
+                  placeholder="Saisissez le nom du ministère..."
+                />
+              )}
+            </>
+          ) : (
+            // Mode CRÉATION avec BANK/CUSTOMS OU Mode MODIFICATION : Champ texte libre
+            <input 
+              required
+              type="text"
+              value={formData.officialNameFr}
+              onChange={handleOfficialNameFrChange}
+              className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm"
+              placeholder={
+                formData.type === StructureType.BANK 
+                  ? "Ex: Banque Centrale de Tunisie" 
+                  : formData.type === StructureType.CUSTOMS
+                  ? "Ex: Direction Générale des Douanes"
+                  : "Ex: Nom de la structure..."
+              }
+            />
+          )}
+        </div>
+
+        {/* Nom officiel en arabe - Toujours un champ texte */}
+        <div className="space-y-1.5 text-right">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">الاسم الرسمي (بالعربية)</label>
           <input 
             required
             type="text"
-            value={formData.officialName}
-            onChange={(e) => setFormData({...formData, officialName: e.target.value})}
-            className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm"
-            placeholder="Ex: Ministère du Commerce et du Développement des Exportations"
+            dir="rtl"
+            value={formData.officialNameAr}
+            onChange={handleOfficialNameArChange}
+            className="w-full px-5 py-4 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm text-right"
+            placeholder={
+              formData.type === StructureType.MINISTRY 
+                ? "اسم الوزارة..." 
+                : formData.type === StructureType.BANK
+                ? "مثال: البنك المركزي التونسي"
+                : "مثال: الديوانة التونسية"
+            }
           />
         </div>
 
+        {/* Code interne (automatique) */}
         <div className="space-y-1.5 opacity-80">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                Code Interne 
-                <span className="text-[8px] border border-slate-200 px-1.5 rounded text-slate-300">
-                    GÉNÉRÉ AUTOMATIQUEMENT
-                </span>
-            </label>
-            <div className="px-5 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 text-slate-400 text-sm font-mono">
-                {initialData ? initialData.code : "Sera généré à l'enregistrement"}
-            </div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5">
+            Code Interne 
+            <span className="text-[8px] border border-slate-200 px-1.5 rounded text-slate-300">
+              GÉNÉRÉ AUTOMATIQUEMENT
+            </span>
+          </label>
+          <div className="px-5 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 text-slate-400 text-sm font-mono">
+            {initialData ? initialData.code : "Sera généré à l'enregistrement"}
+          </div>
         </div>
 
         <div className="pt-4">

@@ -15,6 +15,7 @@ public class CreateInstanceValidationRequest {
     private String prenom;
     private String email;
     private String telephone;
+    private String poste;
     private StructureInterneDTO structure;
     private Integer slaTraitementJours;
 }

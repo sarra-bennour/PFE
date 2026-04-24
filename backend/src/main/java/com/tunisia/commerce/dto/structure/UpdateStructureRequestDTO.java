@@ -20,5 +20,8 @@ public class UpdateStructureRequestDTO {
     @NotBlank(message = "Le nom officiel est requis")
     private String officialName;
 
+    @NotBlank(message = "Le nom officiel (arabe) est requis")  // ← NOUVEAU CHAMP
+    private String officialNameAr;
+
     private Boolean isActive;
 }

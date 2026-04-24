@@ -15,6 +15,7 @@ const InternalStructureList: React.FC<InternalStructureListProps> = ({ structure
 
   const filtered = structures.filter(s => 
     s.officialName.toLowerCase().includes(search.toLowerCase()) ||
+    (s.officialNameAr && s.officialNameAr.toLowerCase().includes(search.toLowerCase())) ||
     s.code.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -83,6 +84,7 @@ const InternalStructureList: React.FC<InternalStructureListProps> = ({ structure
               </p>
               <div className="bg-slate-50 p-4 rounded-2xl mb-6 border border-slate-100">
                 <p className="font-black text-slate-900 text-sm mb-1">{structureToDelete.officialName}</p>
+                <p className="font-black text-slate-900 text-sm mb-1">{structureToDelete.officialNameAr}</p>
                 <p className="font-mono text-xs text-slate-500">{structureToDelete.code}</p>
               </div>
               <p className="text-red-500 text-xs font-bold uppercase tracking-widest mb-8">
@@ -133,6 +135,11 @@ const InternalStructureList: React.FC<InternalStructureListProps> = ({ structure
                     {getTypeName(structure.type)}
                   </span>
                   <h4 className="text-sm font-black text-slate-800 leading-tight mt-1 line-clamp-1">{structure.officialName}</h4>
+                  {structure.officialNameAr && (
+                    <h5 className="text-[11px] font-bold text-slate-400 leading-tight mt-0.5 line-clamp-1 font-arabic" dir="rtl">
+                      {structure.officialNameAr}
+                    </h5>
+                  )}
                 </div>
               </div>
               <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">

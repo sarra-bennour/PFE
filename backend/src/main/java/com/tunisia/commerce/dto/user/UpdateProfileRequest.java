@@ -28,5 +28,6 @@ public class UpdateProfileRequest {
 
     // Champs instance validation
     private StructureInterneDTO structureInterne;
+    private String poste;
     private Integer slaTraitementJours;
 }

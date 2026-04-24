@@ -19,4 +19,7 @@ public class CreateStructureRequestDTO {
 
     @NotBlank(message = "Le nom officiel est requis")
     private String officialName;
+    @NotBlank(message = "Le nom officiel (arabe) est requis")
+    private String officialNameAr;
+
 }

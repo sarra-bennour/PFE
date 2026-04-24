@@ -17,6 +17,7 @@ public class StructureInterneDTO {
     private Long id;
     private StructureType type;
     private String officialName;
+    private String officialNameAr;
     private String code;
     private Boolean isActive;
     private LocalDateTime createdAt;

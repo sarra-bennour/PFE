@@ -29,6 +29,9 @@ public class StructureInterne {
     @Column(name = "official_name", nullable = false, length = 255)
     private String officialName;
 
+    @Column(name = "official_name_ar", nullable = false, length = 255)
+    private String officialNameAr;
+
     @Column(name = "code", nullable = false, unique = true, length = 50)
     private String code;
 

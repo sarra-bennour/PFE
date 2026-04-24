@@ -20,6 +20,9 @@ public class InstanceValidation extends User {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Column(name = "poste", length = 255)
+    private String poste;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "structure_id", nullable = false)
     private StructureInterne structure;

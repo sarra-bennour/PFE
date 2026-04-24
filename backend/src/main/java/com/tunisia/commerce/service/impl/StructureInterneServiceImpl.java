@@ -59,6 +59,7 @@ public class StructureInterneServiceImpl {
         StructureInterne structure = StructureInterne.builder()
                 .type(request.getType())
                 .officialName(request.getOfficialName())
+                .officialNameAr(request.getOfficialNameAr())
                 .code(code)
                 .isActive(true)
                 .createdBy(admin)
@@ -95,6 +96,7 @@ public class StructureInterneServiceImpl {
         // Mettre à jour les champs
         structure.setType(request.getType());
         structure.setOfficialName(request.getOfficialName());
+        structure.setOfficialNameAr(request.getOfficialNameAr());
 
         if (request.getIsActive() != null) {
             structure.setIsActive(request.getIsActive());
@@ -274,6 +276,7 @@ public class StructureInterneServiceImpl {
                 .id(structure.getId())
                 .type(structure.getType())
                 .officialName(structure.getOfficialName())
+                .officialNameAr(structure.getOfficialNameAr())
                 .code(structure.getCode())
                 .isActive(structure.getIsActive())
                 .createdAt(structure.getCreatedAt())

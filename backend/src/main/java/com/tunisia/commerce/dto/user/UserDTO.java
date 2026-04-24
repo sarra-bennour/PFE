@@ -53,6 +53,7 @@ public class UserDTO {
 
     // Champs spécifiques aux instances de validation
 
+    private String poste;
     private Integer slaTraitementJours;
     private String verificationToken;
     private LocalDateTime verificationTokenExpiry;

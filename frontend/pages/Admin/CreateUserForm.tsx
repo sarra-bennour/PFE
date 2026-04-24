@@ -21,6 +21,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
     prenom: '',
     email: '',
     telephone: '',
+    poste: '',
     structureId: '',
     slaTraitementJours: 30
   });
@@ -87,10 +88,12 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
         prenom: formData.prenom,
         email: formData.email,
         telephone: formData.telephone,
+        poste: formData.poste,
         structure: {
           id: selectedStructure.id,
           type: selectedStructure.type,
           officialName: selectedStructure.officialName,
+          officialNameAr: selectedStructure.officialNameAr,
           code: selectedStructure.code
         },
         slaTraitementJours: formData.slaTraitementJours
@@ -116,6 +119,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
           prenom: '',
           email: '',
           telephone: '',
+          poste: '',
           structureId: '',
           slaTraitementJours: 30
         });
@@ -235,6 +239,17 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
           placeholder="ahmed.benali@ministere.tn"
         />
       </div>
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Poste / Fonction</label>
+          <input 
+            required
+            type="text"
+            value={formData.poste}
+            onChange={(e) => setFormData({...formData, poste: e.target.value})}
+            className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
+            placeholder="Ex: Chef de service"
+          />
+        </div>
 
       <div className="space-y-1.5">
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Téléphone</label>
@@ -304,7 +319,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
               if (selected) {
                 return (
                   <>
-                    <p><span className="font-bold text-slate-600">Nom Officiel:</span> <span className="text-slate-500">{selected.officialName}</span></p>
+                    <p><span className="font-bold text-slate-600">Nom Officiel (FR):</span> <span className="text-slate-500">{selected.officialName}</span></p>
+                    <p><span className="font-bold text-slate-600">Nom Officiel (AR):</span> <span className="text-slate-500">{selected.officialNameAr}</span></p>
                     <p><span className="font-bold text-slate-600">Code:</span> <span className="text-slate-500 font-mono">{selected.code}</span></p>
                     <p><span className="font-bold text-slate-600">Type:</span> <span className="text-slate-500">{getStructureTypeName(selected.type)}</span></p>
                   </>
