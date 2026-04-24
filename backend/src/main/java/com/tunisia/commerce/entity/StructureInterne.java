@@ -11,7 +11,11 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "structures_internes")
+@Table(name = "structures_internes",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_structure_official_name", columnNames = "official_name"),
+                @UniqueConstraint(name = "uk_structure_code", columnNames = "code")
+        })
 @Data
 @Builder
 @NoArgsConstructor
@@ -26,7 +30,7 @@ public class StructureInterne {
     @Enumerated(EnumType.STRING)
     private StructureType type;
 
-    @Column(name = "official_name", nullable = false, length = 255)
+    @Column(name = "official_name", nullable = false, unique = true, length = 255)
     private String officialName;
 
     @Column(name = "official_name_ar", nullable = false, length = 255)

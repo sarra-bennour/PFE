@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StructureType, InternalStructure } from '../../types/InternalStructure';
 import { X, Save, Building2, Landmark, ShieldCheck } from 'lucide-react';
+import FormAlert from '../../components/FormAlert'; // ← Importer FormAlert
 
 const MINISTRIES = [
   { fr: "Ministère du Commerce et du Développement des Exportations", ar: "وزارة التجارة وتنمية الصادرات" },
@@ -36,6 +37,11 @@ interface InternalStructureFormProps {
 
 const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess, onCancel, initialData }) => {
   const isEditMode = !!initialData;
+  
+  // États pour les messages
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState({
     type: initialData?.type || StructureType.MINISTRY,
@@ -78,23 +84,82 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
     }
   };
 
-  // Gérer le changement du nom français (en mode modification, c'est un champ texte libre)
+  // Gérer le changement du nom français
   const handleOfficialNameFrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, officialNameFr: e.target.value });
+    // Effacer les messages d'erreur quand l'utilisateur commence à taper
+    if (error) setError(null);
   };
 
   // Gérer le changement du nom arabe
   const handleOfficialNameArChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, officialNameAr: e.target.value });
+    // Effacer les messages d'erreur quand l'utilisateur commence à taper
+    if (error) setError(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSuccess({
-      type: formData.type,
-      officialName: formData.officialNameFr,
-      officialNameAr: formData.officialNameAr
-    });
+    
+    // Validation des champs requis
+    if (!formData.officialNameFr.trim()) {
+      setError("Le nom officiel (français) est requis");
+      return;
+    }
+    
+    if (!formData.officialNameAr.trim()) {
+      setError("Le nom officiel (arabe) est requis");
+      return;
+    }
+    
+    // Effacer les messages précédents
+    setError(null);
+    setSuccess(null);
+    setIsSubmitting(true);
+    
+    try {
+      // Appeler la fonction onSuccess (qui fait l'appel API)
+      await onSuccess({
+        type: formData.type,
+        officialName: formData.officialNameFr.trim(),
+        officialNameAr: formData.officialNameAr.trim()
+      });
+      
+      // Succès
+      setSuccess(isEditMode 
+        ? "Structure modifiée avec succès !" 
+        : "Structure créée avec succès !"
+      );
+      
+      // Fermer le formulaire après 2 secondes en cas de succès
+      setTimeout(() => {
+        onCancel();
+      }, 2000);
+      
+    } catch (err: any) {
+      // Gestion des erreurs
+      console.error("Erreur lors de l'envoi:", err);
+      
+      // Extraire le message d'erreur de la réponse
+      let errorMessage = "Une erreur est survenue lors de l'enregistrement";
+      
+      if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      // Messages d'erreur spécifiques pour les doublons
+      if (errorMessage.includes("existe déjà") || errorMessage.includes("unique")) {
+        errorMessage = "❌ " + errorMessage;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getTypeIcon = (type: StructureType) => {
@@ -130,6 +195,23 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Affichage des alertes */}
+        {error && (
+          <FormAlert 
+            message={error} 
+            type="error" 
+            onClose={() => setError(null)}
+          />
+        )}
+        
+        {success && (
+          <FormAlert 
+            message={success} 
+            type="success" 
+            onClose={() => setSuccess(null)}
+          />
+        )}
+
         <div className="space-y-1.5">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Type de structure</label>
           <div className="grid grid-cols-3 gap-3">
@@ -184,7 +266,6 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
           ) : (
             // Mode CRÉATION avec BANK/CUSTOMS OU Mode MODIFICATION : Champ texte libre
             <input 
-              required
               type="text"
               value={formData.officialNameFr}
               onChange={handleOfficialNameFrChange}
@@ -204,7 +285,6 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
         <div className="space-y-1.5 text-right">
           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">الاسم الرسمي (بالعربية)</label>
           <input 
-            required
             type="text"
             dir="rtl"
             value={formData.officialNameAr}
@@ -233,13 +313,31 @@ const InternalStructureForm: React.FC<InternalStructureFormProps> = ({ onSuccess
           </div>
         </div>
 
+        {/* Message d'aide sur l'unicité */}
+        <div className="bg-blue-50/50 border border-blue-200 rounded-2xl p-3">
+          <p className="text-[10px] text-blue-700 font-medium">
+            💡 <strong>Note :</strong> Les noms (français et arabe) doivent être uniques. 
+            Un message d'erreur s'affichera si un nom est déjà utilisé.
+          </p>
+        </div>
+
         <div className="pt-4">
           <button 
             type="submit"
-            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 group active:scale-[0.98]"
+            disabled={isSubmitting}
+            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 group disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
           >
-            <Save size={18} className="group-hover:rotate-12 transition-transform" />
-            {initialData ? 'Mettre à jour' : 'Enregistrer la structure'}
+            {isSubmitting ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>{initialData ? 'Mise à jour...' : 'Enregistrement...'}</span>
+              </>
+            ) : (
+              <>
+                <Save size={18} className="group-hover:rotate-12 transition-transform" />
+                <span>{initialData ? 'Mettre à jour' : 'Enregistrer la structure'}</span>
+              </>
+            )}
           </button>
         </div>
       </form>

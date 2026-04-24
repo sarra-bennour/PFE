@@ -36,9 +36,16 @@ public class StructureInterneServiceImpl {
     public StructureInterneDTO createStructure(CreateStructureRequestDTO request, Long adminId) {
         log.info("Création d'une nouvelle structure: {}", request.getOfficialName());
 
-        // Vérifier si une structure avec le même nom existe déjà
-        if (structureRepository.existsByOfficialName(request.getOfficialName())) {
-            throw new RuntimeException("Une structure avec ce nom existe déjà");
+        String normalizedName = request.getOfficialName().trim();
+
+        // Vérification avec insensibilité à la casse
+        if (structureRepository.existsByOfficialNameIgnoreCase(normalizedName)) {
+            throw new RuntimeException("Une structure avec le nom '" + request.getOfficialName() + "' existe déjà. Les noms doivent être uniques.");
+        }
+
+        // Vérifier aussi l'unicité du nom arabe (si besoin)
+        if (structureRepository.existsByOfficialNameAr(request.getOfficialNameAr())) {
+            throw new RuntimeException("Une structure avec le nom arabe '" + request.getOfficialNameAr() + "' existe déjà.");
         }
 
         // Récupérer l'administrateur

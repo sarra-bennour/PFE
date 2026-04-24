@@ -96,38 +96,46 @@ const AdminPanel: React.FC = () => {
   }, [activeTab]);
 
   // Créer une structure
-  const handleCreateStructure = async (data: { type: StructureType; officialName: string }) => {
-    try {
-      const response = await axios.post(API_URL, data, { headers: getAuthHeader() });
-      if (response.data.success) {
-        setStructures(prev => [response.data.data, ...prev]);
-        setShowStructureForm(false);
-      } else {
-        alert(response.data.error || 'Erreur lors de la création');
-      }
-    } catch (err: any) {
-      console.error('Erreur création:', err);
-      alert(err.response?.data?.error || 'Erreur lors de la création');
+  const handleCreateStructure = async (data: { type: StructureType; officialName: string; officialNameAr: string }) => {
+  try {
+    const response = await axios.post(API_URL, data, { headers: getAuthHeader() });
+    
+    if (response.data.success) {
+      // ✅ Succès - mettre à jour la liste et fermer le modal
+      setStructures(prev => [response.data.data, ...prev]);
+      setShowStructureForm(false);
+      // ✅ Retourner normalement (pas d'erreur)
+      return;
+    } else {
+      // ✅ Échec - LANCER UNE ERREUR pour que le formulaire la capture
+      throw new Error(response.data.error || 'Erreur lors de la création');
     }
-  };
+  } catch (err: any) {
+    console.error('Erreur création:', err);
+    // ✅ Propager l'erreur (peut venir d'axios ou de notre throw)
+    throw err;
+  }
+};
 
-  // Mettre à jour une structure
-  const handleUpdateStructure = async (id: number, data: { type: StructureType; officialName: string }) => {
-    try {
-      const response = await axios.put(`${API_URL}/${id}`, data, { headers: getAuthHeader() });
-      if (response.data.success) {
-        setStructures(prev => prev.map(s => s.id === id ? response.data.data : s));
-        setShowStructureForm(false);
-        setSelectedStructure(null);
-      } else {
-        alert(response.data.error || 'Erreur lors de la mise à jour');
-      }
-    } catch (err: any) {
-      console.error('Erreur mise à jour:', err);
-      alert(err.response?.data?.error || 'Erreur lors de la mise à jour');
+const handleUpdateStructure = async (id: number, data: { type: StructureType; officialName: string; officialNameAr: string }) => {
+  try {
+    const response = await axios.put(`${API_URL}/${id}`, data, { headers: getAuthHeader() });
+    
+    if (response.data.success) {
+      // ✅ Succès
+      setStructures(prev => prev.map(s => s.id === id ? response.data.data : s));
+      setShowStructureForm(false);
+      setSelectedStructure(null);
+      return;
+    } else {
+      // ✅ Échec - LANCER UNE ERREUR
+      throw new Error(response.data.error || 'Erreur lors de la mise à jour');
     }
-  };
-
+  } catch (err: any) {
+    console.error('Erreur mise à jour:', err);
+    throw err;
+  }
+};
   // Supprimer une structure (sans confirmation, gérée par le modal du composant enfant)
   const handleDeleteStructure = async (id: number) => {
     try {
@@ -334,11 +342,17 @@ const AdminPanel: React.FC = () => {
                 setShowStructureForm(false);
                 setSelectedStructure(null);
               }}
-              onSuccess={(data) => {
-                if (selectedStructure) {
-                  handleUpdateStructure(selectedStructure.id, data);
-                } else {
-                  handleCreateStructure(data);
+              onSuccess={async (data) => {  // ← Rendre async
+                try {
+                  if (selectedStructure) {
+                    await handleUpdateStructure(selectedStructure.id, data);
+                  } else {
+                    await handleCreateStructure(data);
+                  }
+                  // Succès - le formulaire affichera son message de succès
+                } catch (error) {
+                  // Erreur - laisser le formulaire la capturer
+                  throw error;
                 }
               }}
             />

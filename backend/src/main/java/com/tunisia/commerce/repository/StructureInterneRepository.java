@@ -19,8 +19,13 @@ public interface StructureInterneRepository extends JpaRepository<StructureInter
     List<StructureInterne> findByType(StructureType type);
 
     List<StructureInterne> findByOfficialNameContainingIgnoreCase(String name);
+    boolean existsByOfficialNameIgnoreCase(String officialName);
+
 
     boolean existsByCode(String code);
 
     boolean existsByOfficialName(String officialName);
+    boolean existsByOfficialNameAr(String officialName);
+
+
 }
