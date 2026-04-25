@@ -5,7 +5,7 @@ import { DemandeHistory } from "@/types/DemandeHistory";
 export interface DemandeEnregistrement {
   id: number;
   reference: string;
-  status: string;
+  status: DemandeStatus;
   submittedAt: string | null;
   paymentReference?: string | null;
   paymentAmount?: number | null;

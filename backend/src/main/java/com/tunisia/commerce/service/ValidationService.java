@@ -13,17 +13,6 @@ public interface ValidationService {
      * Récupérer toutes les demandes avec filtres
      */
     List<DemandeEnregistrementDTO> getAllDemandes(String type, String status);
-
-    /**
-     * Récupérer les demandes par préfixe de référence (DOS-, DEM-, IMP-)
-     */
-    //List<DemandeEnregistrementDTO> getDemandesByReferencePrefix(String prefix, String status);
-
-    /**
-     * Récupérer une demande par son ID
-     */
-    //DemandeEnregistrementDTO getDemandeById(Long id);
-
     /**
      * Approuver une demande
      */
@@ -44,18 +33,6 @@ public interface ValidationService {
      */
     Document validateDocument(Long documentId, Long agentId, String status, String comment);
 
-    /**
-     * Récupérer les statistiques de validation
-     */
-    //ValidationSummaryDTO getValidationSummary();
-
-    /**
-     * Récupérer le fichier d'un document
-     */
-    //org.springframework.core.io.Resource getDocumentFile(Long documentId, Long agentId);
-
-    /**
-     * Récupérer les informations d'un document
-     */
-    //DocumentDTO getDocumentDTOById(Long documentId, Long agentId);
+    long countPendingDemandesByInstance(Long instanceId);
+    List<DemandeEnregistrementDTO> getDemandesByInstance(Long instanceId, String type, String status);
 }

@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -47,4 +48,6 @@ public class DemandeEnregistrementDTO {
     private List<ProduitDTO> products;
     private List<DocumentDTO> documents;
     private List<DemandeHistoryDTO> history;
+    private List<Map<String, Object>> validationStatuses; // Statuts individuels par validateur
+
 }

@@ -14,12 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -33,34 +29,102 @@ public class ValidationServiceImpl implements ValidationService {
     private final UserRepository userRepository;
     private final DemandeHistoryRepository historyRepository;
     private final InstanceValidationRepository instanceValidationRepository;
+    private final DemandeValidateurRepository demandeValidateurRepository;
+    private final StructureCompetenceRepository structureCompetenceRepository;
+
+    // ==================== MÉTHODES PRINCIPALES ====================
 
     /**
-     * Récupérer toutes les demandes avec filtres
+     * Récupérer toutes les demandes (pour ADMIN)
      */
     @Override
     public List<DemandeEnregistrementDTO> getAllDemandes(String type, String status) {
-        log.info("Récupération des demandes - Type: {}, Status: {}", type, status);
+        log.info("Récupération de toutes les demandes - Type: {}, Status: {}", type, status);
 
-        List<DemandeEnregistrement> demandes;
+        List<DemandeEnregistrement> demandes = getFilteredDemandes(type, status);
 
-        // Filtrer par type de demandeur (EXPORTATEUR ou IMPORTATEUR)
-        if (type != null && !type.isEmpty() && !"ALL".equals(type)) {
-            try {
-                TypeDemandeur typeDemandeur = TypeDemandeur.valueOf(type);
-                demandes = demandeRepository.findByTypeDemandeur(typeDemandeur);
-            } catch (IllegalArgumentException e) {
-                demandes = demandeRepository.findAll();
+        return demandes.stream()
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * ✅ NOUVELLE MÉTHODE : Récupérer les demandes assignées à une instance spécifique
+     */
+    @Override
+    public List<DemandeEnregistrementDTO> getDemandesByInstance(Long instanceId, String type, String status) {
+        log.info("=== getDemandesByInstance DEBUG ===");
+        log.info("instanceId: {}", instanceId);
+
+        // 1. Récupérer l'instance
+        InstanceValidation instance = instanceValidationRepository.findById(instanceId)
+                .orElseThrow(() -> new ValidationException("INSTANCE_NOT_FOUND", "Instance non trouvée"));
+
+        log.info("Instance structureId: {}", instance.getStructure().getId());
+
+        // 2. Récupérer TOUS les validateurs pour cette instance
+        List<DemandeValidateur> myValidations = demandeValidateurRepository.findByInstanceId(instanceId);
+        log.info("Nombre de validations trouvées: {}", myValidations.size());
+
+        // 3. Filtrer les demandes
+        List<DemandeEnregistrement> demandes = new ArrayList<>();
+
+        for (DemandeValidateur validation : myValidations) {
+            DemandeEnregistrement demande = validation.getDemande();
+            log.info("--- Traitement demande: {} ---", demande.getReference());
+            log.info("  Statut demande: {}", demande.getStatus());
+            log.info("  Payment status: {}", demande.getPaymentStatus());
+            log.info("  Ma validation status: {}", validation.getValidationStatus());
+            log.info("  Mon validation order: {}", validation.getValidationOrder());
+
+            // Vérifier paiement
+            if (demande.getPaymentStatus() != PaymentStatus.REUSSI) {
+                log.info("  ❌ Rejetée: paiement non réussi");
+                continue;
             }
-        } else {
-            demandes = demandeRepository.findAll();
+
+            // Vérifier que je n'ai pas déjà validé
+            if (validation.getValidationStatus() == ValidationStatus.VALIDEE) {
+                log.info("  ❌ Rejetée: déjà validée par moi");
+                continue;
+            }
+
+            // Vérifier que la demande n'est pas terminée
+            if (demande.getStatus() == DemandeStatus.VALIDEE || demande.getStatus() == DemandeStatus.REJETEE) {
+                log.info("  ❌ Rejetée: demande terminée");
+                continue;
+            }
+
+            // 🔥 CORRECTION IMPORTANTE: Vérifier les validateurs précédents
+            List<DemandeValidateur> allValidations = demandeValidateurRepository.findByDemandeId(demande.getId());
+
+            boolean previousValidatorsApproved = true;
+            for (DemandeValidateur other : allValidations) {
+                // Si c'est un validateur avec un ordre inférieur au mien ET qu'il n'a pas validé
+                if (other.getValidationOrder() < validation.getValidationOrder()
+                        && other.getValidationStatus() != ValidationStatus.VALIDEE) {
+                    previousValidatorsApproved = false;
+                    log.info("  ❌ Validateur précédent non validé: order={}, status={}, structure={}",
+                            other.getValidationOrder(),
+                            other.getValidationStatus(),
+                            other.getStructure().getOfficialName());
+                    break;
+                }
+            }
+
+            if (!previousValidatorsApproved) {
+                log.info("  ❌ Rejetée: validateur précédent non approuvé");
+                continue;
+            }
+
+            // ✅ Tous les critères sont remplis
+            log.info("  ✅ Demande ajoutée à la liste");
+            demandes.add(demande);
         }
 
-        // 🔥 FILTRER PAR STATUT DE PAIEMENT - Garder uniquement les paiements valides
-        demandes = demandes.stream()
-                .filter(d -> d.getPaymentStatus() == PaymentStatus.REUSSI)
-                .collect(Collectors.toList());
+        log.info("=== FIN - {} demandes trouvées ===", demandes.size());
 
-        // Filtrer par statut de la demande
+        // Appliquer les filtres supplémentaires
         if (status != null && !status.isEmpty() && !"ALL".equals(status)) {
             try {
                 DemandeStatus demandeStatus = DemandeStatus.valueOf(status);
@@ -68,11 +132,29 @@ public class ValidationServiceImpl implements ValidationService {
                         .filter(d -> d.getStatus() == demandeStatus)
                         .collect(Collectors.toList());
             } catch (IllegalArgumentException e) {
-                // Statut invalide, garder tous
+                log.warn("Statut invalide: {}", status);
             }
         }
 
-        // Trier par date de soumission (plus récent en premier)
+        if (type != null && !type.isEmpty() && !"ALL".equals(type)) {
+            try {
+                TypeDemandeur typeDemandeur = TypeDemandeur.valueOf(type);
+                demandes = demandes.stream()
+                        .filter(d -> {
+                            if (typeDemandeur == TypeDemandeur.EXPORTATEUR) {
+                                return d.getExportateur() != null;
+                            } else if (typeDemandeur == TypeDemandeur.IMPORTATEUR) {
+                                return d.getImportateur() != null;
+                            }
+                            return true;
+                        })
+                        .collect(Collectors.toList());
+            } catch (IllegalArgumentException e) {
+                log.warn("Type invalide: {}", type);
+            }
+        }
+
+        // Trier par date de soumission
         demandes.sort((d1, d2) -> {
             if (d1.getSubmittedAt() == null && d2.getSubmittedAt() == null) return 0;
             if (d1.getSubmittedAt() == null) return 1;
@@ -86,20 +168,56 @@ public class ValidationServiceImpl implements ValidationService {
     }
 
     /**
-     * Récupérer les demandes par type (DOS-, DEM-, IMP-)
+     * Récupère l'ordre de validation pour une structure
      */
-    /*@Override
-    public List<DemandeEnregistrementDTO> getDemandesByReferencePrefix(String prefix, String status) {
-        log.info("Récupération des demandes avec préfixe: {}, status: {}", prefix, status);
+    private Integer getValidationOrderForStructure(StructureInterne structure) {
+        // Récupérer l'ordre minimum pour cette structure (généralement le même pour toutes les catégories)
+        List<StructureCompetence> competences = structureCompetenceRepository
+                .findByStructure(structure);
 
-        List<DemandeEnregistrement> demandes = demandeRepository.findAll();
+        if (competences.isEmpty()) {
+            return 99; // Ordre élevé si aucune compétence trouvée
+        }
 
-        // Filtrer par préfixe de référence
+        // Prendre l'ordre minimum (le plus petit)
+        return competences.stream()
+                .map(StructureCompetence::getValidationOrder)
+                .filter(Objects::nonNull)
+                .min(Integer::compareTo)
+                .orElse(99);
+    }
+
+    /**
+     * ✅ NOUVELLE MÉTHODE : Compter les demandes en attente pour une instance
+     */
+    @Override
+    public long countPendingDemandesByInstance(Long instanceId) {
+        return demandeValidateurRepository.countByInstanceIdAndValidationStatus(instanceId, ValidationStatus.EN_ATTENTE);
+    }
+
+    /**
+     * Méthode utilitaire pour filtrer les demandes (utilisée par l'admin)
+     */
+    private List<DemandeEnregistrement> getFilteredDemandes(String type, String status) {
+        List<DemandeEnregistrement> demandes;
+
+        if (type != null && !type.isEmpty() && !"ALL".equals(type)) {
+            try {
+                TypeDemandeur typeDemandeur = TypeDemandeur.valueOf(type);
+                demandes = demandeRepository.findByTypeDemandeur(typeDemandeur);
+            } catch (IllegalArgumentException e) {
+                demandes = demandeRepository.findAll();
+            }
+        } else {
+            demandes = demandeRepository.findAll();
+        }
+
+        // Filtrer par paiement réussi
         demandes = demandes.stream()
-                .filter(d -> d.getReference() != null && d.getReference().startsWith(prefix))
+                .filter(d -> d.getPaymentStatus() == PaymentStatus.REUSSI)
                 .collect(Collectors.toList());
 
-        // Filtrer par statut
+        // Filtrer par statut de la demande
         if (status != null && !status.isEmpty() && !"ALL".equals(status)) {
             try {
                 DemandeStatus demandeStatus = DemandeStatus.valueOf(status);
@@ -111,81 +229,103 @@ public class ValidationServiceImpl implements ValidationService {
             }
         }
 
-        return demandes.stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
-    }*/
+        demandes.sort((d1, d2) -> {
+            if (d1.getSubmittedAt() == null && d2.getSubmittedAt() == null) return 0;
+            if (d1.getSubmittedAt() == null) return 1;
+            if (d2.getSubmittedAt() == null) return -1;
+            return d2.getSubmittedAt().compareTo(d1.getSubmittedAt());
+        });
+
+        return demandes;
+    }
 
     /**
-     * Récupérer une demande par son ID
-     */
-    /*@Override
-    public DemandeEnregistrementDTO getDemandeById(Long id) {
-        log.info("Récupération de la demande ID: {}", id);
-
-        DemandeEnregistrement demande = demandeRepository.findById(id)
-                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée avec l'ID: " + id));
-
-        return mapToDTO(demande);
-    }*/
-
-    /**
-     * Approuver une demande
+     * ✅ CORRIGÉ: Approbation d'une demande avec gestion multi-validateurs
      */
     @Override
     @Transactional
     public DemandeEnregistrementDTO approveDemande(Long demandeId, Long agentId, String comment) {
-        log.info("Approbation de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
+        log.info("Approbation partielle de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
 
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée avec l'ID: " + demandeId));
+                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée"));
 
-        // Vérifier que la demande est en statut SOUMISE ou EN_ATTENTE_INFO
-        if (demande.getStatus() != DemandeStatus.SOUMISE && demande.getStatus() != DemandeStatus.EN_ATTENTE_INFO) {
-            throw new ValidationException("INVALID_STATUS",
-                    "Seules les demandes soumises ou en attente d'informations peuvent être approuvées. Statut actuel: " + demande.getStatus());
-        }
-
-        // CORRECTION: Récupérer directement une InstanceValidation
+        // Récupérer l'instance qui valide
         InstanceValidation agent = instanceValidationRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent de validation non trouvé avec l'ID: " + agentId));
+                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
 
-        // Récupérer l'User pour l'historique (si nécessaire)
-        User userAgent = userRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("USER_NOT_FOUND", "Utilisateur non trouvé avec l'ID: " + agentId));
+        // Récupérer la validation correspondante
+        DemandeValidateur validation = demandeValidateurRepository
+                .findByDemandeIdAndInstanceId(demandeId, agentId)
+                .orElseThrow(() -> new ValidationException("VALIDATION_NOT_FOUND",
+                        "Cette demande n'est pas assignée à cet agent"));
 
-        DemandeStatus oldStatus = demande.getStatus();
-
-        // Générer le numéro d'agrément pour les demandes exportateur
-        if (demande.getTypeDemande() == TypeDemande.REGISTRATION || demande.getTypeDemande() == TypeDemande.PRODUCT_DECLARATION) {
-            String numeroAgrement = generateAgrementNumber();
-            demande.setNumeroAgrement(numeroAgrement);
-            demande.setDateAgrement(LocalDateTime.now().toLocalDate());
-            log.info("Agrément généré pour la demande {}: {}", demande.getReference(), numeroAgrement);
+        // Vérifier que la validation est encore en attente
+        if (validation.getValidationStatus() != ValidationStatus.EN_ATTENTE) {
+            throw new ValidationException("ALREADY_VALIDATED",
+                    "Cette validation a déjà été traitée. Statut actuel: " + validation.getValidationStatus());
         }
 
-        // Valider automatiquement tous les documents en attente
-        validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.VALIDE,
-                "Document automatiquement validé suite à l'approbation de la demande");
+        // Vérifier que la demande n'est pas déjà terminée
+        if (demande.getStatus() == DemandeStatus.VALIDEE || demande.getStatus() == DemandeStatus.REJETEE) {
+            throw new ValidationException("DEMANDE_ALREADY_CLOSED",
+                    "La demande est déjà " + demande.getStatus());
+        }
 
-        // Mettre à jour la demande
-        demande.setStatus(DemandeStatus.VALIDEE);
-        demande.setDecisionDate(LocalDateTime.now());
-        demande.setDecisionComment(comment);
-        demande.setAssignedTo(agent);  // Maintenant c'est une InstanceValidation
+        // Approuver cette validation
+        validation.approve(comment);
+        demandeValidateurRepository.save(validation);
+        log.info("✅ Agent {} a approuvé la demande {}", agent.getEmail(), demande.getReference());
+
+        // Vérifier si tous les validateurs obligatoires ont approuvé
+        boolean allMandatoryApproved = isAllMandatoryValidatorsApproved(demande);
+        boolean hasMandatoryRejection = hasMandatoryRejection(demande);
+
+        if (hasMandatoryRejection) {
+            // Une demande rejetée par un validateur obligatoire est définitivement rejetée
+            demande.setStatus(DemandeStatus.REJETEE);
+            demande.setDecisionDate(LocalDateTime.now());
+            demande.setDecisionComment("Demande rejetée par " + agent.getStructure().getOfficialName() + ": " + comment);
+            log.warn("❌ Demande {} rejetée par validateur obligatoire", demande.getReference());
+        }
+        else if (allMandatoryApproved) {
+            // Tous les validateurs obligatoires ont approuvé → générer agrément
+            if (demande.getTypeDemande() == TypeDemande.REGISTRATION ||
+                    demande.getTypeDemande() == TypeDemande.PRODUCT_DECLARATION) {
+                String numeroAgrement = generateAgrementNumber();
+                demande.setNumeroAgrement(numeroAgrement);
+                demande.setDateAgrement(LocalDateTime.now().toLocalDate());
+                log.info("🏆 Agrément généré pour la demande {}: {}", demande.getReference(), numeroAgrement);
+            }
+
+            // Valider automatiquement tous les documents
+            validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.VALIDE,
+                    "Document validé suite à l'approbation complète de la demande");
+
+            demande.setStatus(DemandeStatus.VALIDEE);
+            demande.setDecisionDate(LocalDateTime.now());
+            demande.setDecisionComment("Tous les validateurs ont approuvé. " + comment);
+            log.info("🎉 Demande {} complètement approuvée !", demande.getReference());
+        }
+        else {
+            // En attente des autres validateurs
+            demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
+            log.info("⏳ Demande {} en attente d'autres validateurs", demande.getReference());
+        }
 
         demande = demandeRepository.save(demande);
 
-        // Ajouter l'historique avec User
-        addHistory(demande, oldStatus, DemandeStatus.VALIDEE, "APPROUVE",
-                "Demande approuvée. " + (comment != null ? comment : ""), userAgent);
-
-        log.info("Demande {} approuvée avec succès", demande.getReference());
+        // Ajouter l'historique
+        User userAgent = agent;
+        /*addHistory(demande, validation.getValidationStatus().name(), "APPROUVE",
+                "APPROBATION", "Validation approuvée par " + agent.getStructure().getOfficialName() +
+                        (comment != null ? ": " + comment : ""), userAgent);*/
 
         return mapToDTO(demande);
     }
+
     /**
-     * Rejeter une demande
+     * ✅ CORRIGÉ: Rejet d'une demande par un validateur
      */
     @Override
     @Transactional
@@ -193,106 +333,104 @@ public class ValidationServiceImpl implements ValidationService {
         log.info("Rejet de la demande ID: {} par l'agent ID: {}", demandeId, agentId);
 
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée avec l'ID: " + demandeId));
+                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée"));
 
-        // Vérifier que la demande est en statut SOUMISE
-        if (demande.getStatus() != DemandeStatus.SOUMISE) {
-            throw new ValidationException("INVALID_STATUS",
-                    "Seules les demandes soumises peuvent être rejetées. Statut actuel: " + demande.getStatus());
+        InstanceValidation agent = instanceValidationRepository.findById(agentId)
+                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
+
+        DemandeValidateur validation = demandeValidateurRepository
+                .findByDemandeIdAndInstanceId(demandeId, agentId)
+                .orElseThrow(() -> new ValidationException("VALIDATION_NOT_FOUND",
+                        "Cette demande n'est pas assignée à cet agent"));
+
+        if (validation.getValidationStatus() != ValidationStatus.EN_ATTENTE) {
+            throw new ValidationException("ALREADY_VALIDATED",
+                    "Cette validation a déjà été traitée");
         }
 
-        // CORRECTION: Récupérer directement une InstanceValidation au lieu d'un User générique
-        InstanceValidation agent = instanceValidationRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent de validation non trouvé avec l'ID: " + agentId));
+        // Rejeter cette validation
+        validation.reject(reason);
+        demandeValidateurRepository.save(validation);
+        log.info("❌ Agent {} a rejeté la demande {}", agent.getEmail(), demande.getReference());
 
-        DemandeStatus oldStatus = demande.getStatus();
-
-        // Rejeter automatiquement tous les documents en attente
+        // Rejeter tous les documents en attente
         validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.REJETE,
-                "Document automatiquement rejeté suite au rejet de la demande. Raison: " + reason);
+                "Document rejeté suite au rejet de la demande. Raison: " + reason);
 
-        // Mettre à jour la demande
+        // Un seul rejet suffit pour rejeter toute la demande
         demande.setStatus(DemandeStatus.REJETEE);
         demande.setDecisionDate(LocalDateTime.now());
-        demande.setDecisionComment(reason);
-        demande.setAssignedTo(agent);  // Maintenant c'est une InstanceValidation
+        demande.setDecisionComment("Rejeté par " + agent.getStructure().getOfficialName() + ": " + reason);
 
         demande = demandeRepository.save(demande);
 
-        // Ajouter l'historique
-        addHistory(demande, oldStatus, DemandeStatus.REJETEE, "REJETE",
-                "Demande rejetée. Raison: " + reason, agent);
-
-        log.info("Demande {} rejetée", demande.getReference());
+        User userAgent = agent;
+        addHistory(demande, validation.getValidationStatus().name(), "REJETE",
+                "REJET", "Demande rejetée par " + agent.getStructure().getOfficialName() +
+                        ": " + reason, userAgent);
 
         return mapToDTO(demande);
     }
+
     /**
-     * Demander plus d'informations pour une demande
+     * Demander plus d'informations
      */
     @Override
     @Transactional
     public DemandeEnregistrementDTO requestMoreInfo(Long demandeId, Long agentId, String comment) {
-        log.info("Demande d'informations supplémentaires pour la demande ID: {} par l'agent ID: {}", demandeId, agentId);
+        log.info("Demande d'informations pour la demande ID: {} par l'agent ID: {}", demandeId, agentId);
 
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
-                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée avec l'ID: " + demandeId));
+                .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée"));
 
-        // Vérifier que la demande est en statut SOUMISE
-        if (demande.getStatus() != DemandeStatus.SOUMISE) {
-            throw new ValidationException("INVALID_STATUS",
-                    "Seules les demandes soumises peuvent être mises en attente d'informations. Statut actuel: " + demande.getStatus());
-        }
-
-        // Récupérer l'InstanceValidation
         InstanceValidation agent = instanceValidationRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent de validation non trouvé avec l'ID: " + agentId));
+                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
 
-        // Récupérer l'User pour l'historique (si InstanceValidation n'extends pas User)
-        User userAgent = userRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("USER_NOT_FOUND", "Utilisateur non trouvé avec l'ID: " + agentId));
+        DemandeValidateur validation = demandeValidateurRepository
+                .findByDemandeIdAndInstanceId(demandeId, agentId)
+                .orElseThrow(() -> new ValidationException("VALIDATION_NOT_FOUND",
+                        "Cette demande n'est pas assignée à cet agent"));
 
-        DemandeStatus oldStatus = demande.getStatus();
+        // Mettre la validation en attente d'info
+        validation.setValidationStatus(ValidationStatus.EN_ATTENTE);
+        validation.setValidationComment("Informations demandées: " + comment);
+        demandeValidateurRepository.save(validation);
 
-        // Marquer tous les documents en attente comme "A_COMPLETER"
+        // Marquer les documents comme à compléter
         validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.A_COMPLETER,
                 "Des informations complémentaires sont requises: " + comment);
 
-        // Mettre à jour la demande
         demande.setStatus(DemandeStatus.EN_ATTENTE_INFO);
         demande.setDecisionComment(comment);
-        demande.setAssignedTo(agent);  // InstanceValidation
-
         demande = demandeRepository.save(demande);
 
-        // Ajouter l'historique avec User
-        addHistory(demande, oldStatus, DemandeStatus.EN_ATTENTE_INFO, "INFO_REQUISE",
-                "Informations complémentaires requises: " + comment, userAgent);
-
-        log.info("Demande d'informations envoyée pour la demande {}", demande.getReference());
+        User userAgent = agent;
+        addHistory(demande, null, "INFO_REQUISE",
+                "INFO_REQUISE", "Informations demandées par " + agent.getStructure().getOfficialName() +
+                        ": " + comment, userAgent);
 
         return mapToDTO(demande);
     }
 
     /**
-     * Valider un document individuel
+     * Valider un document
      */
     @Override
     @Transactional
     public Document validateDocument(Long documentId, Long agentId, String status, String comment) {
-        log.info("Validation du document ID: {} par l'agent ID: {} - Statut: {}", documentId, agentId, status);
+        log.info("Validation du document ID: {} par l'agent ID: {}", documentId, agentId);
 
         Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ValidationException("DOCUMENT_NOT_FOUND", "Document non trouvé avec l'ID: " + documentId));
+                .orElseThrow(() -> new ValidationException("DOCUMENT_NOT_FOUND", "Document non trouvé"));
 
         User agent = userRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé avec l'ID: " + agentId));
+                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
 
         DocumentStatus newStatus;
         try {
             newStatus = DocumentStatus.valueOf(status);
         } catch (IllegalArgumentException e) {
-            throw new ValidationException("INVALID_STATUS", "Statut de document invalide: " + status);
+            throw new ValidationException("INVALID_STATUS", "Statut invalide: " + status);
         }
 
         document.setStatus(newStatus);
@@ -301,69 +439,42 @@ public class ValidationServiceImpl implements ValidationService {
         document.setValidatedBy(agent);
 
         document = documentRepository.save(document);
-
         log.info("Document {} validé avec statut: {}", document.getFileName(), newStatus);
 
         return document;
     }
 
+    // ==================== MÉTHODES UTILITAIRES ====================
+
     /**
-     * Récupérer les statistiques de validation
+     * Vérifier si tous les validateurs obligatoires ont approuvé
      */
-    /*@Override
-    public ValidationSummaryDTO getValidationSummary() {
-        log.info("Récupération du résumé des validations");
+    private boolean isAllMandatoryValidatorsApproved(DemandeEnregistrement demande) {
+        List<DemandeValidateur> validateurs = demandeValidateurRepository.findByDemandeId(demande.getId());
 
-        List<DemandeEnregistrement> allDemandes = demandeRepository.findAll();
+        boolean allMandatoryApproved = validateurs.stream()
+                .filter(DemandeValidateur::getIsMandatory)
+                .allMatch(v -> v.getValidationStatus() == ValidationStatus.VALIDEE);
 
-        long totalDemandes = allDemandes.size();
-        long pendingDemandes = allDemandes.stream()
-                .filter(d -> d.getStatus() == DemandeStatus.SOUMISE)
-                .count();
-        long approvedDemandes = allDemandes.stream()
-                .filter(d -> d.getStatus() == DemandeStatus.VALIDEE)
-                .count();
-        long rejectedDemandes = allDemandes.stream()
-                .filter(d -> d.getStatus() == DemandeStatus.REJETEE)
-                .count();
-        long moreInfoDemandes = allDemandes.stream()
-                .filter(d -> d.getStatus() == DemandeStatus.EN_ATTENTE_INFO)
-                .count();
+        log.info("Tous validateurs obligatoires ont approuvé: {}", allMandatoryApproved);
+        return allMandatoryApproved;
+    }
 
-        // Statistiques par type de demande
-        long exportateurDemandes = allDemandes.stream()
-                .filter(d -> d.getTypeDemandeur() == TypeDemandeur.EXPORTATEUR)
-                .count();
-        long importateurDemandes = allDemandes.stream()
-                .filter(d -> d.getTypeDemandeur() == TypeDemandeur.IMPORTATEUR)
-                .count();
+    /**
+     * Vérifier si un validateur obligatoire a rejeté
+     */
+    private boolean hasMandatoryRejection(DemandeEnregistrement demande) {
+        List<DemandeValidateur> validateurs = demandeValidateurRepository.findByDemandeId(demande.getId());
 
-        // Statistiques par préfixe
-        long dossierConformite = allDemandes.stream()
-                .filter(d -> d.getReference() != null && d.getReference().startsWith("DOS-"))
-                .count();
-        long declarationProduits = allDemandes.stream()
-                .filter(d -> d.getReference() != null && d.getReference().startsWith("DEM-"))
-                .count();
-        long demandeImportation = allDemandes.stream()
-                .filter(d -> d.getReference() != null && d.getReference().startsWith("IMP-"))
-                .count();
+        boolean hasRejection = validateurs.stream()
+                .filter(DemandeValidateur::getIsMandatory)
+                .anyMatch(v -> v.getValidationStatus() == ValidationStatus.REJETEE);
 
-        return ValidationSummaryDTO.builder()
-                .totalDemandes(totalDemandes)
-                .pendingDemandes(pendingDemandes)
-                .approvedDemandes(approvedDemandes)
-                .rejectedDemandes(rejectedDemandes)
-                .moreInfoDemandes(moreInfoDemandes)
-                .exportateurDemandes(exportateurDemandes)
-                .importateurDemandes(importateurDemandes)
-                .dossierConformite(dossierConformite)
-                .declarationProduits(declarationProduits)
-                .demandeImportation(demandeImportation)
-                .build();
-    }*/
-
-    // ==================== MÉTHODES PRIVÉES ====================
+        if (hasRejection) {
+            log.warn("Un validateur obligatoire a rejeté la demande");
+        }
+        return hasRejection;
+    }
 
     private String generateAgrementNumber() {
         String year = String.valueOf(LocalDateTime.now().getYear());
@@ -371,24 +482,49 @@ public class ValidationServiceImpl implements ValidationService {
         return "AGR-" + year + "-" + random;
     }
 
-    private void addHistory(DemandeEnregistrement demande, DemandeStatus oldStatus,
-                            DemandeStatus newStatus, String action, String comment, User performedBy) {
-        com.tunisia.commerce.entity.DemandeHistory history =
-                com.tunisia.commerce.entity.DemandeHistory.builder()
-                        .demande(demande)
-                        .oldStatus(oldStatus)
-                        .newStatus(newStatus)
-                        .action(action)
-                        .comment(comment)
-                        .performedBy(performedBy)
-                        .performedAt(LocalDateTime.now())
-                        .build();
-
+    private void addHistory(DemandeEnregistrement demande, String oldStatus,
+                            String newStatus, String action, String comment, User performedBy) {
+        DemandeHistory history = DemandeHistory.builder()
+                .demande(demande)
+                .oldStatus(oldStatus != null ? DemandeStatus.valueOf(oldStatus) : null)
+                .newStatus(newStatus != null ? DemandeStatus.valueOf(newStatus) : null)
+                .action(action)
+                .comment(comment)
+                .performedBy(performedBy)
+                .performedAt(LocalDateTime.now())
+                .build();
         historyRepository.save(history);
     }
 
+    private void validatePendingDocumentsForDemande(Long demandeId, Long agentId,
+                                                    DocumentStatus targetStatus,
+                                                    String defaultComment) {
+        List<Document> pendingDocuments = documentRepository.findByDemandeIdAndStatus(
+                demandeId, DocumentStatus.EN_ATTENTE);
+
+        if (pendingDocuments.isEmpty()) {
+            log.info("Aucun document en attente pour la demande {}", demandeId);
+            return;
+        }
+
+        User agent = userRepository.findById(agentId)
+                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
+
+        for (Document doc : pendingDocuments) {
+            if (doc.getStatus() == DocumentStatus.EN_ATTENTE) {
+                doc.setStatus(targetStatus);
+                doc.setValidationComment(defaultComment);
+                doc.setValidatedAt(LocalDateTime.now());
+                doc.setValidatedBy(agent);
+                documentRepository.save(doc);
+                log.info("Document {} passé en statut {}", doc.getFileName(), targetStatus);
+            }
+        }
+    }
+
+    // ==================== MAPPING ====================
+
     private DemandeEnregistrementDTO mapToDTO(DemandeEnregistrement demande) {
-        // Récupérer le nom du demandeur à partir de l'entité
         String applicantName = "";
         String applicantType = "";
 
@@ -400,42 +536,6 @@ public class ValidationServiceImpl implements ValidationService {
             applicantType = "IMPORTATEUR";
         }
 
-        // Déterminer le préfixe pour déterminer le type de demande
-        String reference = demande.getReference();
-        String requestType = "REGISTRATION"; // DOS- par défaut
-        if (reference != null) {
-            if (reference.startsWith("DEM-")) {
-                requestType = "PRODUCT_DECLARATION";
-            } else if (reference.startsWith("IMP-")) {
-                requestType = "IMPORT";
-            }
-        }
-
-        // Récupérer les détails spécifiques pour les demandes d'importation
-        String invoiceNumber = null;
-        LocalDate invoiceDate = null;
-        Double amount = null;
-        String currency = null;
-        String incoterm = null;
-        String transportMode = null;
-        String loadingPort = null;
-        String dischargePort = null;
-        LocalDate arrivalDate = null;
-
-        if (demande instanceof DemandeImportateur) {
-            DemandeImportateur impDemande = (DemandeImportateur) demande;
-            invoiceNumber = impDemande.getInvoiceNumber();
-            invoiceDate = impDemande.getInvoiceDate();
-            amount = impDemande.getAmount();
-            currency = impDemande.getCurrency();
-            incoterm = impDemande.getIncoterm();
-            transportMode = impDemande.getTransportMode();
-            loadingPort = impDemande.getLoadingPort();
-            dischargePort = impDemande.getDischargePort();
-            arrivalDate = impDemande.getArrivalDate();
-        }
-
-        // Récupérer les produits
         List<ProduitDTO> products = new ArrayList<>();
         if (demande.getDemandeProduits() != null) {
             products = demande.getDemandeProduits().stream()
@@ -449,16 +549,11 @@ public class ValidationServiceImpl implements ValidationService {
                                 .productName(p.getProductName())
                                 .brandName(p.getBrandName())
                                 .originCountry(p.getOriginCountry())
-                                .commercialBrandName(p.getCommercialBrandName())
-                                .productState(p.getProductState())
-                                .annualQuantityValue(p.getAnnualQuantityValue())
-                                .annualQuantityUnit(p.getAnnualQuantityUnit())
                                 .build();
                     })
                     .collect(Collectors.toList());
         }
 
-        // Récupérer les documents
         List<DocumentDTO> documents = new ArrayList<>();
         if (demande.getId() != null) {
             List<Document> docs = documentRepository.findByDemandeId(demande.getId());
@@ -467,69 +562,35 @@ public class ValidationServiceImpl implements ValidationService {
                     .collect(Collectors.toList());
         }
 
-        // Construire le DTO
+        // Récupérer les statuts de validation individuels
+        List<Map<String, Object>> validationStatuses = new ArrayList<>();
+        if (demande.getId() != null) {
+            List<DemandeValidateur> validateurs = demandeValidateurRepository.findByDemandeId(demande.getId());
+            validationStatuses = validateurs.stream()
+                    .map(v -> {
+                        Map<String, Object> statusMap = new HashMap<>();
+                        statusMap.put("structureId", v.getStructure().getId());
+                        statusMap.put("structureName", v.getStructure().getOfficialName());
+                        statusMap.put("validationStatus", v.getValidationStatus().name());
+                        statusMap.put("isMandatory", v.getIsMandatory());
+                        statusMap.put("validationOrder", v.getValidationOrder());
+                        statusMap.put("comment", v.getValidationComment());
+                        statusMap.put("validatedAt", v.getValidatedAt());
+                        return statusMap;
+                    })
+                    .collect(Collectors.toList());
+        }
+
         return DemandeEnregistrementDTO.builder()
                 .id(demande.getId())
                 .reference(demande.getReference())
                 .status(demande.getStatus())
                 .submittedAt(demande.getSubmittedAt())
-                .paymentReference(demande.getPaymentReference())
-                .paymentAmount(demande.getPaymentAmount())
-                .paymentStatus(demande.getPaymentStatus())
-                .assignedTo(demande.getAssignedTo() != null ? demande.getAssignedTo().getId() : null)
-                .decisionDate(demande.getDecisionDate())
-                .decisionComment(demande.getDecisionComment())
-                .numeroAgrement(demande.getNumeroAgrement())
-                .dateAgrement(demande.getDateAgrement() != null ? demande.getDateAgrement().atStartOfDay() : null)
-                // Champs importation
-                .invoiceNumber(invoiceNumber)
-                .invoiceDate(invoiceDate)
-                .amount(amount)
-                .currency(currency)
-                .incoterm(incoterm)
-                .transportMode(transportMode)
-                .loadingPort(loadingPort)
-                .dischargePort(dischargePort)
-                .arrivalDate(arrivalDate)
-                // Lists
                 .products(products)
                 .documents(documents)
+                .validationStatuses(validationStatuses)  // Nouveau champ dans le DTO
                 .build();
     }
-
-    /*@Override
-    public org.springframework.core.io.Resource getDocumentFile(Long documentId, Long agentId) {
-        log.info("Récupération du fichier du document ID: {} pour l'agent ID: {}", documentId, agentId);
-
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ValidationException("DOCUMENT_NOT_FOUND", "Document non trouvé avec l'ID: " + documentId));
-
-        // Vérifier que l'agent a accès à ce document (optionnel)
-        // Vous pouvez ajouter des vérifications ici
-
-        try {
-            Path filePath = Paths.get(document.getFilePath());
-            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
-
-            if (resource.exists() && resource.isReadable()) {
-                return resource;
-            } else {
-                throw new ValidationException("FILE_NOT_FOUND", "Le fichier n'existe pas ou n'est pas accessible");
-            }
-        } catch (Exception e) {
-            throw new ValidationException("FILE_READ_ERROR", "Erreur lors de la lecture du fichier: " + e.getMessage());
-        }
-    }*/
-
-    /*@Override
-    public DocumentDTO getDocumentDTOById(Long documentId, Long agentId) {
-        log.info("Récupération des infos du document ID: {} pour l'agent ID: {}", documentId, agentId);
-
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ValidationException("DOCUMENT_NOT_FOUND", "Document non trouvé avec l'ID: " + documentId));
-
-        return convertToDocumentDTO(document);
-    }*/
 
     private DocumentDTO convertToDocumentDTO(Document document) {
         if (document == null) return null;
@@ -549,48 +610,5 @@ public class ValidationServiceImpl implements ValidationService {
                         document.getValidatedBy().getNom() + " " + document.getValidatedBy().getPrenom() : null)
                 .downloadUrl("/api/validation/documents/" + document.getId() + "/telecharger")
                 .build();
-    }
-
-    /**
-     * Valide tous les documents en attente pour une demande donnée
-     * @param demandeId ID de la demande
-     * @param agentId ID de l'agent qui effectue la validation
-     * @param targetStatus Statut à appliquer aux documents en attente
-     * @param defaultComment Commentaire par défaut
-     */
-    private void validatePendingDocumentsForDemande(Long demandeId, Long agentId,
-                                                    DocumentStatus targetStatus,
-                                                    String defaultComment) {
-        log.info("Validation automatique des documents en attente pour la demande {} vers le statut {}",
-                demandeId, targetStatus);
-
-        // 🔥 Récupérer UNIQUEMENT les documents EN_ATTENTE (PENDING)
-        List<Document> pendingDocuments = documentRepository.findByDemandeIdAndStatus(
-                demandeId, DocumentStatus.EN_ATTENTE);
-
-        if (pendingDocuments.isEmpty()) {
-            log.info("Aucun document en attente pour la demande {}", demandeId);
-            return;
-        }
-
-        User agent = userRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND",
-                        "Agent non trouvé avec l'ID: " + agentId));
-
-        for (Document doc : pendingDocuments) {
-            // 🔥 Vérifier que le document est toujours EN_ATTENTE avant de le modifier
-            if (doc.getStatus() == DocumentStatus.EN_ATTENTE) {
-                doc.setStatus(targetStatus);
-                doc.setValidationComment(defaultComment);
-                doc.setValidatedAt(LocalDateTime.now());
-                doc.setValidatedBy(agent);
-                documentRepository.save(doc);
-                log.info("Document {} (ID: {}) automatiquement passé en statut {}",
-                        doc.getFileName(), doc.getId(), targetStatus);
-            } else {
-                log.info("Document {} (ID: {}) déjà en statut {}, ignoré",
-                        doc.getFileName(), doc.getId(), doc.getStatus());
-            }
-        }
     }
 }

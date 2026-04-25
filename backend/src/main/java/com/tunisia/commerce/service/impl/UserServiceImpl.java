@@ -633,12 +633,14 @@ public class UserServiceImpl implements UserService {
         }else if(user instanceof InstanceValidation){
             InstanceValidation instanceValidation = (InstanceValidation) user;
             dto.setSlaTraitementJours(instanceValidation.getSlaTraitementJours());
+            dto.setStructureId(instanceValidation.getStructure().getId());
             dto.setStructureName(instanceValidation.getStructure().getOfficialName());
             dto.setStructureCode(instanceValidation.getStructure().getCode());
             dto.setStructureType(instanceValidation.getStructure().getType());
 
-
         }
+
+
 
         return dto;
     }
@@ -2050,6 +2052,7 @@ public class UserServiceImpl implements UserService {
         dto.setUpdatedAt(instance.getUpdatedAt());
 
         if (instance.getStructure() != null) {
+            dto.setStructureId(instance.getStructure().getId());
             dto.setStructureName(instance.getStructure().getOfficialName());
             dto.setStructureCode(instance.getStructure().getCode());
             dto.setStructureType(instance.getStructure().getType());

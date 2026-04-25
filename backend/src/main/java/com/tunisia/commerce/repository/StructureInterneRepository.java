@@ -12,8 +12,8 @@ import java.util.Optional;
 @Repository
 public interface StructureInterneRepository extends JpaRepository<StructureInterne, Long> {
 
-    Optional<StructureInterne> findByCode(String code);
-
+    Optional<StructureInterne> findByOfficialName(String name);
+    List<StructureInterne> findByOfficialNameContaining(String name);
     List<StructureInterne> findByIsActiveTrue();
 
     List<StructureInterne> findByType(StructureType type);

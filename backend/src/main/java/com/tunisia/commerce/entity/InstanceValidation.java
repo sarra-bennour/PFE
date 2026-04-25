@@ -6,6 +6,8 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "instances_validation")
@@ -50,6 +52,10 @@ public class InstanceValidation extends User {
     private LocalDateTime resetPasswordTokenExpiry;
     @Column(name = "last_password_change")
     private LocalDateTime lastPasswordChange;
+
+    @OneToMany(mappedBy = "instance", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<DemandeValidateur> demandesAValider = new ArrayList<>();
 
     @PostLoad
     protected void onLoad() {

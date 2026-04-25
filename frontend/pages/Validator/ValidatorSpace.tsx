@@ -6,7 +6,7 @@ import { useAuth } from '../../App';
 import Sidebar from '../../components/Sidebar';
 import InstructionModal, { ValidationRequest, RequestType, AttachedDocument } from './InstructionModal';
 import { Product } from '@/types/Product';
-import { ImportDetails } from '@/types/DemandeEnregistrement';
+import { ImportDetails, DemandeStatus } from '@/types/DemandeEnregistrement';
 import ValidatorProfile from './ValidatorProfile';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
@@ -39,46 +39,151 @@ const ValidatorSpace: React.FC = () => {
     { id: 'admin', label: 'Admin Panel', icon: 'fa-shield-halved', path: '/admin', roles: ['admin'] as any },
   ];
 
-  // Fetch all pending requests
-  const fetchRequests = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/validation/demandes`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { status: 'SOUMISE' }
-      });
-      
-      const demandesData = response.data.data || response.data || [];
-      const mappedRequests = demandesData.map((req: any) => mapBackendRequestToFrontend(req));
-      setRequests(mappedRequests);
-      
-      // Also fetch archived requests (non-pending)
-      const archivedResponse = await axios.get(`${API_BASE_URL}/validation/demandes`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { status: 'ALL' }
-      });
-      
-      const allData = archivedResponse.data.data || archivedResponse.data || [];
-      const allRequests = allData.map((req: any) => mapBackendRequestToFrontend(req));
-      const nonPending = allRequests.filter((req: ValidationRequest) => req.status !== 'PENDING');
-      setArchivedRequests(nonPending);
-      
+  interface BackendValidationStatus {
+  structureId: number;
+  structureName: string;
+  validationStatus: string;
+  isMandatory: boolean;
+  validationOrder: number;
+  comment?: string;
+  validatedAt?: string;
+}
 
-      console.log('📊 Toutes les demandes:', allData);
-      console.log('📊 Demandes non-pending:', nonPending);
-      console.log('📊 Archives par type:', {
-        REGISTRATION: nonPending.filter((r: ValidationRequest) => r.type === 'REGISTRATION').length,
-        PRODUCT_DECLARATION: nonPending.filter((r: ValidationRequest) => r.type === 'PRODUCT_DECLARATION').length,
-        IMPORT: nonPending.filter((r: ValidationRequest) => r.type === 'IMPORT').length
-      });
+interface BackendDemande {
+  id: number;
+  reference: string;
+  status: string;
+  payment_status: string;
+  submittedAt: string;
+  paymentAmount?: number;
+  applicantType?: string;
+  applicantName?: string;
+  documents?: any[];
+  products?: any[];
+  importDetails?: any;
+  validationStatuses?: BackendValidationStatus[];
+}
 
-    } catch (error) {
-      console.error('Error fetching requests:', error);
-    } finally {
+ const fetchRequests = async () => {
+  setLoading(true);
+  try {
+    console.log('========== FETCH REQUESTS DEBUG ==========');
+    
+    const token = localStorage.getItem('token');
+    console.log('1. Token présent:', !!token);
+    
+    // ✅ Récupérer l'utilisateur connecté depuis le contexte
+    console.log('2. User depuis contexte:', user);
+    console.log('   - user?.structureId:', user?.structureId);
+    console.log('   - user?.role:', user?.role);
+    
+    if (!user?.structureId) {
+      console.warn('⚠️ Utilisateur sans structureId, impossible de filtrer');
+      console.log('   - user complet:', JSON.stringify(user, null, 2));
       setLoading(false);
+      return;
     }
-  };
+    
+    console.log('3. Appel API /validation/demandes...');
+    const response = await axios.get(`${API_BASE_URL}/validation/demandes`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { status: 'ALL' }
+    });
+    
+    console.log('4. Réponse API - Status:', response.status);
+    console.log('5. Réponse API - Data complète:', response.data);
+    
+    const demandesData: BackendDemande[] = response.data.data || response.data || [];
+    console.log(`6. ${demandesData.length} demandes reçues du backend`);
+    
+    // Afficher chaque demande reçue
+    demandesData.forEach((req: BackendDemande, index: number) => {
+      console.log(`\n--- Demande brute ${index + 1}: ${req.reference} ---`);
+      console.log('  - status:', req.status);
+      console.log('  - payment_status:', req.payment_status);
+      console.log('  - validationStatuses:', req.validationStatuses);
+      console.log('  - Type de validationStatuses:', typeof req.validationStatuses);
+      console.log('  - Est un array?', Array.isArray(req.validationStatuses));
+      
+      if (req.validationStatuses && req.validationStatuses.length > 0) {
+        req.validationStatuses.forEach((vs: BackendValidationStatus, vIndex: number) => {
+          console.log(`    validationStatus ${vIndex + 1}:`, {
+            structureId: vs.structureId,
+            validationStatus: vs.validationStatus,
+            structureName: vs.structureName
+          });
+        });
+      }
+    });
+    
+    console.log('\n7. Mapping des demandes vers le format frontend...');
+    const mappedRequests: ValidationRequest[] = demandesData.map((req: BackendDemande) => {
+      const mapped = mapBackendRequestToFrontend(req);
+      console.log(`  - ${req.reference} -> ${mapped.reference}, validationStatuses:`, mapped.validationStatuses);
+      return mapped;
+    });
+    
+    console.log(`\n8. ${mappedRequests.length} demandes après mapping`);
+    
+    // ✅ Filtrer dynamiquement selon la structure de l'utilisateur
+    console.log(`\n9. Filtrage avec structureId: ${user.structureId}`);
+    
+    const pendingRequests = mappedRequests.filter((req: ValidationRequest) => {
+      console.log(`\n  Demande: ${req.reference}`);
+      console.log(`    - validationStatuses:`, req.validationStatuses);
+      
+      if (!req.validationStatuses || req.validationStatuses.length === 0) {
+        console.log(`    - ❌ Pas de validationStatuses`);
+        return false;
+      }
+      
+      const myValidation = req.validationStatuses.find(
+        (v: BackendValidationStatus) => v.structureId === user.structureId
+      );
+      
+      console.log(`    - Ma validation trouvée:`, myValidation);
+      console.log(`    - structureId match: ${myValidation?.structureId === user.structureId}`);
+      console.log(`    - validationStatus: ${myValidation?.validationStatus}`);
+      console.log(`    - EN_ATTENTE? ${myValidation?.validationStatus === 'EN_ATTENTE'}`);
+      
+      return myValidation?.validationStatus === 'EN_ATTENTE';
+    });
+    
+    const archivedRequests_filtered = mappedRequests.filter((req: ValidationRequest) => {
+      const myValidation = req.validationStatuses?.find(
+        (v: BackendValidationStatus) => v.structureId === user.structureId
+      );
+      return myValidation?.validationStatus === 'VALIDEE' || 
+             myValidation?.validationStatus === 'REJETEE';
+    });
+    
+    console.log(`\n10. RÉSULTAT FINAL:`);
+    console.log(`    - Demandes en attente: ${pendingRequests.length}`);
+    pendingRequests.forEach((req: ValidationRequest) => console.log(`      * ${req.reference}`));
+    console.log(`    - Demandes archivées: ${archivedRequests_filtered.length}`);
+    archivedRequests_filtered.forEach((req: ValidationRequest) => console.log(`      * ${req.reference}`));
+    
+    setRequests(pendingRequests);
+    setArchivedRequests(archivedRequests_filtered);
+    
+  } catch (error) {
+    console.error('❌ Error fetching requests:', error);
+    if (axios.isAxiosError(error)) {
+      console.error('   - Status:', error.response?.status);
+      console.error('   - Data:', error.response?.data);
+    }
+  } finally {
+    setLoading(false);
+    console.log('========== FIN FETCH REQUESTS ==========\n');
+  }
+};
+  
+  // Appeler fetchRequests au chargement et quand l'utilisateur change
+  useEffect(() => {
+    if (user?.id) {
+      fetchRequests();
+    }
+  }, [user]);
 
   // Map backend data to frontend format
   const mapBackendRequestToFrontend = (backendReq: any): ValidationRequest => {
@@ -94,6 +199,8 @@ const ValidatorSpace: React.FC = () => {
   } else if (backendReq.reference?.startsWith('DOS-')) {
     requestType = 'REGISTRATION';
   }
+
+  console.log(`📝 Type détecté pour ${backendReq.reference}: ${requestType}`);
   
   // Mapper les documents
   const documents: AttachedDocument[] = (backendReq.documents || []).map((doc: any) => ({
@@ -147,10 +254,11 @@ const ValidatorSpace: React.FC = () => {
     applicantType: isImportateur ? 'IMPORTATEUR' : 'EXPORTATEUR',
     applicantName: backendReq.applicantName || (isImportateur ? 'Importateur' : 'Exportateur'),
     type: requestType,
-    status: mapBackendStatus(backendReq.status),
+    status:backendReq.status,
     documents,
     products: products.length > 0 ? products : undefined,
-    importDetails
+    importDetails,
+    validationStatuses: backendReq.validationStatuses || []
   };
 };
   
@@ -177,7 +285,7 @@ const ValidatorSpace: React.FC = () => {
     fetchRequests();
   }, []);
 
-  const handleFinalDecision = (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => {
+  const handleFinalDecision = (decision: DemandeStatus, updatedRequest: ValidationRequest, comment?: string) => {
   console.log('📝 [ValidatorSpace] Mise à jour UI après décision:', { decision, requestId: updatedRequest.id });
   
   // 🔥 NE PAS FAIRE D'APPEL API ICI - Le modal a déjà fait l'appel
@@ -186,17 +294,19 @@ const ValidatorSpace: React.FC = () => {
   setRequests(prev => prev.filter(req => req.id !== updatedRequest.id));
   setArchivedRequests(prev => [...prev, { 
     ...updatedRequest, 
-    status: decision === 'APPROVED' ? 'APPROVED' : decision === 'REJECTED' ? 'REJECTED' : 'MORE_INFO' 
+    status: decision
   }]);
   setSelectedRequest(null);
 };
 
   const filteredRequests = requests.filter(r => {
-    if (inboxTab === 'REGISTRATION') return r.type === 'REGISTRATION';
-    if (inboxTab === 'PRODUCT_DECLARATION') return r.type === 'PRODUCT_DECLARATION';
-    if (inboxTab === 'IMPORT') return r.type === 'IMPORT';
-    return true;
-  });
+  console.log(`****Comparaison: r.type = "${r.type}", inboxTab = "${inboxTab}", égal? ${r.type === inboxTab}`);
+  if (inboxTab === 'REGISTRATION') return r.type === 'REGISTRATION';
+  if (inboxTab === 'PRODUCT_DECLARATION') return r.type === 'PRODUCT_DECLARATION';
+  if (inboxTab === 'IMPORT') return r.type === 'IMPORT';
+  return true;
+});
+  
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -272,16 +382,30 @@ const ValidatorSpace: React.FC = () => {
 
             <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
               <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
-                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
-                  Inbox : {inboxTab === 'REGISTRATION' ? 'Enregistrements' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations Produits' : 'Importations'}
-                </h3>
-                <button 
-                  onClick={fetchRequests}
-                  className="px-4 py-2 bg-slate-100 rounded-xl text-[8px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-200 transition-all"
-                >
-                  <i className="fas fa-sync-alt mr-1"></i> Rafraîchir
-                </button>
-              </div>
+  <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
+    Inbox : {inboxTab === 'REGISTRATION' ? 'Enregistrements' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations Produits' : 'Importations'}
+  </h3>
+  <div className="flex gap-2">
+    <button 
+      onClick={() => {
+        console.log('=== RÉPARTITION DES DEMANDES ===');
+        console.log('requests (en attente):', requests.map(r => ({ ref: r.reference, status: r.status, type: r.type })));
+        console.log('archivedRequests (archives):', archivedRequests.map(r => ({ ref: r.reference, status: r.status, type: r.type })));
+        console.log('onglet actif:', inboxTab);
+        console.log('Toutes les requests:', requests);
+      }}
+      className="px-4 py-2 bg-blue-500 text-white rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
+    >
+      <i className="fas fa-bug mr-1"></i> DEBUG
+    </button>
+    <button 
+      onClick={fetchRequests}
+      className="px-4 py-2 bg-slate-100 rounded-xl text-[8px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-200 transition-all"
+    >
+      <i className="fas fa-sync-alt mr-1"></i> Rafraîchir
+    </button>
+  </div>
+</div>
               
               <div className="overflow-x-auto">
                 {loading ? (
@@ -343,7 +467,7 @@ const ValidatorSpace: React.FC = () => {
               request={selectedRequest}
               onClose={() => setSelectedRequest(null)}
               onDecision={handleFinalDecision}
-              readOnly={selectedRequest.status !== 'PENDING'}
+              readOnly={selectedRequest.status === DemandeStatus.VALIDEE || selectedRequest.status === DemandeStatus.REJETEE}
             />
           )}
         </AnimatePresence>
@@ -401,10 +525,10 @@ const ValidatorSpace: React.FC = () => {
                 <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter">Historique des Décisions</h3>
                 <div className="flex gap-2">
                   <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[8px] font-black uppercase tracking-widest border border-emerald-100">
-                    {archivedRequests.filter(r => r.status === 'APPROVED').length} Validés
+                    {archivedRequests.filter(r => r.status === DemandeStatus.VALIDEE).length} Validés
                   </span>
                   <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-[8px] font-black uppercase tracking-widest border border-red-100">
-                    {archivedRequests.filter(r => r.status === 'REJECTED').length} Rejetés
+                    {archivedRequests.filter(r => r.status === DemandeStatus.REJETEE).length} Rejetés
                   </span>
                 </div>
               </div>
@@ -428,12 +552,12 @@ const ValidatorSpace: React.FC = () => {
                           <td className="px-8 py-6">
                             <div className="flex items-center gap-3">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] ${
-                                req.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-500' : 
-                                req.status === 'REJECTED' ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'
+                                req.status === DemandeStatus.VALIDEE ? 'bg-emerald-50 text-emerald-500' : 
+                                req.status === DemandeStatus.REJETEE ? 'bg-red-50 text-red-500' : 'bg-amber-50 text-amber-500'
                               }`}>
                                 <i className={`fas ${
-                                  req.status === 'APPROVED' ? 'fa-check-circle' : 
-                                  req.status === 'REJECTED' ? 'fa-times-circle' : 'fa-question-circle'
+                                  req.status === DemandeStatus.VALIDEE ? 'fa-check-circle' : 
+                                  req.status === DemandeStatus.REJETEE ? 'fa-times-circle' : 'fa-question-circle'
                                 }`}></i>
                               </div>
                               <span className="font-black text-slate-900 italic tracking-tighter">{req.reference}</span>
@@ -446,12 +570,12 @@ const ValidatorSpace: React.FC = () => {
                           <td className="px-8 py-6 text-[10px] font-bold text-slate-500">{req.submittedAt}</td>
                           <td className="px-8 py-6">
                             <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-md border ${
-                              req.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
-                              req.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100' : 
+                              req.status === DemandeStatus.VALIDEE ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 
+                              req.status === DemandeStatus.REJETEE ? 'bg-red-50 text-red-600 border-red-100' : 
                               'bg-amber-50 text-amber-600 border-amber-100'
                             }`}>
-                              {req.status === 'APPROVED' ? 'Dossier Validé' : 
-                              req.status === 'REJECTED' ? 'Dossier Rejeté' : 'Plus d\'infos'}
+                              {req.status === DemandeStatus.VALIDEE ? 'Dossier Validé' : 
+                              req.status === DemandeStatus.REJETEE ? 'Dossier Rejeté' : 'Plus d\'infos'}
                             </span>
                           </td>
                           <td className="px-8 py-6">

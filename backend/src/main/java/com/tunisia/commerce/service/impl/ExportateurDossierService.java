@@ -37,6 +37,7 @@ public class ExportateurDossierService {
     private final ExportateurRepository exportateurRepository;
     private final DocumentRepository documentRepository;
     private final ProductRepository productRepository;
+    private final DemandeRoutingService demandeRoutingService;
     private final EmailService emailService;
 
     // Dossier de stockage des fichiers
@@ -196,6 +197,15 @@ public class ExportateurDossierService {
         demande.setSubmittedAt(LocalDateTime.now());
 
         demande = demandeRepository.save(demande);
+
+        try {
+            logger.info("🔄 Assignation des validateurs pour la demande d'enregistrement {}"+ demande.getReference());
+            demandeRoutingService.assignDemandeToValidators(demande);
+            logger.info("✅ Validateurs assignés avec succès pour la demande {}"+ demande.getReference());
+        } catch (Exception e) {
+            logger.severe("❌ Erreur lors de l'assignation des validateurs: {}"+ e.getMessage()+" "+ e);
+            // Ne pas bloquer la soumission
+        }
 
         return demande;
     }

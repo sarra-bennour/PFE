@@ -1,13 +1,16 @@
 package com.tunisia.commerce.controller;
 
+import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.validation.DecisionRequest;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.dto.validation.DocumentValidationRequest;
 import com.tunisia.commerce.dto.validation.ValidationSummaryDTO;
-import com.tunisia.commerce.entity.Document;
-import com.tunisia.commerce.entity.User;
+import com.tunisia.commerce.entity.*;
+import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.exception.ValidationException;
+import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
+import com.tunisia.commerce.repository.DemandeValidateurRepository;
 import com.tunisia.commerce.repository.UserRepository;
 import com.tunisia.commerce.service.ValidationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,42 +39,81 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class ValidationController {
 
+    private final JwtUtil jwtUtil;
     private final ValidationService validationService;
     private final UserRepository userRepository;
+    private final DemandeEnregistrementRepository demandeRepository;
+    private final DemandeValidateurRepository demandeValidateurRepository;
 
     // ==================== ENDPOINTS POUR LES DEMANDES ====================
 
+    /**
+     * Récupérer les demandes (ADMIN voit tout, INSTANCE voit ses demandes)
+     */
     @GetMapping("/demandes")
     @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Récupérer toutes les demandes", description = "Retourne la liste de toutes les demandes avec filtres optionnels")
+    @Operation(summary = "Récupérer les demandes",
+            description = "ADMIN: toutes les demandes | INSTANCE: uniquement ses demandes assignées")
     public ResponseEntity<?> getAllDemandes(
-            @RequestParam(required = false) @Parameter(description = "Type de demandeur (EXPORTATEUR, IMPORTATEUR, ALL)") String type,
-            @RequestParam(required = false) @Parameter(description = "Statut de la demande (SOUMISE, VALIDEE, REJETEE, EN_ATTENTE_INFO, ALL)") String status) {
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status,
+            @RequestHeader("Authorization") String authHeader) {
 
-        log.info("========== RÉCUPÉRATION TOUTES LES DEMANDES ==========");
+        log.info("========== RÉCUPÉRATION DES DEMANDES ==========");
         log.info("Type: {}, Status: {}", type, status);
 
         try {
-            List<DemandeEnregistrementDTO> demandes = validationService.getAllDemandes(type, status);
-            log.info("Nombre de demandes trouvées: {}", demandes.size());
-            System.out.println("***demandes"+demandes);
+            String token = extractToken(authHeader);
+            String email = jwtUtil.extractUsername(token);
+
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+            List<DemandeEnregistrementDTO> demandes;
+
+            // 🔥 DIFFÉRENCIER SELON LE RÔLE
+            if (user.getRole() == UserRole.ADMIN) {
+                // ADMIN : voit toutes les demandes
+                log.info("👑 Accès ADMIN - Toutes les demandes");
+                demandes = validationService.getAllDemandes(type, status);
+
+            } else if (user.getRole() == UserRole.INSTANCE_VALIDATION) {
+                // INSTANCE : voit uniquement ses demandes assignées
+                log.info("👤 Accès INSTANCE - Demandes assignées à l'instance");
+                InstanceValidation instance = (InstanceValidation) user;
+                demandes = validationService.getDemandesByInstance(instance.getId(), type, status);
+
+            } else {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "success", false,
+                        "error", "ACCES_DENIED",
+                        "message", "Rôle non autorisé pour accéder à cette ressource"
+                ));
+            }
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("data", demandes);
             response.put("count", demandes.size());
 
+            // Ajouter des statistiques supplémentaires pour l'instance
+            if (user.getRole() == UserRole.INSTANCE_VALIDATION) {
+                InstanceValidation instance = (InstanceValidation) user;
+                long pendingCount = validationService.countPendingDemandesByInstance(instance.getId());
+                response.put("pendingCount", pendingCount);
+            }
+
             return ResponseEntity.ok(response);
+
         } catch (Exception e) {
             log.error("Erreur lors de la récupération des demandes: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "RETRIEVAL_FAILED");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "RETRIEVAL_FAILED",
+                    "message", e.getMessage()
+            ));
         }
     }
-
 
     // ==================== ENDPOINTS POUR LES DÉCISIONS ====================
 
@@ -85,8 +127,28 @@ public class ValidationController {
         log.info("========== APPROBATION DEMANDE ID: {} ==========", id);
 
         try {
-            Long agentId = getCurrentAgentId();  // 🔥 UTILISER LA NOUVELLE MÉTHODE
+            Long agentId = getCurrentAgentId();
+            log.info("Agent ID qui valide: {}", agentId);
+
             String comment = request != null ? request.getComment() : null;
+            log.info("Commentaire: {}", comment);
+
+            // 🔥 Vérifier si la demande existe
+            DemandeEnregistrement demandeTEST = demandeRepository.findById(id).orElse(null);
+            log.info("Demande trouvée: ID={}, Référence={}, Statut={}",
+                    demandeTEST != null ? demandeTEST.getId() : "null",
+                    demandeTEST != null ? demandeTEST.getReference() : "null",
+                    demandeTEST != null ? demandeTEST.getStatus() : "null");
+
+            // 🔥 Vérifier si l'agent a une validation assignée
+            DemandeValidateur validation = demandeValidateurRepository
+                    .findByDemandeIdAndInstanceId(id, agentId).orElse(null);
+            log.info("Validation assignée: {}", validation != null ? "OUI" : "NON");
+
+            if (validation != null) {
+                log.info("Statut de la validation: {}", validation.getValidationStatus());
+                log.info("Structure: {}", validation.getStructure().getOfficialName());
+            }
 
             DemandeEnregistrementDTO demande = validationService.approveDemande(id, agentId, comment);
 
@@ -211,32 +273,6 @@ public class ValidationController {
         }
     }
 
-    // ==================== ENDPOINTS POUR LES STATISTIQUES ====================
-
-    /*@GetMapping("/summary")
-    @PreAuthorize("hasRole('INSTANCE_VALIDATION') or hasRole('ADMIN')")
-    @Operation(summary = "Résumé des validations", description = "Retourne les statistiques globales des validations")
-    public ResponseEntity<?> getValidationSummary() {
-
-        log.info("========== RÉCUPÉRATION DU RÉSUMÉ DES VALIDATIONS ==========");
-
-        try {
-            ValidationSummaryDTO summary = validationService.getValidationSummary();
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("data", summary);
-
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Erreur lors de la récupération du résumé: {}", e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("success", "false");
-            errorResponse.put("error", "SUMMARY_FAILED");
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }*/
 
     // ==================== MÉTHODES PRIVÉES ====================
 
@@ -263,5 +299,12 @@ public class ValidationController {
         log.info("Agent trouvé: ID={}, Nom={}, Rôle={}", user.getId(), user.getNom(), user.getRole());
 
         return user.getId();
+    }
+
+    private String extractToken(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("Token d'authentification manquant ou invalide");
+        }
+        return authHeader.substring(7);
     }
 }

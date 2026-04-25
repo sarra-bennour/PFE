@@ -44,9 +44,9 @@ public class DemandeEnregistrement {
     @Builder.Default
     private PaymentStatus paymentStatus = PaymentStatus.EN_ATTENTE;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    /*@ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to_id")
-    private InstanceValidation assignedTo;
+    private InstanceValidation assignedTo;*/
 
     @Column(name = "decision_date")
     private LocalDateTime decisionDate;
@@ -110,5 +110,10 @@ public class DemandeEnregistrement {
     @JoinColumn(name = "importateur_id")
     @ToString.Exclude
     private ImportateurTunisien importateur;
+
+    @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    @ToString.Exclude
+    private List<DemandeValidateur> validateurs = new ArrayList<>();
 
 }

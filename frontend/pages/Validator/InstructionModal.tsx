@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import axios from 'axios';
 import { Product } from '@/types/Product';
-import { ImportDetails } from '@/types/DemandeEnregistrement';
+import { ImportDetails, DemandeStatus } from '@/types/DemandeEnregistrement';
 
 export type DocStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'NOT_SURE';
 
@@ -25,17 +25,18 @@ export interface ValidationRequest {
   applicantType: 'EXPORTATEUR' | 'IMPORTATEUR';
   applicantName: string;
   type: RequestType;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'MORE_INFO';
+  status: DemandeStatus;
   decisionComment?: string;
   documents: AttachedDocument[];
   products?: Product[];
   importDetails?: ImportDetails;
+  validationStatuses?: any;
 }
 
 interface InstructionModalProps {
   request: ValidationRequest;
   onClose: () => void;
-  onDecision: (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, comment?: string) => void;
+  onDecision: (decision: DemandeStatus, updatedRequest: ValidationRequest, comment?: string) => void;
   readOnly?: boolean;
 }
 
@@ -47,7 +48,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   const [zoom, setZoom] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
   const [decisionComment, setDecisionComment] = React.useState('');
-  const [confirmationDecision, setConfirmationDecision] = React.useState<'APPROVED' | 'REJECTED' | 'MORE_INFO' | null>(null);
+  const [confirmationDecision, setConfirmationDecision] = React.useState<DemandeStatus| null>(null);
   
   const isSubmitting = React.useRef(false);
   let callCounter = 0;
@@ -97,9 +98,9 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
     const anyRejected = localRequest.documents.some(d => d.status === 'REJECTED');
     const anyNotSure = localRequest.documents.some(d => d.status === 'NOT_SURE');
 
-    if (allAccepted) return 'APPROVED';
-    if (anyNotSure) return 'MORE_INFO';
-    if (anyRejected) return 'REJECTED';
+    if (allAccepted) return DemandeStatus.VALIDEE;
+    if (anyNotSure) return DemandeStatus.EN_ATTENTE_INFO;
+    if (anyRejected) return DemandeStatus.REJETEE;
     return null;
   };
 
@@ -109,18 +110,18 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   const hasNotSure = localRequest.documents.some(d => d.status === 'NOT_SURE');
   const allAccepted = localRequest.documents.every(d => d.status === 'ACCEPTED');
 
-  let activeButton: 'APPROVED' | 'REJECTED' | 'MORE_INFO' | null = null;
+  let activeButton: DemandeStatus | null = null;
   if (allDocumentsReviewed) {
     if (hasRejected) {
-      activeButton = 'REJECTED';
+      activeButton = DemandeStatus.REJETEE;
     } else if (hasNotSure) {
-      activeButton = 'MORE_INFO';
+      activeButton = DemandeStatus.EN_ATTENTE_INFO;
     } else if (allAccepted) {
-      activeButton = 'APPROVED';
+      activeButton = DemandeStatus.VALIDEE;
     }
   }
 
-  const handleDecisionClick = (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO') => {
+  const handleDecisionClick = (decision: DemandeStatus) => {
     if (loading || isSubmitting.current) return;
     setConfirmationDecision(decision);
   };
@@ -203,14 +204,15 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   }
 };
 
-  const handleFinalDecision = async (decision: 'APPROVED' | 'REJECTED' | 'MORE_INFO', updatedRequest: ValidationRequest, callId?: number) => {
+
+  const handleFinalDecision = async (decision: DemandeStatus, updatedRequest: ValidationRequest, callId?: number) => {
     try {
       const token = localStorage.getItem('token');
       let endpoint = '';
       
-      if (decision === 'APPROVED') {
+      if (decision === DemandeStatus.VALIDEE) {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/approve`;
-      } else if (decision === 'REJECTED') {
+      } else if (decision === DemandeStatus.REJETEE) {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/reject`;
       } else {
         endpoint = `${API_BASE_URL}/validation/demandes/${request.id}/request-info`;
@@ -514,19 +516,19 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
             </div>
             {readOnly ? (
               <span className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                localRequest.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                localRequest.status === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100' :
+                localRequest.status === 'VALIDEE' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                localRequest.status === 'REJETEE' ? 'bg-red-50 text-red-600 border-red-100' :
                 'bg-amber-50 text-amber-600 border-amber-100'
               }`}>
-                {localRequest.status === 'APPROVED' ? 'Demande Acceptée' : localRequest.status === 'REJECTED' ? 'Demande Rejetée' : 'Compléments requis'}
+                {localRequest.status === 'VALIDEE' ? 'Demande Acceptée' : localRequest.status === 'REJETEE' ? 'Demande Rejetée' : 'Compléments requis'}
               </span>
             ) : recommendation ? (
               <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                recommendation === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                recommendation === 'REJECTED' ? 'bg-red-50 text-red-600 border-red-100' :
+                recommendation === DemandeStatus.VALIDEE ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                recommendation === DemandeStatus.REJETEE ? 'bg-red-50 text-red-600 border-red-100' :
                 'bg-amber-50 text-amber-600 border-amber-100'
               }`}>
-                {recommendation === 'APPROVED' ? 'Accepter' : recommendation === 'REJECTED' ? 'Rejeter' : 'Plus d\'infos'}
+                {recommendation === DemandeStatus.VALIDEE ? 'Accepter' : recommendation === DemandeStatus.REJETEE ? 'Rejeter' : 'Plus d\'infos'}
               </span>
             ) : (
               <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">En attente de revue...</span>
@@ -536,22 +538,22 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
           {!readOnly && (
             <div className="flex gap-4">
               <button 
-                onClick={() => handleDecisionClick('MORE_INFO')}
-                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'MORE_INFO')}
+                onClick={() => handleDecisionClick(DemandeStatus.EN_ATTENTE_INFO)}
+                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== DemandeStatus.EN_ATTENTE_INFO)}
                 className={`px-8 py-3 bg-white border-2 border-amber-500 text-amber-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {loading ? 'Traitement...' : 'Demander plus d\'infos'}
               </button>
               <button 
-                onClick={() => handleDecisionClick('REJECTED')}
-                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'REJECTED')}
+                onClick={() => handleDecisionClick(DemandeStatus.REJETEE)}
+                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== DemandeStatus.REJETEE)}
                 className={`px-8 py-3 bg-white border-2 border-tunisia-red text-tunisia-red rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {loading ? 'Traitement...' : 'Rejeter Dossier'}
               </button>
               <button 
-                onClick={() => handleDecisionClick('APPROVED')}
-                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== 'APPROVED')}
+                onClick={() => handleDecisionClick(DemandeStatus.VALIDEE)}
+                disabled={loading || isSubmitting.current || (allDocumentsReviewed && activeButton !== DemandeStatus.VALIDEE)}
                 className={`px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {loading ? 'Traitement...' : 'Valider Dossier'}
@@ -751,13 +753,13 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
               className="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl text-center space-y-8"
             >
               <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto text-3xl ${
-                confirmationDecision === 'APPROVED' ? 'bg-emerald-50 text-emerald-500' :
-                confirmationDecision === 'REJECTED' ? 'bg-red-50 text-tunisia-red' :
+                confirmationDecision === DemandeStatus.VALIDEE ? 'bg-emerald-50 text-emerald-500' :
+                confirmationDecision === DemandeStatus.REJETEE ? 'bg-red-50 text-tunisia-red' :
                 'bg-amber-50 text-amber-500'
               }`}>
                 <i className={`fas ${
-                  confirmationDecision === 'APPROVED' ? 'fa-check-circle' :
-                  confirmationDecision === 'REJECTED' ? 'fa-times-circle' :
+                  confirmationDecision === DemandeStatus.VALIDEE ? 'fa-check-circle' :
+                  confirmationDecision === DemandeStatus.REJETEE ? 'fa-times-circle' :
                   'fa-question-circle'
                 }`}></i>
               </div>
@@ -771,11 +773,11 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                   <span className="text-slate-900">
                     {!allDocumentsReviewed ? (
                       <>Si vous continuez, tous les documents en attente seront 
-                      {confirmationDecision === 'APPROVED' ? ' ACCEPTÉS' : 
-                       confirmationDecision === 'REJECTED' ? ' REJETÉS' : 
+                      {confirmationDecision === DemandeStatus.VALIDEE ? ' ACCEPTÉS' : 
+                       confirmationDecision === DemandeStatus.REJETEE ? ' REJETÉS' : 
                        ' marqués comme NÉCESSITANT PLUS D\'INFOS'}.</>
                     ) : (
-                      <>Voulez-vous vraiment {confirmationDecision === 'APPROVED' ? 'accepter' : confirmationDecision === 'REJECTED' ? 'rejeter' : 'demander plus d\'informations pour'} ce dossier ?</>
+                      <>Voulez-vous vraiment {confirmationDecision === DemandeStatus.VALIDEE ? 'accepter' : confirmationDecision === DemandeStatus.REJETEE ? 'rejeter' : 'demander plus d\'informations pour'} ce dossier ?</>
                     )}
                   </span>
                 </p>
@@ -786,12 +788,12 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                   onClick={confirmDecision}
                   disabled={loading || isSubmitting.current}
                   className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all ${
-                    confirmationDecision === 'APPROVED' ? 'bg-emerald-500 hover:bg-emerald-600' :
-                    confirmationDecision === 'REJECTED' ? 'bg-tunisia-red hover:bg-red-600' :
+                    confirmationDecision === DemandeStatus.VALIDEE ? 'bg-emerald-500 hover:bg-emerald-600' :
+                    confirmationDecision === DemandeStatus.REJETEE ? 'bg-tunisia-red hover:bg-red-600' :
                     'bg-amber-500 hover:bg-amber-600'
                   } disabled:opacity-50`}
                 >
-                  {loading ? 'Traitement en cours...' : `Confirmer et ${confirmationDecision === 'APPROVED' ? 'Accepter' : confirmationDecision === 'REJECTED' ? 'Rejeter' : 'Demander plus d\'infos'}`}
+                  {loading ? 'Traitement en cours...' : `Confirmer et ${confirmationDecision === DemandeStatus.VALIDEE ? 'Accepter' : confirmationDecision === DemandeStatus.REJETEE ? 'Rejeter' : 'Demander plus d\'infos'}`}
                 </button>
                 <button 
                   onClick={() => setConfirmationDecision(null)}

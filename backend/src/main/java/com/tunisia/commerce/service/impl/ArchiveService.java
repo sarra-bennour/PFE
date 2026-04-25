@@ -273,11 +273,6 @@ public class ArchiveService {
                     .importateurEmail(demande.getImportateur().getEmail());
         }
 
-        // Assignation
-        if (demande.getAssignedTo() != null) {
-            builder.assignedTo(demande.getAssignedTo().getPrenom() + " " + demande.getAssignedTo().getNom());
-        }
-
         return builder.build();
     }
 }

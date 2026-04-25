@@ -86,12 +86,6 @@ public class AdminServiceImpl {
         dto.setPaymentAmount(demande.getPaymentAmount());
         dto.setPaymentStatus(demande.getPaymentStatus());
 
-        // Assignation
-        if (demande.getAssignedTo() != null) {
-            dto.setAssignedToId(demande.getAssignedTo().getId());
-            dto.setAssignedToName(demande.getAssignedTo().getNom() + " " + demande.getAssignedTo().getPrenom());
-        }
-
         // Décision
         dto.setDecisionDate(demande.getDecisionDate());
         dto.setDecisionComment(demande.getDecisionComment());

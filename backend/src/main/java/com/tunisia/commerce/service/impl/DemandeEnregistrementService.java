@@ -35,6 +35,7 @@ public class DemandeEnregistrementService {
     private final DemandeHistoryRepository historyRepository;
     private final UserRepository userRepository;
     private final DemandeProduitRepository demandeProduitRepository;
+    private final DemandeRoutingService demandeRoutingService;
 
     private static final String REFERENCE_PREFIX = "DEC";
     private static final String UPLOAD_DIR = "uploads/produits/";
@@ -632,14 +633,14 @@ public class DemandeEnregistrementService {
                 throw ProductDeclarationException.invalidDemandeStatusForSubmission(demande.getStatus());
             }
 
-            // Vérifier que tous les documents obligatoires sont présents et uploadés
+            // Vérifier que tous les documents obligatoires sont présents
             try {
                 validateRequiredDocuments(demande);
             } catch (RuntimeException e) {
                 throw ProductDeclarationException.missingRequiredDocuments(e.getMessage());
             }
 
-            // Vérifier la limite de demandes soumises (non validées)
+            // Vérifier la limite de demandes soumises
             long submittedDemandesCount = demandeRepository.countByExportateurIdAndStatusIn(
                     userId,
                     List.of(DemandeStatus.SOUMISE)
@@ -655,7 +656,17 @@ public class DemandeEnregistrementService {
             demande.setStatus(DemandeStatus.SOUMISE);
             demande.setSubmittedAt(LocalDateTime.now());
 
-            demande = demandeRepository.save(demande);
+            demande = demandeRepository.save(demande);  // ✅ 1. Sauvegarde de la demande
+
+
+            // ✅ 2. AJOUTER ICI - Après la sauvegarde et avant l'historique
+            // Assigner les validateurs via le routage
+            try {
+                demandeRoutingService.assignDemandeToValidators(demande);
+                log.info("✅ Validateurs assignés avec succès pour la demande {}", demandeId);
+            } catch (Exception e) {
+                log.error("❌ Erreur lors de l'assignation des validateurs: {}", e.getMessage());
+            }
 
             addHistory(demande, oldStatus, DemandeStatus.SOUMISE, "SOUMISSION",
                     "Demande soumise pour validation", user);
@@ -663,7 +674,7 @@ public class DemandeEnregistrementService {
             log.info("Demande soumise avec succès, ID: {}. Nombre de demandes en cours: {}/{}",
                     demandeId, submittedDemandesCount + 1, MAX_SUBMITTED_DEMANDES);
 
-            return mapToDTO(demande);
+            return mapToDTO(demande);  // ✅ 3. Retourner le DTO
 
         } catch (ProductDeclarationException e) {
             throw e;
@@ -1257,7 +1268,6 @@ public class DemandeEnregistrementService {
                 .paymentReference(demande.getPaymentReference())
                 .paymentAmount(demande.getPaymentAmount())
                 .paymentStatus(demande.getPaymentStatus())
-                .assignedTo(demande.getAssignedTo() != null ? demande.getAssignedTo().getId() : null)
                 .decisionDate(demande.getDecisionDate())
                 .decisionComment(demande.getDecisionComment())
                 .numeroAgrement(demande.getNumeroAgrement())

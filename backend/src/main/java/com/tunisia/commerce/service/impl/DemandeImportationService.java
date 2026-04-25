@@ -548,7 +548,6 @@ public class DemandeImportationService {
                 .paymentAmount(demande.getPaymentAmount())
                 .paymentStatus(demande.getPaymentStatus())
                 // CORRECTION: assignedTo attend un Long, pas un InstanceValidation
-                .assignedTo(demande.getAssignedTo() != null ? demande.getAssignedTo().getId() : null)
                 .decisionDate(demande.getDecisionDate())
                 .decisionComment(demande.getDecisionComment())
                 .numeroAgrement(demande.getNumeroAgrement())

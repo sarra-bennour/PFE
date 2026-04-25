@@ -57,6 +57,7 @@ export interface User {
   userStatut?: 'ACTIF' | 'INACTIF' | 'EN_ATTENTE';
   
   // Champs spécifiques aux instances (null pour exportateur)
+  structureId?: number ;
   structureName?: string | null;
   structureCode?: string | null;
   structureType?: string | null;

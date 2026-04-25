@@ -83,6 +83,10 @@ export const useAuth = () => {
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     setIsAuthenticated(true);
+
+    if (userData.structureId) {
+      localStorage.setItem('structureId', userData.structureId.toString());
+    }
     
     console.log('✅ Connexion réussie');
   };
