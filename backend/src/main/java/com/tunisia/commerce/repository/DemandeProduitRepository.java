@@ -1,6 +1,5 @@
 package com.tunisia.commerce.repository;
 
-import com.tunisia.commerce.entity.DemandeHistory;
 import com.tunisia.commerce.entity.DemandeProduit;
 import org.springframework.data.jpa.repository.JpaRepository;
 

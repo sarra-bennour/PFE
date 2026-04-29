@@ -91,10 +91,6 @@ public class DemandeEnregistrement {
     @Column(name = "scheduled_deletion_date")
     private LocalDateTime scheduledDeletionDate;*/
 
-    @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL)
-    @JsonIgnore
-    @ToString.Exclude
-    private List<DemandeHistory> history = new ArrayList<>();
 
     @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

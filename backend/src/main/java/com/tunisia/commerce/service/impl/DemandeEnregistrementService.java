@@ -32,7 +32,6 @@ public class DemandeEnregistrementService {
     private final ExportateurRepository exportateurRepository;
     private final ProductRepository productRepository;
     private final DocumentRepository documentRepository;
-    private final DemandeHistoryRepository historyRepository;
     private final UserRepository userRepository;
     private final DemandeProduitRepository demandeProduitRepository;
     private final DemandeRoutingService demandeRoutingService;
@@ -86,9 +85,6 @@ public class DemandeEnregistrementService {
                 demandeProduitRepository.save(demandeProduit);
             }
 
-            // Ajouter l'historique
-            addHistory(demande, null, DemandeStatus.BROUILLON, "CRÉATION",
-                    "Demande créée avec succès", exportateur);
 
             log.info("Demande créée avec succès, référence: {}", demande.getReference());
             return mapToDTO(demande);
@@ -668,9 +664,6 @@ public class DemandeEnregistrementService {
                 log.error("❌ Erreur lors de l'assignation des validateurs: {}", e.getMessage());
             }
 
-            addHistory(demande, oldStatus, DemandeStatus.SOUMISE, "SOUMISSION",
-                    "Demande soumise pour validation", user);
-
             log.info("Demande soumise avec succès, ID: {}. Nombre de demandes en cours: {}/{}",
                     demandeId, submittedDemandesCount + 1, MAX_SUBMITTED_DEMANDES);
 
@@ -746,8 +739,6 @@ public class DemandeEnregistrementService {
                         return ProductDeclarationException.userNotFound(request.getExportateurId());
                     });
 
-            addHistory(demande, demande.getStatus(), DemandeStatus.BROUILLON, "MODIFICATION",
-                    "Demande mise à jour avec produits et documents", user);
             log.info("   ✅ Historique ajouté");
 
             log.info("=== FIN SUCCÈS updateDemandeWithDocuments ===");
@@ -1094,10 +1085,7 @@ public class DemandeEnregistrementService {
             documentRepository.deleteAll(documents);
             log.info("Supprimé {} document(s) pour la demande {}", documents.size(), demandeId);
 
-            // 8. Supprimer l'historique
-            List<DemandeHistory> histories = historyRepository.findByDemandeIdOrderByPerformedAtDesc(demandeId);
-            historyRepository.deleteAll(histories);
-            log.info("Supprimé {} historique(s) pour la demande {}", histories.size(), demandeId);
+
 
             // 9. Supprimer la demande elle-même
             demandeRepository.delete(demande);
@@ -1235,20 +1223,7 @@ public class DemandeEnregistrementService {
     }
 
 
-    private void addHistory(DemandeEnregistrement demande, DemandeStatus oldStatus,
-                            DemandeStatus newStatus, String action, String comment, User performedBy) {
-        DemandeHistory history = DemandeHistory.builder()
-                .demande(demande)
-                .oldStatus(oldStatus)
-                .newStatus(newStatus)
-                .action(action)
-                .comment(comment)
-                .performedBy(performedBy)
-                .performedAt(LocalDateTime.now())
-                .build();
 
-        historyRepository.save(history);
-    }
 
     private DemandeEnregistrementDTO mapToDTO(DemandeEnregistrement demande) {
         // Récupérer les produits via DemandeProduit
@@ -1258,7 +1233,6 @@ public class DemandeEnregistrementService {
                 .collect(Collectors.toList());
 
         List<Document> documents = documentRepository.findByDemandeId(demande.getId());
-        List<DemandeHistory> history = historyRepository.findByDemandeIdOrderByPerformedAtDesc(demande.getId());
 
         return DemandeEnregistrementDTO.builder()
                 .id(demande.getId())
@@ -1275,7 +1249,6 @@ public class DemandeEnregistrementService {
                         demande.getDateAgrement().atStartOfDay() : null)
                 .products(mapProductsToDTO(products))
                 .documents(documents.stream().map(this::convertToDTO).collect(Collectors.toList()))
-                .history(history.stream().map(this::mapHistoryToDTO).collect(Collectors.toList()))
                 .build();
     }
 
@@ -1358,16 +1331,5 @@ public class DemandeEnregistrementService {
                 .build();
     }
 
-    private DemandeHistoryDTO mapHistoryToDTO(DemandeHistory history) {
-        return DemandeHistoryDTO.builder()
-                .id(history.getId())
-                .action(history.getAction())
-                .comment(history.getComment())
-                .oldStatus(history.getOldStatus())
-                .newStatus(history.getNewStatus())
-                .performedBy(history.getPerformedBy() != null ?
-                        history.getPerformedBy().getNom() + " " + history.getPerformedBy().getPrenom() : null)
-                .performedAt(history.getPerformedAt())
-                .build();
-    }
+
 }

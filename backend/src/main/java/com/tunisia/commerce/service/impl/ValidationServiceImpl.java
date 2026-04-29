@@ -27,7 +27,6 @@ public class ValidationServiceImpl implements ValidationService {
     private final DemandeEnregistrementRepository demandeRepository;
     private final DocumentRepository documentRepository;
     private final UserRepository userRepository;
-    private final DemandeHistoryRepository historyRepository;
     private final InstanceValidationRepository instanceValidationRepository;
     private final DemandeValidateurRepository demandeValidateurRepository;
     private final StructureCompetenceRepository structureCompetenceRepository;
@@ -350,10 +349,6 @@ public class ValidationServiceImpl implements ValidationService {
 
         demande = demandeRepository.save(demande);
 
-        User userAgent = agent;
-        addHistory(demande, validation.getValidationStatus().name(), "REJETE",
-                "REJET", "Demande rejetée par " + agent.getStructure().getOfficialName() +
-                        ": " + reason, userAgent);
 
         return mapToDTO(demande);
     }
@@ -391,10 +386,6 @@ public class ValidationServiceImpl implements ValidationService {
         demande.setDecisionComment(comment);
         demande = demandeRepository.save(demande);
 
-        User userAgent = agent;
-        addHistory(demande, null, "INFO_REQUISE",
-                "INFO_REQUISE", "Informations demandées par " + agent.getStructure().getOfficialName() +
-                        ": " + comment, userAgent);
 
         return mapToDTO(demande);
     }
@@ -469,19 +460,7 @@ public class ValidationServiceImpl implements ValidationService {
         return "AGR-" + year + "-" + random;
     }
 
-    private void addHistory(DemandeEnregistrement demande, String oldStatus,
-                            String newStatus, String action, String comment, User performedBy) {
-        DemandeHistory history = DemandeHistory.builder()
-                .demande(demande)
-                .oldStatus(oldStatus != null ? DemandeStatus.valueOf(oldStatus) : null)
-                .newStatus(newStatus != null ? DemandeStatus.valueOf(newStatus) : null)
-                .action(action)
-                .comment(comment)
-                .performedBy(performedBy)
-                .performedAt(LocalDateTime.now())
-                .build();
-        historyRepository.save(history);
-    }
+
 
 
     // 1. NOUVELLE MÉTHODE PRIVÉE : Obtenir les types de documents autorisés

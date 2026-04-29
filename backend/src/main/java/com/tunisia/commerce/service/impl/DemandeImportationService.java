@@ -36,7 +36,6 @@ public class DemandeImportationService {
     private final ProductRepository productRepository;
     private final DemandeProduitRepository demandeProduitRepository;
     private final DocumentRepository documentRepository;
-    private final DemandeHistoryRepository historyRepository;
     private final DemandeImportateurRepository demandeImportateurRepository;
     private final DemandeRoutingService demandeRoutingService;
 
@@ -101,10 +100,6 @@ public class DemandeImportationService {
                 .build();
         demandeProduitRepository.save(demandeProduit);
 
-        // 6. Ajouter l'historique
-        addHistory(demande, null, DemandeStatus.BROUILLON, "CRÉATION",
-                "Demande d'importation créée pour le produit: " + product.getProductName(),
-                importateur);
 
         log.info("Demande d'importation créée avec succès, référence: {}", demande.getReference());
 
@@ -175,10 +170,6 @@ public class DemandeImportationService {
         demande = demandeRepository.save(demande);
         demandeRoutingService.assignDemandeToValidators(demande);
 
-
-        addHistory(demande, DemandeStatus.BROUILLON, DemandeStatus.SOUMISE,
-                "SOUMISSION", "Demande d'importation soumise pour traitement",
-                demande.getImportateur());
 
         return mapToDTO(demande);
     }
@@ -311,10 +302,6 @@ public class DemandeImportationService {
         // 8. Sauvegarder les modifications
         demandeImportateur = demandeImportateurRepository.save(demandeImportateur);
 
-        // 9. Ajouter l'historique
-        addHistory(demandeImportateur, demandeImportateur.getStatus(), demandeImportateur.getStatus(),
-                "MODIFICATION", "Demande d'importation modifiée par l'importateur (champs et documents)",
-                demandeImportateur.getImportateur());
 
         log.info("Demande d'importation ID: {} modifiée avec succès", demandeId);
 
@@ -421,12 +408,6 @@ public class DemandeImportationService {
             log.info("{} associations produit-demande supprimées", demandeProduits.size());
         }
 
-        // 7. Supprimer l'historique de la demande
-        List<DemandeHistory> histories = historyRepository.findByDemandeId(demandeId);
-        if (!histories.isEmpty()) {
-            historyRepository.deleteAll(histories);
-            log.info("{} entrées d'historique supprimées", histories.size());
-        }
 
         // 8. Supprimer le répertoire des documents physiques
         deleteDocumentDirectory(demandeId);
@@ -493,19 +474,7 @@ public class DemandeImportationService {
         return "IMP-" + dateStr + "-" + uniqueId;
     }
 
-    private void addHistory(DemandeEnregistrement demande, DemandeStatus oldStatus,
-                            DemandeStatus newStatus, String action, String comment, User performedBy) {
-        DemandeHistory history = DemandeHistory.builder()
-                .demande(demande)
-                .oldStatus(oldStatus)
-                .newStatus(newStatus)
-                .action(action)
-                .comment(comment)
-                .performedBy(performedBy)
-                .performedAt(LocalDateTime.now())
-                .build();
-        historyRepository.save(history);
-    }
+
 
     private DemandeEnregistrementDTO mapToDTO(DemandeEnregistrement demande) {
         // Récupérer les produits via DemandeProduit
