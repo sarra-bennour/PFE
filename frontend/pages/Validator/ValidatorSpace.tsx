@@ -23,6 +23,8 @@ const ValidatorSpace: React.FC = () => {
   const [requests, setRequests] = useState<ValidationRequest[]>([]);
   const [archivedRequests, setArchivedRequests] = useState<ValidationRequest[]>([]);
 
+  const userStructureName = user?.structureName || 'Ministère du Commerce';
+
   const institutions = [
     "Ministère du Commerce",
     "Ministère de l'Industrie",
@@ -67,15 +69,8 @@ interface BackendDemande {
  const fetchRequests = async () => {
   setLoading(true);
   try {
-    console.log('========== FETCH REQUESTS DEBUG ==========');
     
     const token = localStorage.getItem('token');
-    console.log('1. Token présent:', !!token);
-    
-    // ✅ Récupérer l'utilisateur connecté depuis le contexte
-    console.log('2. User depuis contexte:', user);
-    console.log('   - user?.structureId:', user?.structureId);
-    console.log('   - user?.role:', user?.role);
     
     if (!user?.structureId) {
       console.warn('⚠️ Utilisateur sans structureId, impossible de filtrer');
@@ -84,26 +79,18 @@ interface BackendDemande {
       return;
     }
     
-    console.log('3. Appel API /validation/demandes...');
-    const response = await axios.get(`${API_BASE_URL}/validation/demandes`, {
+      const response = await axios.get(`${API_BASE_URL}/validation/demandes`, {
       headers: { Authorization: `Bearer ${token}` },
       params: { status: 'ALL' }
     });
+
+    console.log('✅ Demandes reçues du backend:', response.data);
     
-    console.log('4. Réponse API - Status:', response.status);
-    console.log('5. Réponse API - Data complète:', response.data);
     
     const demandesData: BackendDemande[] = response.data.data || response.data || [];
-    console.log(`6. ${demandesData.length} demandes reçues du backend`);
     
     // Afficher chaque demande reçue
     demandesData.forEach((req: BackendDemande, index: number) => {
-      console.log(`\n--- Demande brute ${index + 1}: ${req.reference} ---`);
-      console.log('  - status:', req.status);
-      console.log('  - payment_status:', req.payment_status);
-      console.log('  - validationStatuses:', req.validationStatuses);
-      console.log('  - Type de validationStatuses:', typeof req.validationStatuses);
-      console.log('  - Est un array?', Array.isArray(req.validationStatuses));
       
       if (req.validationStatuses && req.validationStatuses.length > 0) {
         req.validationStatuses.forEach((vs: BackendValidationStatus, vIndex: number) => {
@@ -116,21 +103,13 @@ interface BackendDemande {
       }
     });
     
-    console.log('\n7. Mapping des demandes vers le format frontend...');
     const mappedRequests: ValidationRequest[] = demandesData.map((req: BackendDemande) => {
       const mapped = mapBackendRequestToFrontend(req);
-      console.log(`  - ${req.reference} -> ${mapped.reference}, validationStatuses:`, mapped.validationStatuses);
       return mapped;
     });
     
-    console.log(`\n8. ${mappedRequests.length} demandes après mapping`);
-    
-    // ✅ Filtrer dynamiquement selon la structure de l'utilisateur
-    console.log(`\n9. Filtrage avec structureId: ${user.structureId}`);
     
     const pendingRequests = mappedRequests.filter((req: ValidationRequest) => {
-      console.log(`\n  Demande: ${req.reference}`);
-      console.log(`    - validationStatuses:`, req.validationStatuses);
       
       if (!req.validationStatuses || req.validationStatuses.length === 0) {
         console.log(`    - ❌ Pas de validationStatuses`);
@@ -141,10 +120,6 @@ interface BackendDemande {
         (v: BackendValidationStatus) => v.structureId === user.structureId
       );
       
-      console.log(`    - Ma validation trouvée:`, myValidation);
-      console.log(`    - structureId match: ${myValidation?.structureId === user.structureId}`);
-      console.log(`    - validationStatus: ${myValidation?.validationStatus}`);
-      console.log(`    - EN_ATTENTE? ${myValidation?.validationStatus === 'EN_ATTENTE'}`);
       
       return myValidation?.validationStatus === 'EN_ATTENTE';
     });
@@ -157,11 +132,6 @@ interface BackendDemande {
              myValidation?.validationStatus === 'REJETEE';
     });
     
-    console.log(`\n10. RÉSULTAT FINAL:`);
-    console.log(`    - Demandes en attente: ${pendingRequests.length}`);
-    pendingRequests.forEach((req: ValidationRequest) => console.log(`      * ${req.reference}`));
-    console.log(`    - Demandes archivées: ${archivedRequests_filtered.length}`);
-    archivedRequests_filtered.forEach((req: ValidationRequest) => console.log(`      * ${req.reference}`));
     
     setRequests(pendingRequests);
     setArchivedRequests(archivedRequests_filtered);
@@ -174,7 +144,6 @@ interface BackendDemande {
     }
   } finally {
     setLoading(false);
-    console.log('========== FIN FETCH REQUESTS ==========\n');
   }
 };
   
@@ -184,6 +153,29 @@ interface BackendDemande {
       fetchRequests();
     }
   }, [user]);
+
+
+  const mapProductType = (backendType: string): 'ALIMENTAIRE' | 'INDUSTRIEL' => {
+  if (!backendType) return 'INDUSTRIEL'; // Par défaut
+  
+  const normalizedType = backendType.toUpperCase().trim();
+  
+  if (normalizedType === 'ALIMENTAIRE' || normalizedType === 'ALIMENTAIRE') {
+    return 'ALIMENTAIRE';
+  }
+  
+  if (normalizedType === 'INDUSTRIEL' || normalizedType === 'INDUSTRIEL') {
+    return 'INDUSTRIEL';
+  }
+  
+  // Si c'est "alimentaire" en minuscule
+  if (backendType.toLowerCase() === 'alimentaire') {
+    return 'ALIMENTAIRE';
+  }
+  
+  // Par défaut
+  return 'INDUSTRIEL';
+};
 
   // Map backend data to frontend format
   const mapBackendRequestToFrontend = (backendReq: any): ValidationRequest => {
@@ -200,21 +192,21 @@ interface BackendDemande {
     requestType = 'REGISTRATION';
   }
 
-  console.log(`📝 Type détecté pour ${backendReq.reference}: ${requestType}`);
   
   // Mapper les documents
   const documents: AttachedDocument[] = (backendReq.documents || []).map((doc: any) => ({
     id: doc.id?.toString() || Math.random().toString(),
     name: doc.name || doc.fileName || 'Document',
+    documentType: doc.documentType,
     status: mapDocumentStatus(doc.status),
     comment: doc.validationComment,
-    fileUrl: `http://localhost:8080/api/admin/document/${doc.id}/preview`,
-    documentType: doc.documentType
+    fileUrl: `http://localhost:8080/api/admin/document/${doc.id}/preview`
+    
   }));
   
   // Mapper les produits
   const products: Product[] = (backendReq.products || []).map((prod: any) => ({
-    productType: prod.productType === 'ALIMENTAIRE' ? 'ALIMENTAIRE' : 'INDUSTRIEL',
+    productType: mapProductType(prod.productType),
     category: prod.category || '',
     hsCode: prod.hsCode || '',
     productName: prod.productName || '',
@@ -286,10 +278,6 @@ interface BackendDemande {
   }, []);
 
   const handleFinalDecision = (decision: DemandeStatus, updatedRequest: ValidationRequest, comment?: string) => {
-  console.log('📝 [ValidatorSpace] Mise à jour UI après décision:', { decision, requestId: updatedRequest.id });
-  
-  // 🔥 NE PAS FAIRE D'APPEL API ICI - Le modal a déjà fait l'appel
-  // Il suffit de mettre à jour l'état local
   
   setRequests(prev => prev.filter(req => req.id !== updatedRequest.id));
   setArchivedRequests(prev => [...prev, { 
@@ -300,7 +288,6 @@ interface BackendDemande {
 };
 
   const filteredRequests = requests.filter(r => {
-  console.log(`****Comparaison: r.type = "${r.type}", inboxTab = "${inboxTab}", égal? ${r.type === inboxTab}`);
   if (inboxTab === 'REGISTRATION') return r.type === 'REGISTRATION';
   if (inboxTab === 'PRODUCT_DECLARATION') return r.type === 'PRODUCT_DECLARATION';
   if (inboxTab === 'IMPORT') return r.type === 'IMPORT';
@@ -382,31 +369,17 @@ interface BackendDemande {
 
             <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
               <div className="p-8 border-b border-slate-50 bg-slate-50/30 flex justify-between items-center">
-  <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
-    Inbox : {inboxTab === 'REGISTRATION' ? 'Enregistrements' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations Produits' : 'Importations'}
-  </h3>
-  <div className="flex gap-2">
-    <button 
-      onClick={() => {
-        console.log('=== RÉPARTITION DES DEMANDES ===');
-        console.log('requests (en attente):', requests.map(r => ({ ref: r.reference, status: r.status, type: r.type })));
-        console.log('archivedRequests (archives):', archivedRequests.map(r => ({ ref: r.reference, status: r.status, type: r.type })));
-        console.log('onglet actif:', inboxTab);
-        console.log('Toutes les requests:', requests);
-      }}
-      className="px-4 py-2 bg-blue-500 text-white rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all"
-    >
-      <i className="fas fa-bug mr-1"></i> DEBUG
-    </button>
-    <button 
-      onClick={fetchRequests}
-      className="px-4 py-2 bg-slate-100 rounded-xl text-[8px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-200 transition-all"
-    >
-      <i className="fas fa-sync-alt mr-1"></i> Rafraîchir
-    </button>
-  </div>
-</div>
-              
+                <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter">
+                  Inbox : {inboxTab === 'REGISTRATION' ? 'Enregistrements' : inboxTab === 'PRODUCT_DECLARATION' ? 'Déclarations Produits' : 'Importations'}
+                </h3>
+                  <button 
+                    onClick={fetchRequests}
+                    className="px-4 py-2 bg-slate-100 rounded-xl text-[8px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-200 transition-all"
+                  >
+                    <i className="fas fa-sync-alt mr-1"></i> Rafraîchir
+                  </button>
+              </div>
+                            
               <div className="overflow-x-auto">
                 {loading ? (
                   <div className="p-20 text-center">
@@ -468,6 +441,7 @@ interface BackendDemande {
               onClose={() => setSelectedRequest(null)}
               onDecision={handleFinalDecision}
               readOnly={selectedRequest.status === DemandeStatus.VALIDEE || selectedRequest.status === DemandeStatus.REJETEE}
+              currentStructureName={userStructureName}
             />
           )}
         </AnimatePresence>

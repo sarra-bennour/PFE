@@ -4,6 +4,59 @@ import axios from 'axios';
 import { Product } from '@/types/Product';
 import { ImportDetails, DemandeStatus } from '@/types/DemandeEnregistrement';
 
+
+// Types de documents alimentaires (pour Santé/INSSPA/ANMPS)
+const ALIMENTAIRE_DOC_TYPES = [
+  'TECHNICAL_DATA_SHEET',
+  'SANITARY_APPROVAL', 
+  'SANITARY_CERT',
+  'FREE_SALE_CERT',
+  'BACTERIO_ANALYSIS',
+  'PHYSICO_CHEM_ANALYSIS',
+  'RADIOACTIVITY_ANALYSIS',
+  'FUMIGATION_CERT',
+  'HACCP_ISO_CERT',
+  'BRAND_LICENSE',
+  'COMPETENT_AUTHORITY_LETTER',
+  'STORAGE_FACILITY_PLAN',
+  'PRODUCTION_FACILITY_PLAN',
+  'MONITORING_PLAN',
+  'PRODUCT_SPECIFICATION',
+  'PRODUCT_LABELS',
+  'COMMISSION_LETTER',
+  'QUALITY_CERT',
+  'PRODUCT_SHEETS',
+  'OFFICIAL_LETTER'
+];
+
+// Types de documents industriels (pour Industrie)
+const INDUSTRIEL_DOC_TYPES = [
+  'CONFORMITY_CERT_ANALYSIS_REPORT'
+];
+
+// Fonction de filtrage
+const filterDocumentsByInstance = (documents: AttachedDocument[], structureName: string): AttachedDocument[] => {
+  if (!structureName || !documents) return documents;
+  
+  // Ministère du Commerce -> voit tout
+  if (structureName.includes('Commerce')) {
+    return documents;
+  }
+  
+  // Ministère de l'Industrie -> voit seulement documents industriels
+  if (structureName.includes('Industrie')) {
+    return documents.filter(doc => INDUSTRIEL_DOC_TYPES.includes(doc.documentType || ''));
+  }
+  
+  // Ministère de la Santé / INSSPA / ANMPS -> voit seulement documents alimentaires
+  if (structureName.includes('Santé') || structureName.includes('INSSPA') || structureName.includes('ANMPS')) {
+    return documents.filter(doc => ALIMENTAIRE_DOC_TYPES.includes(doc.documentType || ''));
+  }
+  
+  // Par défaut, voir tout
+  return documents;
+};
+
 export type DocStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'NOT_SURE';
 
 export interface AttachedDocument {
@@ -38,18 +91,45 @@ interface InstructionModalProps {
   onClose: () => void;
   onDecision: (decision: DemandeStatus, updatedRequest: ValidationRequest, comment?: string) => void;
   readOnly?: boolean;
+  currentStructureName?: string;
 }
+
+
+
+const filterProductsByInstance = (products: Product[], structureName: string): Product[] => {
+  if (!structureName || !products) return products || [];
+  
+  // Si c'est le Ministère de la Santé -> seulement produits ALIMENTAIRE
+  if (structureName.includes('Santé') || structureName.includes('INSSPA') || structureName.includes('ANMPS')) {
+    return products.filter(p => p.productType === 'ALIMENTAIRE');
+  }
+  
+  // Si c'est le Ministère de l'Industrie -> seulement produits INDUSTRIEL
+  if (structureName.includes('Industrie') || structureName.includes('ANME')) {
+    return products.filter(p => p.productType === 'INDUSTRIEL');
+  }
+  
+  // Ministère du Commerce -> tous les produits
+  return products;
+};
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
-const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, onDecision, readOnly = false }) => {
+const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, onDecision, readOnly = false,currentStructureName = ''  }) => {
   const [localRequest, setLocalRequest] = React.useState<ValidationRequest>({ ...request });
   const [previewDoc, setPreviewDoc] = React.useState<AttachedDocument | null>(null);
   const [zoom, setZoom] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
   const [decisionComment, setDecisionComment] = React.useState('');
   const [confirmationDecision, setConfirmationDecision] = React.useState<DemandeStatus| null>(null);
+
+  const filteredProducts = filterProductsByInstance(localRequest.products || [], currentStructureName);
+  // Filtrer les documents
+  const filteredDocuments = filterDocumentsByInstance(localRequest.documents, currentStructureName);
   
+  // Afficher le nombre de documents masqués
+  const hiddenDocsCount = localRequest.documents.length - filteredDocuments.length;
+
   const isSubmitting = React.useRef(false);
   let callCounter = 0;
 
@@ -254,6 +334,14 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
             <div className="flex items-center gap-3 mb-1">
               <span className="px-3 py-1 bg-tunisia-red text-white rounded-full text-[8px] font-black uppercase tracking-widest">Instruction</span>
               <h3 className="text-2xl font-black italic text-slate-900 uppercase tracking-tighter">{localRequest.reference}</h3>
+              {currentStructureName && (
+                <span className="px-2 py-1 bg-slate-100 rounded-lg text-[8px] font-black text-slate-500">
+                  <i className="fas fa-filter mr-1"></i>
+                  {currentStructureName.includes('Santé') ? 'Alimentaire uniquement' : 
+                   currentStructureName.includes('Industrie') ? 'Industriel uniquement' : 
+                   'Tous produits'}
+                </span>
+              )}
             </div>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{localRequest.applicantName} ({localRequest.applicantType})</p>
           </div>
@@ -278,7 +366,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                     <i className="fas fa-box-open text-tunisia-red"></i> Liste des Produits
                   </h4>
                   <div className="space-y-4">
-                    {localRequest.products.map((p, idx) => (
+                    {filteredProducts.map((p, idx) => (
                       <div key={idx} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
                         <div className="flex justify-between items-start">
                           <div>
@@ -421,7 +509,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
               </div>
 
               <div className="space-y-4">
-                {localRequest.documents.map((doc) => (
+                {filteredDocuments.map((doc) => (
                   <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-3">
@@ -487,6 +575,15 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                     )}
                   </div>
                 ))}
+
+                {hiddenDocsCount > 0 && !readOnly && (
+                  <div className="p-3 bg-amber-50 rounded-xl text-center border border-amber-100">
+                    <p className="text-[8px] font-bold text-amber-600">
+                      <i className="fas fa-eye-slash mr-1"></i>
+                      {hiddenDocsCount} document(s) non visible(s) car hors de votre périmètre
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Decision Comment Section */}
@@ -684,7 +781,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                   {localRequest.type === 'PRODUCT_DECLARATION' && localRequest.products && (
                     <div className="space-y-4">
                       <h3 className="text-xs font-black uppercase tracking-wider text-slate-900">Produits déclarés</h3>
-                      {localRequest.products.map((p, idx) => (
+                      {filteredProducts.map((p, idx) => (
                         <div key={idx} className="border border-slate-100 rounded-xl p-4">
                           <div className="flex justify-between items-start mb-3">
                             <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${

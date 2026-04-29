@@ -250,46 +250,44 @@ public class ValidationServiceImpl implements ValidationService {
         DemandeEnregistrement demande = demandeRepository.findById(demandeId)
                 .orElseThrow(() -> new ValidationException("DEMANDE_NOT_FOUND", "Demande non trouvée"));
 
-        // Récupérer l'instance qui valide
         InstanceValidation agent = instanceValidationRepository.findById(agentId)
                 .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
 
-        // Récupérer la validation correspondante
         DemandeValidateur validation = demandeValidateurRepository
                 .findByDemandeIdAndInstanceId(demandeId, agentId)
                 .orElseThrow(() -> new ValidationException("VALIDATION_NOT_FOUND",
                         "Cette demande n'est pas assignée à cet agent"));
 
-        // Vérifier que la validation est encore en attente
         if (validation.getValidationStatus() != ValidationStatus.EN_ATTENTE) {
             throw new ValidationException("ALREADY_VALIDATED",
                     "Cette validation a déjà été traitée. Statut actuel: " + validation.getValidationStatus());
         }
 
-        // Vérifier que la demande n'est pas déjà terminée
         if (demande.getStatus() == DemandeStatus.VALIDEE || demande.getStatus() == DemandeStatus.REJETEE) {
             throw new ValidationException("DEMANDE_ALREADY_CLOSED",
                     "La demande est déjà " + demande.getStatus());
         }
 
-        // Approuver cette validation
+        // ✅ Valider les documents autorisés IMMÉDIATEMENT
+        Set<String> allowedDocTypes = getAllowedDocumentTypesForStructure(agent.getStructure());
+        validateVisibleDocumentsForDemande(demandeId, agentId, DocumentStatus.VALIDE,
+                "Document validé par " + agent.getStructure().getOfficialName() + (comment != null ? ": " + comment : ""),
+                allowedDocTypes);
+
         validation.approve(comment);
         demandeValidateurRepository.save(validation);
         log.info("✅ Agent {} a approuvé la demande {}", agent.getEmail(), demande.getReference());
 
-        // Vérifier si tous les validateurs obligatoires ont approuvé
         boolean allMandatoryApproved = isAllMandatoryValidatorsApproved(demande);
         boolean hasMandatoryRejection = hasMandatoryRejection(demande);
 
         if (hasMandatoryRejection) {
-            // Une demande rejetée par un validateur obligatoire est définitivement rejetée
             demande.setStatus(DemandeStatus.REJETEE);
             demande.setDecisionDate(LocalDateTime.now());
             demande.setDecisionComment("Demande rejetée par " + agent.getStructure().getOfficialName() + ": " + comment);
             log.warn("❌ Demande {} rejetée par validateur obligatoire", demande.getReference());
         }
         else if (allMandatoryApproved) {
-            // Tous les validateurs obligatoires ont approuvé → générer agrément
             if (demande.getTypeDemande() == TypeDemande.REGISTRATION ||
                     demande.getTypeDemande() == TypeDemande.PRODUCT_DECLARATION) {
                 String numeroAgrement = generateAgrementNumber();
@@ -298,29 +296,17 @@ public class ValidationServiceImpl implements ValidationService {
                 log.info("🏆 Agrément généré pour la demande {}: {}", demande.getReference(), numeroAgrement);
             }
 
-            // Valider automatiquement tous les documents
-            validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.VALIDE,
-                    "Document validé suite à l'approbation complète de la demande");
-
             demande.setStatus(DemandeStatus.VALIDEE);
             demande.setDecisionDate(LocalDateTime.now());
             demande.setDecisionComment("Tous les validateurs ont approuvé. " + comment);
             log.info("🎉 Demande {} complètement approuvée !", demande.getReference());
         }
         else {
-            // En attente des autres validateurs
             demande.setStatus(DemandeStatus.EN_COURS_VALIDATION);
             log.info("⏳ Demande {} en attente d'autres validateurs", demande.getReference());
         }
 
         demande = demandeRepository.save(demande);
-
-        // Ajouter l'historique
-        User userAgent = agent;
-        /*addHistory(demande, validation.getValidationStatus().name(), "APPROUVE",
-                "APPROBATION", "Validation approuvée par " + agent.getStructure().getOfficialName() +
-                        (comment != null ? ": " + comment : ""), userAgent);*/
-
         return mapToDTO(demande);
     }
 
@@ -348,16 +334,16 @@ public class ValidationServiceImpl implements ValidationService {
                     "Cette validation a déjà été traitée");
         }
 
-        // Rejeter cette validation
         validation.reject(reason);
         demandeValidateurRepository.save(validation);
         log.info("❌ Agent {} a rejeté la demande {}", agent.getEmail(), demande.getReference());
 
-        // Rejeter tous les documents en attente
-        validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.REJETE,
-                "Document rejeté suite au rejet de la demande. Raison: " + reason);
+        // ✅ Rejeter les documents autorisés
+        Set<String> allowedDocTypes = getAllowedDocumentTypesForStructure(agent.getStructure());
+        validateVisibleDocumentsForDemande(demandeId, agentId, DocumentStatus.REJETE,
+                "Document rejeté par " + agent.getStructure().getOfficialName() + ". Raison: " + reason,
+                allowedDocTypes);
 
-        // Un seul rejet suffit pour rejeter toute la demande
         demande.setStatus(DemandeStatus.REJETEE);
         demande.setDecisionDate(LocalDateTime.now());
         demande.setDecisionComment("Rejeté par " + agent.getStructure().getOfficialName() + ": " + reason);
@@ -391,14 +377,15 @@ public class ValidationServiceImpl implements ValidationService {
                 .orElseThrow(() -> new ValidationException("VALIDATION_NOT_FOUND",
                         "Cette demande n'est pas assignée à cet agent"));
 
-        // Mettre la validation en attente d'info
         validation.setValidationStatus(ValidationStatus.EN_ATTENTE);
         validation.setValidationComment("Informations demandées: " + comment);
         demandeValidateurRepository.save(validation);
 
-        // Marquer les documents comme à compléter
-        validatePendingDocumentsForDemande(demandeId, agentId, DocumentStatus.A_COMPLETER,
-                "Des informations complémentaires sont requises: " + comment);
+        // ✅ Marquer les documents autorisés comme A_COMPLETER
+        Set<String> allowedDocTypes = getAllowedDocumentTypesForStructure(agent.getStructure());
+        validateVisibleDocumentsForDemande(demandeId, agentId, DocumentStatus.A_COMPLETER,
+                "Des informations complémentaires sont requises par " + agent.getStructure().getOfficialName() + ": " + comment,
+                allowedDocTypes);
 
         demande.setStatus(DemandeStatus.EN_ATTENTE_INFO);
         demande.setDecisionComment(comment);
@@ -496,28 +483,82 @@ public class ValidationServiceImpl implements ValidationService {
         historyRepository.save(history);
     }
 
-    private void validatePendingDocumentsForDemande(Long demandeId, Long agentId,
+
+    // 1. NOUVELLE MÉTHODE PRIVÉE : Obtenir les types de documents autorisés
+    private Set<String> getAllowedDocumentTypesForStructure(StructureInterne structure) {
+        String structureName = structure.getOfficialName();
+        Set<String> allowedTypes = new HashSet<>();
+
+        // Commerce → null = tous les documents
+        if (structureName.contains("Commerce")) {
+            return null;
+        }
+
+        // Industrie → seulement documents industriels
+        if (structureName.contains("Industrie")) {
+            allowedTypes.add("CONFORMITY_CERT_ANALYSIS_REPORT");
+            return allowedTypes;
+        }
+
+        // Santé/INSSPA/ANMPS → seulement documents alimentaires
+        if (structureName.contains("Santé") || structureName.contains("INSSPA") || structureName.contains("ANMPS")) {
+            allowedTypes.addAll(Arrays.asList(
+                    "TECHNICAL_DATA_SHEET", "SANITARY_APPROVAL", "SANITARY_CERT",
+                    "FREE_SALE_CERT", "BACTERIO_ANALYSIS", "PHYSICO_CHEM_ANALYSIS",
+                    "RADIOACTIVITY_ANALYSIS", "FUMIGATION_CERT", "HACCP_ISO_CERT",
+                    "BRAND_LICENSE", "COMPETENT_AUTHORITY_LETTER", "STORAGE_FACILITY_PLAN",
+                    "PRODUCTION_FACILITY_PLAN", "MONITORING_PLAN", "PRODUCT_SPECIFICATION",
+                    "PRODUCT_LABELS", "COMMISSION_LETTER", "QUALITY_CERT",
+                    "PRODUCT_SHEETS", "OFFICIAL_LETTER"
+            ));
+            return allowedTypes;
+        }
+
+        return null;
+    }
+
+    // 2. NOUVELLE MÉTHODE PRIVÉE : Valider seulement les documents autorisés
+    // Modifiez la méthode validateVisibleDocumentsForDemande
+    private void validateVisibleDocumentsForDemande(Long demandeId, Long agentId,
                                                     DocumentStatus targetStatus,
-                                                    String defaultComment) {
+                                                    String defaultComment,
+                                                    Set<String> allowedDocTypes) {
         List<Document> pendingDocuments = documentRepository.findByDemandeIdAndStatus(
                 demandeId, DocumentStatus.EN_ATTENTE);
 
-        if (pendingDocuments.isEmpty()) {
-            log.info("Aucun document en attente pour la demande {}", demandeId);
-            return;
-        }
+        if (pendingDocuments.isEmpty()) return;
 
-        User agent = userRepository.findById(agentId)
-                .orElseThrow(() -> new ValidationException("AGENT_NOT_FOUND", "Agent non trouvé"));
+        User agent = userRepository.findById(agentId).orElse(null);
+        if (agent == null) return;
 
         for (Document doc : pendingDocuments) {
-            if (doc.getStatus() == DocumentStatus.EN_ATTENTE) {
+            boolean shouldValidate = false;
+
+            // Cas 1: allowedDocTypes = null → Commerce voit tout
+            if (allowedDocTypes == null) {
+                shouldValidate = true;
+            }
+            // Cas 2: Document sans type
+            else if (doc.getDocumentType() == null) {
+                log.warn("Document {} sans documentType", doc.getFileName());
+                shouldValidate = false;
+            }
+            // Cas 3: Comparaison enum -> String
+            else {
+                // Convertir l'enum en String
+                String docTypeAsString = doc.getDocumentType().name();
+                shouldValidate = allowedDocTypes.contains(docTypeAsString);
+            }
+
+            if (shouldValidate) {
                 doc.setStatus(targetStatus);
                 doc.setValidationComment(defaultComment);
                 doc.setValidatedAt(LocalDateTime.now());
                 doc.setValidatedBy(agent);
                 documentRepository.save(doc);
-                log.info("Document {} passé en statut {}", doc.getFileName(), targetStatus);
+                log.info("✅ Document {} validé (type: {})", doc.getFileName(), doc.getDocumentType());
+            } else {
+                log.info("⏭️ Document {} ignoré (type: {}) - hors périmètre", doc.getFileName(), doc.getDocumentType());
             }
         }
     }
