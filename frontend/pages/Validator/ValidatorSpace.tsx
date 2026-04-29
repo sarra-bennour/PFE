@@ -41,6 +41,57 @@ const ValidatorSpace: React.FC = () => {
     { id: 'admin', label: 'Admin Panel', icon: 'fa-shield-halved', path: '/admin', roles: ['admin'] as any },
   ];
 
+// ✅ Fonction pour obtenir les onglets visibles selon le ministère
+  const getVisibleTabs = () => {
+    const structureName = userStructureName || selectedAgency;
+    
+    // Ministère du Commerce → voit tout
+    if (structureName.includes('Commerce')) {
+      return [
+        { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus' },
+        { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box' },
+        { id: 'IMPORT', label: 'Importations', icon: 'fa-ship' }
+      ];
+    }
+    
+    // Ministère de l'Industrie ou Santé → voit seulement les produits
+    if (structureName.includes('Industrie') || 
+        structureName.includes('Santé') || 
+        structureName.includes('INSSPA') || 
+        structureName.includes('ANMPS')) {
+      return [
+        { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box' }
+      ];
+    }
+    
+    // Par défaut → tout
+    return [
+      { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus' },
+      { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box' },
+      { id: 'IMPORT', label: 'Importations', icon: 'fa-ship' }
+    ];
+  };
+
+  // ✅ CORRECTION : useEffect pour réinitialiser l'onglet actif
+  useEffect(() => {
+    const visibleTabs = getVisibleTabs();
+    const isCurrentTabVisible = visibleTabs.some(tab => tab.id === inboxTab);
+    
+    if (!isCurrentTabVisible && visibleTabs.length > 0) {
+      setInboxTab(visibleTabs[0].id as RequestType);
+    }
+  }, [userStructureName]); // Se déclenche quand la structure utilisateur change
+
+  // ✅ AUSSI pour archiveTab
+  useEffect(() => {
+    const visibleTabs = getVisibleTabs();
+    const isCurrentTabVisible = visibleTabs.some(tab => tab.id === archiveTab);
+    
+    if (!isCurrentTabVisible && visibleTabs.length > 0) {
+      setArchiveTab(visibleTabs[0].id as RequestType);
+    }
+  }, [userStructureName]);
+  
   interface BackendValidationStatus {
   structureId: number;
   structureName: string;
@@ -342,11 +393,7 @@ interface BackendDemande {
           <div className="space-y-10 animate-fade-in">
             {/* Inbox Tabs */}
             <div className="flex gap-4 p-2 bg-slate-100 rounded-3xl w-fit">
-              {[
-                { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus', count: requests.filter(r => r.type === 'REGISTRATION').length },
-                { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box', count: requests.filter(r => r.type === 'PRODUCT_DECLARATION').length },
-                { id: 'IMPORT', label: 'Importations', icon: 'fa-ship', count: requests.filter(r => r.type === 'IMPORT').length },
-              ].map((tab) => (
+              {getVisibleTabs().map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setInboxTab(tab.id as RequestType)}
@@ -361,7 +408,9 @@ interface BackendDemande {
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] ${
                     inboxTab === tab.id ? 'bg-tunisia-red text-white' : 'bg-slate-200 text-slate-500'
                   }`}>
-                    {tab.count}
+                    {tab.id === 'REGISTRATION' && requests.filter(r => r.type === 'REGISTRATION').length}
+                    {tab.id === 'PRODUCT_DECLARATION' && requests.filter(r => r.type === 'PRODUCT_DECLARATION').length}
+                    {tab.id === 'IMPORT' && requests.filter(r => r.type === 'IMPORT').length}
                   </span>
                 </button>
               ))}
@@ -471,11 +520,7 @@ interface BackendDemande {
           <div className="space-y-10 animate-fade-in">
             {/* Archive Filter Tabs */}
             <div className="flex gap-4 p-2 bg-slate-100 rounded-3xl w-fit">
-              {[
-                { id: 'REGISTRATION', label: 'Enregistrements', icon: 'fa-user-plus' },
-                { id: 'PRODUCT_DECLARATION', label: 'Produits', icon: 'fa-box' },
-                { id: 'IMPORT', label: 'Importations', icon: 'fa-ship' },
-              ].map((tab) => (
+              {getVisibleTabs().map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setArchiveTab(tab.id as RequestType)}
@@ -488,7 +533,9 @@ interface BackendDemande {
                   <i className={`fas ${tab.icon}`}></i>
                   {tab.label}
                   <span className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] bg-slate-200 text-slate-500">
-                    {archivedRequests.filter(r => r.type === tab.id).length}
+                    {tab.id === 'REGISTRATION' && archivedRequests.filter(r => r.type === 'REGISTRATION').length}
+                    {tab.id === 'PRODUCT_DECLARATION' && archivedRequests.filter(r => r.type === 'PRODUCT_DECLARATION').length}
+                    {tab.id === 'IMPORT' && archivedRequests.filter(r => r.type === 'IMPORT').length}
                   </span>
                 </button>
               ))}

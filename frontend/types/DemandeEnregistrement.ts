@@ -32,6 +32,9 @@ export interface DemandeEnregistrement {
   loadingPort?: string;
   dischargePort?: string;
   arrivalDate?: string;
+
+  step: number;
+  currentValidator?: string;
 }
 
 

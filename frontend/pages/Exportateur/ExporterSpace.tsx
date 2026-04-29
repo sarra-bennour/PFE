@@ -16,6 +16,17 @@ import {  ProductDeclarationDemande } from '../../types/ProductDeclarationFormPr
 import { DemandeStatus } from '../../types/DemandeEnregistrement';
 import { PaymentStatus } from '../../types/PaymentResult';
 
+
+
+  interface DisplayDeclaration {
+    id: number;
+    reference: string;
+    step: number;
+    currentValidator: string;
+    products?: any[];
+    status: string;
+    submittedAt: string;
+  }
 // Composant de nœud de pipeline style Jenkins
 const PipelineNode = ({ label, status, isLast = false }: {
   label: string,
@@ -123,78 +134,12 @@ const ExporterSpace: React.FC = () => {
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const [isPreKycDone, setIsPreKycDone] = useState(false);
+  const [selectedDeclaration, setSelectedDeclaration] = useState<DisplayDeclaration | null>(null);
+  const [showAllDeclarations, setShowAllDeclarations] = useState(false);
+  const [userDeclarations, setUserDeclarations] = useState<DisplayDeclaration[]>([]);
+  
 
-  // Données des archives
-  const archivedRequests: DemandeEnregistrement[] = [
-    {
-      id: 1,
-      reference: 'DEC-2025-001',
-      status: DemandeStatus.VALIDEE,
-      submittedAt: '12/05/2025',
-      paymentReference: 'PAY-882299',
-      paymentAmount: 500,
-      paymentStatus: PaymentStatus.REUSSI,
-      assignedTo: 1,
-      decisionDate: '15/05/2025',
-      decisionComment: 'Dossier complet et produits conformes aux normes tunisiennes.',
-      numeroAgrement: 'AGR-2025-X01',
-      dateAgrement: '15/05/2025',
-      applicantType: 'EXPORTATEUR',
-      type: 'PRODUCT_DECLARATION',
-      exportateur: 'John Doe (Global Export Co.)',
-      products: [
-        {
-          id: 1,
-          productType: 'alimentaire',
-          category: 'Conserves',
-          hsCode: '2005',
-          productName: 'Tomate double concentrée',
-          isLinkedToBrand: true,
-          brandName: 'Sicam',
-          isBrandOwner: false,
-          hasBrandLicense: true,
-          productState: 'Transformé',
-          originCountry: 'Tunisie',
-          annualQuantityValue: '5000',
-          annualQuantityUnit: 'KG',
-          commercialBrandName: 'Sicam Gold',
-          productImage: 'https://picsum.photos/seed/tomato/200/200'
-        }
-      ]
-    },
-    {
-      id: 2,
-      reference: 'DEC-2025-002',
-      status: DemandeStatus.REJETEE,
-      submittedAt: '20/06/2025',
-      paymentReference: 'PAY-993311',
-      paymentAmount: 500,
-      paymentStatus: PaymentStatus.REUSSI,
-      assignedTo: 2,
-      decisionDate: '22/06/2025',
-      decisionComment: 'Absence du certificat d\'origine pour le lot 4B.',
-      applicantType: 'EXPORTATEUR',
-      type: 'REGISTRATION',
-      exportateur: 'Jean Dupont (EuroTrade)',
-      products: [
-        {
-          id: 2,  
-          productType: 'industriel',
-          category: 'Plastiques',
-          hsCode: '3901',
-          productName: 'Granulés polyéthylène',
-          isLinkedToBrand: false,
-          isBrandOwner: false,
-          hasBrandLicense: false,
-          productState: 'Matière première',
-          originCountry: 'Tunisie',
-          annualQuantityValue: '10000',
-          annualQuantityUnit: 'KG',
-          commercialBrandName: 'PolyTN',
-        }
-      ]
-    }
-  ];
+  
 
   const [preKycData, setPreKycData] = useState<PreKycData>({
     username: '',
@@ -211,6 +156,7 @@ const ExporterSpace: React.FC = () => {
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [usernameMessage, setUsernameMessage] = useState<string>('');
   const [checkingUsername, setCheckingUsername] = useState(false);
+  
 
   // Ref pour éviter les appels multiples
   const hasFetchedRef = useRef(false);
@@ -254,19 +200,6 @@ const ExporterSpace: React.FC = () => {
     }
   }, []);
 
-  const productDeclarations = [
-    {
-      id: 'DEC-2026-0215',
-      product: 'Camembert Président 250g',
-      status: 'En cours de validation par les autorités',
-      date: '24/02/2026',
-      ngp: '0406',
-      category: 'Produits laitiers',
-      history: [
-        { event: 'Déclaration soumise le 24/02/2026', type: 'submission' }
-      ]
-    }
-  ];
 
   // Fonction pour charger les données depuis le backend (encapsulée dans useCallback)
   const fetchDossierStatus = useCallback(async (forceRefresh = false) => {
@@ -315,6 +248,89 @@ const ExporterSpace: React.FC = () => {
     }
   }, [dossierStatus, updateDossierStatus]);
 
+
+// Dans ExporterSpace.tsx, modifiez fetchUserDeclarations :
+
+const fetchUserDeclarations = useCallback(async () => {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+
+  try {
+    const response = await axios.get('http://localhost:8080/api/exportateur/declarations', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    console.log('📦 Réponse complète:', response.data);
+    
+    // 🔥 CORRECTION: Vérifier la structure de la réponse
+    let declarationsData = [];
+    if (response.data.data && Array.isArray(response.data.data)) {
+      declarationsData = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      declarationsData = response.data;
+    } else {
+      console.error('Structure de réponse inattendue:', response.data);
+      declarationsData = [];
+    }
+    
+    const declarations: DisplayDeclaration[] = declarationsData.map((dec: any) => ({
+      id: dec.id,
+      reference: dec.reference,
+      step: getStepFromStatus(dec.status),
+      currentValidator: getCurrentValidator(dec.validationStatuses),
+      products: dec.products || [],
+      status: dec.status,
+      submittedAt: dec.submittedAt
+    }));
+    
+    setUserDeclarations(declarations);
+    console.log('✅ Déclarations chargées:', declarations);
+    
+  } catch (error) {
+    console.error('Erreur lors du chargement des déclarations:', error);
+  }
+}, []);
+
+// Ajoutez avec les autres useEffect (vers ligne 350)
+useEffect(() => {
+  // Charger les déclarations si le dossier existe et est soumis ou validé
+  if (dossierInfo?.hasDossier && (dossierInfo?.status === 'SOUMISE' || dossierInfo?.status === 'EN_COURS_VALIDATION' || dossierInfo?.status === 'VALIDEE')) {
+    fetchUserDeclarations();
+  }
+}, [dossierInfo?.hasDossier, dossierInfo?.status, fetchUserDeclarations]);
+
+// Fonctions helper
+const getStatusLabel = (status: string): string => {
+  switch (status) {
+    case 'SOUMISE': return 'Soumis';
+    case 'EN_COURS_VALIDATION': return 'En cours de validation';
+    case 'EN_ATTENTE_INFO': return 'Info requise';
+    case 'VALIDEE': return 'Validée';
+    case 'REJETEE': return 'Rejetée';
+    default: return status;
+  }
+};
+
+const getStepFromStatus = (status: string): number => {
+  switch (status) {
+    case 'SOUMISE': return 1;
+    case 'EN_COURS_VALIDATION': return 2;
+    case 'EN_ATTENTE_INFO': return 2;
+    case 'VALIDEE': return 4;
+    case 'REJETEE': return 4;
+    default: return 1;
+  }
+};
+
+const getCurrentValidator = (validationStatuses: any[]): string => {
+  if (!validationStatuses) return 'En attente';
+  
+  const pendingValidation = validationStatuses.find(v => v.validationStatus === 'EN_ATTENTE');
+  if (pendingValidation) {
+    return pendingValidation.structureName;
+  }
+  return 'Terminé';
+};
 
   // Chargement initial - ne s'exécute qu'une fois
   useEffect(() => {
@@ -1272,30 +1288,121 @@ const ExporterSpace: React.FC = () => {
         </button>
       </div>
 
-      {/* PIPELINE DE STATUT TYPE JENKINS */}
-      <div className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
-        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-12 text-center">Pipeline de Conformité : {selectedDoc?.name || "Dossier Global"}</h3>
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <PipelineNode
-            label="Soumission"
-            status={selectedDoc ? 'success' : (dossierInfo?.hasDossier ? 'success' : 'processing')}
-          />
-          <PipelineNode
-            label="Analyse IA"
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'processing') : (dossierInfo?.status === 'SOUMISE' ? 'processing' : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending'))}
-          />
-          <PipelineNode
-            label="Validation"
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
-          />
-          <PipelineNode
-            label="Décision"
-            status={selectedDoc ? (selectedDoc.status === 'Validé' ? 'success' : 'pending') : (dossierInfo?.status === 'VALIDEE' ? 'success' : 'pending')}
-            isLast={true}
-          />
-        </div>
-        <br />
+
+{/* SECTION PIPELINE DE DÉCLARATION */}
+{userDeclarations.length > 0 && (
+  <div id="pipeline-section" className="bg-white p-10 py-12 rounded-[2.5rem] shadow-xl border border-slate-100 animate-fade-in-scale">
+    <div className="flex items-center justify-between mb-12">
+      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+        Pipeline de Conformité : {selectedDeclaration?.reference || userDeclarations[0]?.reference || 'Déclaration'}
+      </h3>
+      <span className="text-[10px] font-black py-1 px-3 bg-slate-100 text-slate-600 rounded-full border border-slate-200 uppercase tracking-widest italic">
+        {selectedDeclaration?.products?.[0]?.productName || userDeclarations[0]?.products?.[0]?.productName || 'Produit'}
+      </span>
+    </div>
+
+    <div className="max-w-3xl mx-auto flex items-center justify-between">
+      {(() => {
+        const currentDec = selectedDeclaration || userDeclarations[0];
+        const step = currentDec?.step || 1;
+        
+        return (
+          <>
+            <PipelineNode 
+              label="Soumission" 
+              status={step >= 1 ? (step > 1 ? 'success' : (step === 1 ? 'processing' : 'pending')) : 'pending'} 
+            />
+            <PipelineNode 
+              label={currentDec?.currentValidator?.includes('Industrie') ? 'Ministère Industrie' : 
+                    currentDec?.currentValidator?.includes('Santé') || currentDec?.currentValidator?.includes('INSSPA') ? 'Ministère Santé' : 
+                    'Validation Technique'} 
+              status={step >= 2 ? (step > 2 ? 'success' : (step === 2 ? 'processing' : 'pending')) : 'pending'} 
+            />
+            <PipelineNode 
+              label="Ministère Commerce" 
+              status={step >= 3 ? (step > 3 ? 'success' : (step === 3 ? 'processing' : 'pending')) : 'pending'} 
+            />
+            <PipelineNode 
+              label="Décision Finale" 
+              status={step === 4 ? 'success' : 'pending'} 
+              isLast={true} 
+            />
+          </>
+        );
+      })()}
+    </div>
+
+    {/* État actuel sous les stages */}
+    <div className="max-w-3xl mx-auto flex justify-between mt-12 text-center">
+      {(() => {
+        const currentDec = selectedDeclaration || userDeclarations[0];
+        const step = currentDec?.step || 1;
+        const stages = [
+          { id: 1, text: "Dossier Reçu" },
+          { id: 2, text: currentDec?.currentValidator || "Examen Technique" },
+          { id: 3, text: "Visa Commerce" },
+          { id: 4, text: "Accord Final" }
+        ];
+        return stages.map(stage => (
+          <div key={stage.id} className="w-24">
+            <span className={`text-[8px] font-black uppercase tracking-tight block leading-tight ${
+              step === stage.id ? 'text-tunisia-red font-black' : step > stage.id ? 'text-emerald-500' : 'text-slate-300'
+            }`}>
+              {step === stage.id ? '► En cours' : step > stage.id ? '✓ Traité' : '○ En attente'}
+            </span>
+            <p className={`text-[7px] font-bold mt-1 uppercase leading-none ${step === stage.id ? 'text-slate-900' : 'text-slate-400'}`}>
+              {stage.text.length > 15 ? stage.text.substring(0, 12) + '...' : stage.text}
+            </p>
+          </div>
+        ));
+      })()}
+    </div>
+
+    {/* "Voir Plus" pour les autres demandes */}
+    {userDeclarations.length > 1 && (
+      <div className="mt-12 text-center pt-8 border-t border-slate-50">
+        <button 
+          onClick={() => setShowAllDeclarations(!showAllDeclarations)}
+          className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] hover:text-slate-900 transition-all flex items-center justify-center gap-3 mx-auto"
+        >
+          <span>{showAllDeclarations ? "Masquer les autres demandes" : "Voir plus de demandes"}</span>
+          <i className={`fas fa-chevron-${showAllDeclarations ? 'up' : 'down'} transition-transform duration-300`}></i>
+        </button>
+
+        {showAllDeclarations && (
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+            {userDeclarations.filter(d => d.id !== (selectedDeclaration?.id || userDeclarations[0]?.id)).map(dec => (
+              <div 
+                key={dec.id} 
+                onClick={() => { 
+                  setSelectedDeclaration(dec); 
+                  setShowAllDeclarations(false); 
+                  window.scrollTo({ top: document.getElementById('pipeline-section')?.offsetTop || 0, behavior: 'smooth' }); 
+                }}
+                className="p-5 bg-slate-50 rounded-2xl border border-slate-100 hover:border-tunisia-red hover:bg-red-50/30 transition-all cursor-pointer text-left group"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[8px] font-black text-tunisia-red uppercase tracking-widest">{dec.reference}</span>
+                    <h4 className="text-[11px] font-black text-slate-800 uppercase italic mt-1 group-hover:text-tunisia-red">{dec.products?.[0]?.productName || 'Produit'}</h4>
+                  </div>
+                  <div className="text-right">
+                    <span className="px-2 py-0.5 bg-white rounded-md text-[7px] font-black uppercase text-slate-400 border border-slate-200 block mb-1">
+                      Validateur: {dec.currentValidator?.substring(0, 12) || 'N/A'}
+                    </span>
+                    <span className="text-[7px] font-bold text-tunisia-red uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">
+                      Cliquer pour suivre <i className="fas fa-arrow-up ml-1"></i>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+    )}
+  </div>
+)}
 
 
       {/* RUBRIQUE CATALOGUE PRODUITS INDEPENDANTE */}

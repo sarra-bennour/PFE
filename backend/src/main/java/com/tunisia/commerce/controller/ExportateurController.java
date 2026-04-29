@@ -3,19 +3,19 @@ package com.tunisia.commerce.controller;
 import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.exportateur.*;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
-import com.tunisia.commerce.entity.DemandeEnregistrement;
-import com.tunisia.commerce.entity.ExportateurEtranger;
-import com.tunisia.commerce.entity.User;
+import com.tunisia.commerce.entity.*;
 import com.tunisia.commerce.enums.DemandeStatus;
 import com.tunisia.commerce.enums.DocumentType;
 import com.tunisia.commerce.enums.TypeDemande;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
+import com.tunisia.commerce.repository.DemandeValidateurRepository;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.service.impl.ExportateurDossierService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.SignatureException;
+import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +36,7 @@ public class ExportateurController {
     private final JwtUtil jwtUtil;
     private final ExportateurRepository exportateurRepository;
     private final DemandeEnregistrementRepository demandeRepository;
+    private final DemandeValidateurRepository demandeValidateurRepository;
 
     private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
 
@@ -203,15 +204,6 @@ public class ExportateurController {
         }
     }
 
-    /*@GetMapping("/debug/document-types")
-    public ResponseEntity<List<String>> getDocumentTypes() {
-        return ResponseEntity.ok(
-                Arrays.stream(DocumentType.values())
-                        .map(Enum::name)
-                        .collect(Collectors.toList())
-        );
-    }*/
-
     /**
      * Télécharger un document pour le dossier
      */
@@ -315,103 +307,6 @@ public class ExportateurController {
         }
     }
 
-    /**
-     * Récupérer la liste des documents requis
-     */
-    /*@GetMapping("/documents-requis")
-    public ResponseEntity<DocumentsRequisResponseDTO> getDocumentsRequis() {
-        return ResponseEntity.ok(DocumentsRequisResponseDTO.builder()
-                .documents(List.of(
-                        DocumentRequisDTO.builder()
-                                .type("RC_CERT")
-                                .libelle("Registre de Commerce")
-                                .obligatoire(true)
-                                .description("Certificat de registre de commerce légalisé")
-                                .build(),
-                        DocumentRequisDTO.builder()
-                                .type("TIN_CERT")
-                                .libelle("Attestation fiscale")
-                                .obligatoire(true)
-                                .description("Attestation de numéro d'identification fiscale")
-                                .build(),
-                        DocumentRequisDTO.builder()
-                                .type("SANITARY_CERT")
-                                .libelle("Certificat sanitaire")
-                                .obligatoire(true)
-                                .description("Certificat sanitaire pour les produits alimentaires")
-                                .build()
-                ))
-                .build());
-    }*/
-
-
-    /**
-     * Récupérer un document spécifique par son ID
-     */
-    /*@GetMapping("/documents/{documentId}")
-    public ResponseEntity<?> getDocument(
-            @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long documentId) {
-
-        try {
-            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-
-            // Récupérer le document via le service
-            DocumentDTO document = dossierService.getDocumentById(documentId, exportateur.getId());
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "document", document
-            ));
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of(
-                            "success", false,
-                            "error", e.getMessage()
-                    ));
-        }
-    }*/
-
-    /**
-     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
-     */
-    /*@PostMapping("/pre-kyc/completer")
-    public ResponseEntity<?> completePreKyc(
-            @RequestHeader("Authorization") String authHeader,
-            @RequestBody PreKycRequest request) {
-
-        try {
-            // Récupérer l'exportateur à partir du token
-            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-
-            // Appeler le service spécialisé
-            ExportateurEtranger updatedExportateur = dossierService.completePreKyc(exportateur.getEmail(), request);
-
-            // Convertir en DTO pour la réponse
-            ExportateurInfoDTO exportateurInfo = ExportateurInfoDTO.fromEntity(updatedExportateur);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Informations préalables enregistrées avec succès");
-            response.put("exportateur", exportateurInfo);
-            response.put("preKycCompleted", updatedExportateur.isPreKycCompleted());
-            response.put("timestamp", LocalDateTime.now());
-
-            return ResponseEntity.ok(response);
-
-        } catch (RuntimeException e) {
-            logger.severe("Erreur lors du Pré-KYC: " + e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(errorResponse);
-        } catch (Exception e) {
-            logger.severe("Erreur interne lors du Pré-KYC "+ e);
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", "Erreur interne: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
-        }
-    }*/
 
     /**
      * Suggérer des noms d'utilisateur basés sur le nom de l'entreprise
@@ -586,6 +481,73 @@ public class ExportateurController {
         }
     }
 
+
+    // Ajoutez dans ExportateurController.java
+
+    @GetMapping("/declarations")
+    @Operation(summary = "Récupérer toutes les déclarations de l'exportateur connecté")
+    public ResponseEntity<?> getUserDeclarations(@RequestHeader("Authorization") String authHeader) {
+        try {
+            System.out.println("***pipeline***");
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+
+            // Récupérer toutes les demandes de l'exportateur
+            List<DemandeEnregistrement> demandes = demandeRepository.findByExportateurId(exportateur.getId());
+
+            // Transformer en DTO avec les infos nécessaires
+            List<Map<String, Object>> result = demandes.stream().map(demande -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", demande.getId());
+                map.put("reference", demande.getReference());
+                map.put("status", demande.getStatus().name());
+                map.put("submittedAt", demande.getSubmittedAt());
+                map.put("paymentAmount", demande.getPaymentAmount());
+
+                // Ajouter les produits
+                List<Map<String, Object>> products = new ArrayList<>();
+                if (demande.getDemandeProduits() != null) {
+                    for (DemandeProduit dp : demande.getDemandeProduits()) {
+                        Product p = dp.getProduit();
+                        Map<String, Object> productMap = new HashMap<>();
+                        productMap.put("id", p.getId());
+                        productMap.put("productName", p.getProductName());
+                        productMap.put("category", p.getCategory());
+                        productMap.put("hsCode", p.getHsCode());
+                        productMap.put("originCountry", p.getOriginCountry());
+                        productMap.put("annualQuantityValue", p.getAnnualQuantityValue());
+                        productMap.put("annualQuantityUnit", p.getAnnualQuantityUnit());
+                        products.add(productMap);
+                    }
+                }
+                map.put("products", products);
+
+                // Ajouter les statuts de validation
+                List<DemandeValidateur> validateurs = demandeValidateurRepository.findByDemandeId(demande.getId());
+                List<Map<String, Object>> validationStatuses = validateurs.stream().map(v -> {
+                    Map<String, Object> vsMap = new HashMap<>();
+                    vsMap.put("structureId", v.getStructure().getId());
+                    vsMap.put("structureName", v.getStructure().getOfficialName());
+                    vsMap.put("validationStatus", v.getValidationStatus().name());
+                    return vsMap;
+                }).collect(Collectors.toList());
+                map.put("validationStatuses", validationStatuses);
+
+                return map;
+            }).collect(Collectors.toList());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", result);
+            response.put("count", result.size());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            logger.severe("Erreur lors de la récupération des déclarations: {}"+ e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
 
     // ==================== MÉTHODES PRIVÉES CORRIGÉES ====================
 
