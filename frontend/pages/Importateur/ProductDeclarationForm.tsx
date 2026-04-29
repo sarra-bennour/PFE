@@ -765,41 +765,11 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="space-y-8 animate-fade-in">
-                <div className="bg-slate-50 rounded-[2rem] p-8 border border-slate-100">
-                  <div className="flex justify-between items-center mb-6">
-                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                      <FileText size={14} className="text-tunisia-red" /> Récapitulatif du paiement
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center">
-                        <i className="fas fa-credit-card text-slate-400"></i>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center p-4 bg-white rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frais de dossier</span>
-                      <span className="text-lg font-black text-tunisia-red">100 TND</span>
-                    </div>
-                    <div className="flex justify-between items-center p-4 bg-white rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frais de traitement</span>
-                      <span className="text-lg font-black text-slate-900">Inclus</span>
-                    </div>
-                    <div className="pt-4 border-t border-slate-200">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total à payer</span>
-                        <span className="text-2xl font-black italic tracking-tighter text-tunisia-red">100 TND</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
+              <div className="animate-fade-in">
                 <PaymentForm
                   amount={100}
                   onSubmit={handlePaymentSubmit}
-                  onBack={() => setStep(2)}
+                  onBack={() => setStep(1)}
                   isLoading={paymentLoading}
                   error={paymentError}
                   success={paymentSuccess}

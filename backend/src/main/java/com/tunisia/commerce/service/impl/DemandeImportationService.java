@@ -38,6 +38,7 @@ public class DemandeImportationService {
     private final DocumentRepository documentRepository;
     private final DemandeHistoryRepository historyRepository;
     private final DemandeImportateurRepository demandeImportateurRepository;
+    private final DemandeRoutingService demandeRoutingService;
 
     private static final String REFERENCE_PREFIX = "IMP-";
 
@@ -172,6 +173,8 @@ public class DemandeImportationService {
         demande.setStatus(DemandeStatus.SOUMISE);
         demande.setSubmittedAt(LocalDateTime.now());
         demande = demandeRepository.save(demande);
+        demandeRoutingService.assignDemandeToValidators(demande);
+
 
         addHistory(demande, DemandeStatus.BROUILLON, DemandeStatus.SOUMISE,
                 "SOUMISSION", "Demande d'importation soumise pour traitement",

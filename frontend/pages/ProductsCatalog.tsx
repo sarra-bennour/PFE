@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -197,9 +197,28 @@ const ProductsCatalog: React.FC = () => {
     return new Date(dateString).toLocaleDateString('fr-FR');
   };
 
-  const totalPages = Math.ceil(products.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedProducts = products.slice(startIndex, startIndex + itemsPerPage);
+const normalizeProductType = (type: string | undefined): string => {
+  if (!type) return '';
+  return type.toLowerCase().trim();
+};
+
+const getFilteredProductsByType = () => {
+  if (filterType === 'all') return products;
+  return products.filter(product => 
+    normalizeProductType(product.productType) === filterType
+  );
+};
+
+const filteredProducts = useMemo(() => {
+  if (filterType === 'all') return products;
+  return products.filter(product => 
+    normalizeProductType(product.productType) === filterType
+  );
+}, [products, filterType]);
+const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+const startIndex = (currentPage - 1) * itemsPerPage;
+const paginatedProducts = filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -561,10 +580,11 @@ const ProductsCatalog: React.FC = () => {
                 {paginatedProducts.map((product) => (
                   <motion.div
                     layout
-                    key={product.id}
+                    key={`${product.id}-${filterType}`}
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ duration: 0.3 }}
                     className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:border-tunisia-red/20 transition-all group flex flex-col overflow-hidden h-[480px]"
                   >
                     {/* Product Image - cliquable pour voir les détails */}
@@ -637,7 +657,7 @@ const ProductsCatalog: React.FC = () => {
             </div>
 
             {/* Pagination */}
-            {products.length > itemsPerPage && (
+            {filteredProducts.length > itemsPerPage && (
               <div className="mt-16 flex items-center justify-center gap-4">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
