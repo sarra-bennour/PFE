@@ -82,7 +82,9 @@ const resources = {
       "preferences": "Préférences",
       "sign_out_account": "Se déconnecter du compte",
       "catalogue_products": "Catalogue Produits",
-      "my_declarations": "Mes Déclarations"
+      "my_declarations": "Mes Déclarations",
+      "activity_log": "Historique d'activité",
+      "view_activity_log": "Consulter mon historique d'activité",
     }
   },
   ar: {
@@ -162,7 +164,8 @@ const resources = {
       "preferences": "التفضيلات",
       "sign_out_account": "تسجيل الخروج من الحساب",
       "catalogue_products": "كتالوج المنتجات",
-      "my_declarations": "تصاريحي"
+      "my_declarations": "سجل الأنشطة",
+      "view_activity_log": "عرض سجل أنشطتي",
     }
   },
   en: {
@@ -177,7 +180,9 @@ const resources = {
       "nav_admin": "Administration",
       "nav_login": "Login",
       "catalogue_products": "Products Catalog",
-      "my_declarations": "My Declarations"
+      "my_declarations": "My Declarations",
+      "activity_log": "Activity Log",
+      "view_activity_log": "View my activity log",
     }
   }    
 };

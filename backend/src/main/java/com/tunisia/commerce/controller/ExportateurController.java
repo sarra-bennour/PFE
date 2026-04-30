@@ -4,18 +4,18 @@ import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.exportateur.*;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.*;
-import com.tunisia.commerce.enums.DemandeStatus;
-import com.tunisia.commerce.enums.DocumentType;
-import com.tunisia.commerce.enums.TypeDemande;
+import com.tunisia.commerce.enums.*;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.DemandeValidateurRepository;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
+import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.ExportateurDossierService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.SignatureException;
 import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,8 +37,30 @@ public class ExportateurController {
     private final ExportateurRepository exportateurRepository;
     private final DemandeEnregistrementRepository demandeRepository;
     private final DemandeValidateurRepository demandeValidateurRepository;
+    private final AuditService auditService;
+
 
     private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+            ip = "127.0.0.1";
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
 
 
     /**
@@ -137,40 +159,20 @@ public class ExportateurController {
     @PostMapping("/dossier/creer")
     public ResponseEntity<DossierResponseDTO> creerDossier(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody CreerDossierRequest request) {
+            @RequestBody CreerDossierRequest request,
+            HttpServletRequest httpRequest) {
 
-        // DÉBOGAGE : Afficher tout ce qui est reçu
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
+
         System.out.println("========== DÉBOGAGE CRÉATION DOSSIER ==========");
-        System.out.println("Request reçue: " + (request != null ? "OK" : "NULL"));
-
-        if (request != null) {
-            // Utiliser reflection pour voir tous les champs
-            try {
-                java.lang.reflect.Field[] fields = request.getClass().getDeclaredFields();
-                System.out.println("Nombre de champs dans la requête: " + fields.length);
-
-                for (java.lang.reflect.Field field : fields) {
-                    field.setAccessible(true);
-                    Object value = field.get(request);
-                    System.out.println("  - " + field.getName() + " = " + value);
-                }
-            } catch (Exception e) {
-                System.out.println("Erreur reflection: " + e.getMessage());
-            }
-
-            // Afficher les produits si présents
-            if (request.getProduits() != null) {
-                System.out.println("Produits: " + request.getProduits().size());
-                request.getProduits().forEach(p -> {
-                    System.out.println("  Produit: " + p);
-                });
-            } else {
-                System.out.println("Produits: null");
-            }
-        }
 
         try {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
+
             System.out.println("Exportateur trouvé: " + exportateur.getId() + " - " + exportateur.getEmail());
 
             DemandeEnregistrement demande = dossierService.creerDossier(
@@ -179,7 +181,19 @@ public class ExportateurController {
             );
 
             System.out.println("Dossier créé avec succès: " + demande.getId());
-            System.out.println("===============================================");
+
+            // AUDIT: Création dossier
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_CREER_DOSSIER")
+                            .actionType(ActionType.CREATION)
+                            .description("Création d'un nouveau dossier de conformité")
+                            .entity(EntityType.DEMANDE, demande.getId(), demande.getReference())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("produits_count", request.getProduits() != null ? request.getProduits().size() : 0)
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(DossierResponseDTO.builder()
                     .success(true)
@@ -191,9 +205,18 @@ public class ExportateurController {
                     .build());
 
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_CREER_DOSSIER")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec création dossier")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             System.err.println("ERREUR création dossier: " + e.getMessage());
             e.printStackTrace();
-            System.out.println("===============================================");
 
             return ResponseEntity.badRequest()
                     .body(DossierResponseDTO.builder()
@@ -213,16 +236,39 @@ public class ExportateurController {
             @RequestHeader("Authorization") String authHeader,
             @PathVariable("demandeId") Long demandeId,
             @RequestParam("file") MultipartFile file,
-            @RequestParam("documentType") String documentType) {
+            @RequestParam("documentType") String documentType,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         try {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
 
             DocumentDTO doc = dossierService.uploadDocument(
                     demandeId,
                     exportateur.getId(),
                     file,
                     documentType
+            );
+
+            // AUDIT: Upload document
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_UPLOAD_DOCUMENT")
+                            .actionType(ActionType.UPLOAD)
+                            .description("Téléchargement d'un document pour le dossier")
+                            .entity(EntityType.DOCUMENT, doc.getId(), doc.getFileName())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("document_type", documentType)
+                            .detail("file_name", file.getOriginalFilename())
+                            .detail("file_size", file.getSize())
+                            .detail("ip_address", clientIp)
             );
 
             return ResponseEntity.ok(DocumentResponseDTO.builder()
@@ -238,9 +284,22 @@ public class ExportateurController {
                     .build());
 
         } catch (RuntimeException e) {
-            e.printStackTrace(); // IMPORTANT pour voir l'erreur dans les logs
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_UPLOAD_DOCUMENT")
+                            .actionType(ActionType.UPLOAD)
+                            .description("Échec upload document")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("document_type", documentType)
+                            .detail("file_name", file.getOriginalFilename())
+                            .detail("ip_address", clientIp)
+            );
 
-            // Différencier les types d'erreurs
+            e.printStackTrace();
+
             if (e.getMessage().contains("non trouvé") || e.getMessage().contains("autorisation")) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(DocumentResponseDTO.builder()
@@ -256,7 +315,6 @@ public class ExportateurController {
                                 .timestamp(LocalDateTime.now())
                                 .build());
             } else {
-                // Erreur interne du serveur
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                         .body(DocumentResponseDTO.builder()
                                 .success(false)
@@ -264,14 +322,6 @@ public class ExportateurController {
                                 .timestamp(LocalDateTime.now())
                                 .build());
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(DocumentResponseDTO.builder()
-                            .success(false)
-                            .message("Erreur inattendue: " + e.getMessage())
-                            .timestamp(LocalDateTime.now())
-                            .build());
         }
     }
     /**
@@ -280,14 +330,34 @@ public class ExportateurController {
     @PostMapping("/dossier/{demandeId}/soumettre")
     public ResponseEntity<DossierResponseDTO> soumettreDossier(
             @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long demandeId) {
+            @PathVariable Long demandeId,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         try {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
 
             DemandeEnregistrement demande = dossierService.soumettreDossier(
                     demandeId,
                     exportateur.getId()
+            );
+
+            // AUDIT: Soumission dossier
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_SOUMETTRE_DOSSIER")
+                            .actionType(ActionType.CREATION)
+                            .description("Soumission du dossier de conformité")
+                            .entity(EntityType.DEMANDE, demande.getId(), demande.getReference())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
             );
 
             return ResponseEntity.ok(DossierResponseDTO.builder()
@@ -298,6 +368,17 @@ public class ExportateurController {
                     .build());
 
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_SOUMETTRE_DOSSIER")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec soumission dossier")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.badRequest()
                     .body(DossierResponseDTO.builder()
                             .success(false)
@@ -370,16 +451,35 @@ public class ExportateurController {
     @GetMapping("/documents/{documentId}/file")
     public ResponseEntity<?> downloadDocument(
             @RequestHeader("Authorization") String authHeader,
-            @PathVariable Long documentId) {
+            @PathVariable Long documentId,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         try {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
 
-            // Récupérer le fichier via le service
             org.springframework.core.io.Resource resource = dossierService.getDocumentFile(documentId, exportateur.getId());
             DocumentDTO documentInfo = dossierService.getDocumentById(documentId, exportateur.getId());
 
-            // Déterminer le Content-Type
+            // AUDIT: Téléchargement document
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_DOWNLOAD_DOCUMENT")
+                            .actionType(ActionType.DOWNLOAD)
+                            .description("Téléchargement d'un document")
+                            .entity(EntityType.DOCUMENT, documentId, documentInfo.getFileName())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("document_type", documentInfo.getDocumentType().name())
+                            .detail("file_size", documentInfo.getFileSize())
+                            .detail("ip_address", clientIp)
+            );
+
             String contentType = "application/octet-stream";
             if (documentInfo.getFileType() != null) {
                 switch (documentInfo.getFileType().toLowerCase()) {
@@ -393,9 +493,6 @@ public class ExportateurController {
                     case "png":
                         contentType = "image/png";
                         break;
-                    case "gif":
-                        contentType = "image/gif";
-                        break;
                 }
             }
 
@@ -406,6 +503,18 @@ public class ExportateurController {
                     .body(resource);
 
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_DOWNLOAD_DOCUMENT")
+                            .actionType(ActionType.DOWNLOAD)
+                            .description("Échec téléchargement document")
+                            .entity(EntityType.DOCUMENT, documentId, null)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("document_id", documentId)
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of(
                             "success", false,
@@ -419,13 +528,31 @@ public class ExportateurController {
      */
     @GetMapping("/documents")
     public ResponseEntity<?> getAllDocuments(
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         try {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
 
-            // Récupérer tous les documents via le service
             List<DocumentDTO> documents = dossierService.getDossierAgrementByExportateur(exportateur.getId());
+
+            // AUDIT: Consultation tous documents
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_GET_ALL_DOCUMENTS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation de tous les documents")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("documents_count", documents.size())
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -433,6 +560,16 @@ public class ExportateurController {
             ));
 
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_GET_ALL_DOCUMENTS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation documents")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "success", false,
@@ -447,16 +584,20 @@ public class ExportateurController {
     @PostMapping("/pre-kyc/completer")
     public ResponseEntity<?> completePreKyc(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody PreKycRequest request) {
+            @RequestBody PreKycRequest request,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         try {
-            // Récupérer l'exportateur à partir du token
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
 
-            // Appeler le service spécialisé
             ExportateurEtranger updatedExportateur = dossierService.completePreKyc(exportateur.getEmail(), request);
 
-            // Convertir en DTO pour la réponse
             ExportateurInfoDTO exportateurInfo = ExportateurInfoDTO.fromEntity(updatedExportateur);
 
             Map<String, Object> response = new HashMap<>();
@@ -466,15 +607,51 @@ public class ExportateurController {
             response.put("preKycCompleted", updatedExportateur.isPreKycCompleted());
             response.put("timestamp", LocalDateTime.now());
 
+            // AUDIT: Complétion Pre-KYC
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_COMPLETE_PRE_KYC")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Complétion des informations Pré-KYC")
+                            .entity(EntityType.USER, userId, userEmail)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("username", request.getUsername())
+                            .detail("site_type", request.getSiteType())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.ok(response);
 
         } catch (RuntimeException e) {
             logger.severe("Erreur lors du Pré-KYC: " + e.getMessage());
+
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_COMPLETE_PRE_KYC")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec complétion Pré-KYC")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
             logger.severe("Erreur interne lors du Pré-KYC: " + e);
+
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_COMPLETE_PRE_KYC")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Erreur interne Pré-KYC")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "Erreur interne: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);

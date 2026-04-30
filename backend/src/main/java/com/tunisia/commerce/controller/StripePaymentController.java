@@ -4,13 +4,19 @@ import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.dto.payment.CreatePaymentIntentRequest;
 import com.tunisia.commerce.dto.payment.CreatePaymentIntentResponse;
 import com.tunisia.commerce.dto.payment.PaymentResponseDTO;
+import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.entity.ImportateurTunisien;
 import com.tunisia.commerce.entity.User;
+import com.tunisia.commerce.enums.ActionType;
+import com.tunisia.commerce.enums.EntityType;
+import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.repository.ImportateurRepository;
 import com.tunisia.commerce.repository.UserRepository;
+import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.StripePaymentService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,9 +34,30 @@ public class StripePaymentController {
 
     private final StripePaymentService stripePaymentService;
     private final JwtUtil jwtUtil;
-    private final ExportateurRepository exportateurRepository;
-    private final ImportateurRepository importateurRepository;
     private final UserRepository userRepository;
+    private final DemandeEnregistrementRepository demandeRepository;
+    private final AuditService auditService;
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+            ip = "127.0.0.1";
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
+
 
     @Value("${app.base.url}")
     private String baseUrl;
@@ -41,15 +68,37 @@ public class StripePaymentController {
     @PostMapping("/create-intent")
     public ResponseEntity<CreatePaymentIntentResponse> createPaymentIntent(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody CreatePaymentIntentRequest request) {
+            @RequestBody CreatePaymentIntentRequest request,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
+        String userRole = null;
+        Double amount = null;
+        String currency = null;
 
         try {
             log.info("📝 Création de PaymentIntent - Header: {}", authHeader != null ? "présent" : "absent");
 
             User user = getUserFromToken(authHeader);
+            userId = user.getId();
+            userEmail = user.getEmail();
+            userRole = user.getRole().name();
+
             log.info("✅ Utilisateur authentifié: {} - Rôle: {}", user.getId(), user.getRole());
 
-            // Ajouter les URLs de retour si non fournies
+            // ✅ Récupérer le montant depuis la demande
+            if (request.getDemandeId() != null) {
+                // Récupérer la demande depuis le repository
+                DemandeEnregistrement demande = demandeRepository.findById(request.getDemandeId())
+                        .orElse(null);
+                if (demande != null) {
+                    amount = demande.getPaymentAmount() != null ? demande.getPaymentAmount().doubleValue() : null;
+                    currency = "TND"; // Par défaut ou depuis la demande
+                }
+            }
+
             if (request.getSuccessUrl() == null) {
                 request.setSuccessUrl(baseUrl + "/payment-success");
             }
@@ -63,9 +112,39 @@ public class StripePaymentController {
                     request
             );
 
+            // AUDIT: Création PaymentIntent
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PAYMENT_CREATE_INTENT")
+                            .actionType(ActionType.PAYMENT)
+                            .description("Création d'un PaymentIntent Stripe")
+                            .entity(EntityType.PAYMENT, null, response.getPaymentIntentId())
+                            .user(userId, userEmail, userRole)
+                            .success()
+                            .detail("demande_id", request.getDemandeId())
+                            .detail("amount", amount)
+                            .detail("currency", currency)
+                            .detail("payment_intent_id", response.getPaymentIntentId())
+                            .detail("client_secret", response.getClientSecret() != null ? "présent" : "absent")
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.ok(response);
 
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PAYMENT_CREATE_INTENT")
+                            .actionType(ActionType.PAYMENT)
+                            .description("Échec création PaymentIntent")
+                            .user(userId, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("demande_id", request.getDemandeId())
+                            .detail("amount", amount)
+                            .detail("currency", currency)
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("❌ Erreur lors de la création du PaymentIntent", e);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -77,7 +156,15 @@ public class StripePaymentController {
     @PostMapping("/confirm-payment")
     public ResponseEntity<?> confirmPayment(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody Map<String, Object> paymentDetails) {
+            @RequestBody Map<String, Object> paymentDetails,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
+        String userRole = null;
+        String paymentIntentId = null;
+        Long demandeId = null;
 
         try {
             log.info("💳 Confirmation de paiement");
@@ -89,7 +176,19 @@ public class StripePaymentController {
             }
 
             User user = getUserFromToken(authHeader);
+            userId = user.getId();
+            userEmail = user.getEmail();
+            userRole = user.getRole().name();
+
             log.info("✅ Utilisateur authentifié: {} - Rôle: {}", user.getId(), user.getRole());
+
+            // Extraire les IDs pour l'audit
+            if (paymentDetails.containsKey("paymentIntentId")) {
+                paymentIntentId = (String) paymentDetails.get("paymentIntentId");
+            }
+            if (paymentDetails.containsKey("demandeId")) {
+                demandeId = ((Number) paymentDetails.get("demandeId")).longValue();
+            }
 
             PaymentResponseDTO response = stripePaymentService.confirmPayment(
                     user.getId(),
@@ -97,9 +196,53 @@ public class StripePaymentController {
                     paymentDetails
             );
 
+            // AUDIT: Confirmation paiement
+            if (response.isSuccess()) {
+                auditService.log(
+                        AuditService.AuditLogBuilder.builder()
+                                .action("PAYMENT_CONFIRM")
+                                .actionType(ActionType.PAYMENT)
+                                .description("Confirmation de paiement réussie")
+                                .entity(EntityType.PAYMENT, null, paymentIntentId)
+                                .user(userId, userEmail, userRole)
+                                .success()
+                                .detail("demande_id", demandeId)
+                                .detail("payment_intent_id", paymentIntentId)
+                                .detail("payment_reference", response.getPaymentReference())
+                                .detail("amount", response.getAmount())
+                                .detail("status", response.getStatus())
+                                .detail("ip_address", clientIp)
+                );
+            } else {
+                auditService.log(
+                        AuditService.AuditLogBuilder.builder()
+                                .action("PAYMENT_CONFIRM")
+                                .actionType(ActionType.PAYMENT)
+                                .description("Échec confirmation paiement")
+                                .entity(EntityType.PAYMENT, null, paymentIntentId)
+                                .user(userId, userEmail, userRole)
+                                .failure(response.getMessage())
+                                .detail("demande_id", demandeId)
+                                .detail("payment_intent_id", paymentIntentId)
+                                .detail("ip_address", clientIp)
+                );
+            }
+
             return ResponseEntity.ok(response);
 
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PAYMENT_CONFIRM")
+                            .actionType(ActionType.PAYMENT)
+                            .description("Exception lors de la confirmation paiement")
+                            .user(userId, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("payment_intent_id", paymentIntentId)
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("❌ Erreur: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", e.getMessage()));

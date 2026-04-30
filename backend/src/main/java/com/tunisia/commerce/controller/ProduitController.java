@@ -9,10 +9,13 @@ import com.tunisia.commerce.entity.DemandeEnregistrement;
 import com.tunisia.commerce.entity.ExportateurEtranger;
 import com.tunisia.commerce.entity.ImportateurTunisien;
 import com.tunisia.commerce.entity.User;
+import com.tunisia.commerce.enums.ActionType;
+import com.tunisia.commerce.enums.EntityType;
 import com.tunisia.commerce.exception.ProductDeclarationException;
 import com.tunisia.commerce.repository.DemandeEnregistrementRepository;
 import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.repository.UserRepository;
+import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.DemandeEnregistrementService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
@@ -20,6 +23,7 @@ import io.jsonwebtoken.security.SignatureException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -52,8 +56,30 @@ public class ProduitController {
     private final ExportateurRepository exportateurRepository;
     private final UserRepository userRepository;
     private final DemandeEnregistrementRepository demandeEnregistrementRepository;
+    private final AuditService auditService;
+
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+            ip = "127.0.0.1";
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
 
 
     /**
@@ -62,26 +88,42 @@ public class ProduitController {
     @GetMapping("/catalogue-produits")
     @Operation(summary = "Récupérer le catalogue complet des produits pour les importateurs")
     @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<?> getAllProductsForImporter(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getAllProductsForImporter(
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         System.out.println("=== DÉBUT getAllProductsForImporter ===");
 
         try {
-            // Vérifier l'authentification de l'importateur
             User user = getUserFromToken(authHeader);
+            userId = user.getId();
+            userEmail = user.getEmail();
+
             System.out.println("Importateur ID: " + user.getId() + ", Email: " + user.getEmail());
 
             if (!(user instanceof ImportateurTunisien)) {
-                Map<String, String> errorResponse = new HashMap<>();
-                errorResponse.put("error", "FORBIDDEN");
-                errorResponse.put("message", "Accès réservé aux importateurs");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "FORBIDDEN", "message", "Accès réservé aux importateurs"));
             }
 
-            // Récupérer tous les produits
             List<ProduitDTO> products = demandeService.getAllProductsForImporter();
 
             System.out.println("✅ " + products.size() + " produit(s) trouvé(s) dans le catalogue");
+
+            // AUDIT: Consultation catalogue produits
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_CATALOGUE_GET_ALL")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation du catalogue complet des produits")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("products_count", products.size())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -90,16 +132,17 @@ public class ProduitController {
 
             return ResponseEntity.ok(response);
 
-        } catch (ProductDeclarationException e) {
-            System.err.println("❌ ProductDeclarationException: " + e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getErrorCode());
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(e.getStatus()).body(errorResponse);
-
         } catch (Exception e) {
-            System.err.println("❌ Erreur inattendue: " + e.getMessage());
-            e.printStackTrace();
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_CATALOGUE_GET_ALL")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation catalogue produits")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
             errorResponse.put("message", "Erreur lors de la récupération du catalogue: " + e.getMessage());
@@ -148,19 +191,38 @@ public class ProduitController {
     @GetMapping("/mes-produits")
     @Operation(summary = "Récupérer les produits de l'exportateur")
     @PreAuthorize("hasRole('EXPORTATEUR')")
-    public ResponseEntity<?> getMyProducts(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getMyProducts(
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         System.out.println("=== DÉBUT getMyProducts ===");
 
         try {
-            // Extraire l'exportateur du token
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-            System.out.println("Exportateur ID: " + exportateur.getId() + ", Email: " + exportateur.getEmail());
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
 
-            // Récupérer les produits
+            System.out.println("Exportateur ID: " + exportateur.getId());
+
             List<ProduitDTO> products = demandeService.getProductsByExportateur(exportateur.getId());
 
             System.out.println("✅ " + products.size() + " produit(s) trouvé(s)");
+
+            // AUDIT: Consultation produits exportateur
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_MES_PRODUITS_GET")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation des produits de l'exportateur")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("products_count", products.size())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -169,16 +231,17 @@ public class ProduitController {
 
             return ResponseEntity.ok(response);
 
-        } catch (ProductDeclarationException e) {
-            System.err.println("❌ ProductDeclarationException: " + e.getMessage());
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getErrorCode());
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(e.getStatus()).body(errorResponse);
-
         } catch (Exception e) {
-            System.err.println("❌ Erreur inattendue: " + e.getMessage());
-            e.printStackTrace();
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_MES_PRODUITS_GET")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation produits exportateur")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
             errorResponse.put("message", "Erreur lors de la récupération des produits: " + e.getMessage());
@@ -231,40 +294,69 @@ public class ProduitController {
             @RequestParam(required = false) String productType,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String originCountry,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
 
-        System.out.println("=== DÉBUT searchMyProducts ===");
-        System.out.println("Keyword: " + keyword);
-        System.out.println("ProductType: " + productType);
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         try {
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
 
             List<ProduitDTO> products;
+            String searchType = "all";
 
             if (keyword != null && !keyword.isEmpty()) {
                 products = demandeService.searchProductsByExportateur(exportateur.getId(), keyword);
+                searchType = "keyword";
             } else if (productType != null && !productType.isEmpty()) {
                 products = demandeService.searchProductsByExportateurAndType(exportateur.getId(), productType);
+                searchType = "product_type";
             } else if (category != null && !category.isEmpty()) {
                 products = demandeService.searchProductsByExportateurAndCategory(exportateur.getId(), category);
+                searchType = "category";
             } else if (originCountry != null && !originCountry.isEmpty()) {
                 products = demandeService.searchProductsByExportateurAndOrigin(exportateur.getId(), originCountry);
+                searchType = "origin_country";
             } else {
                 products = demandeService.getProductsByExportateur(exportateur.getId());
             }
+
+            // AUDIT: Recherche produits exportateur
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_MES_PRODUITS_RECHERCHE")
+                            .actionType(ActionType.SEARCH)
+                            .description("Recherche dans les produits de l'exportateur")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("search_type", searchType)
+                            .detail("keyword", keyword != null ? keyword : "")
+                            .detail("results_count", products.size())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("products", products);
             response.put("count", products.size());
 
-            System.out.println("✅ " + products.size() + " produit(s) trouvé(s)");
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println("❌ Erreur: " + e.getMessage());
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_MES_PRODUITS_RECHERCHE")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec recherche produits exportateur")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
             errorResponse.put("message", e.getMessage());
@@ -283,46 +375,69 @@ public class ProduitController {
             @RequestParam(required = false) String productType,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String originCountry,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
 
-        System.out.println("=== DÉBUT searchCatalogueProducts ===");
-        System.out.println("Keyword: " + keyword);
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         try {
             User user = getUserFromToken(authHeader);
-
-            if (!(user instanceof ImportateurTunisien)) {
-                Map<String, String> errorResponse = new HashMap<>();
-                errorResponse.put("error", "FORBIDDEN");
-                errorResponse.put("message", "Accès réservé aux importateurs");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
-            }
+            userId = user.getId();
+            userEmail = user.getEmail();
 
             List<ProduitDTO> products;
+            String searchType = "all";
 
             if (keyword != null && !keyword.isEmpty()) {
                 products = demandeService.searchProductsInCatalogue(keyword);
+                searchType = "keyword";
             } else if (productType != null && !productType.isEmpty()) {
                 products = demandeService.searchProductsInCatalogueByType(productType);
+                searchType = "product_type";
             } else if (category != null && !category.isEmpty()) {
                 products = demandeService.searchProductsInCatalogueByCategory(category);
+                searchType = "category";
             } else if (originCountry != null && !originCountry.isEmpty()) {
                 products = demandeService.searchProductsInCatalogueByOrigin(originCountry);
+                searchType = "origin_country";
             } else {
                 products = demandeService.getAllProductsForImporter();
             }
+
+            // AUDIT: Recherche catalogue
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_CATALOGUE_RECHERCHE")
+                            .actionType(ActionType.SEARCH)
+                            .description("Recherche dans le catalogue produits")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("search_type", searchType)
+                            .detail("keyword", keyword != null ? keyword : "")
+                            .detail("results_count", products.size())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("products", products);
             response.put("count", products.size());
 
-            System.out.println("✅ " + products.size() + " produit(s) trouvé(s)");
-
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            System.err.println("❌ Erreur: " + e.getMessage());
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_CATALOGUE_RECHERCHE")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec recherche catalogue")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
             errorResponse.put("message", e.getMessage());
@@ -338,12 +453,20 @@ public class ProduitController {
     public ResponseEntity<?> createDemande(
             @RequestPart("demande") @Valid DemandeEnregistrementRequestDTO request,
             @RequestPart(value = "images", required = false) List<MultipartFile> images,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         try {
             System.out.println("*** create demande ***");
 
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
+
             request.setExportateurId(exportateur.getId());
 
             DemandeEnregistrementDTO created = demandeService.createDemande(request);
@@ -356,25 +479,39 @@ public class ProduitController {
                     if (request.getProducts() != null && i < request.getProducts().size()) {
                         originalImageName = request.getProducts().get(i).getProductImageName();
                     }
-
-                    demandeService.uploadProductImage(created.getId(), productId, image,originalImageName);
+                    demandeService.uploadProductImage(created.getId(), productId, image, originalImageName);
                 }
             }
 
+            // AUDIT: Création demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_CREER_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Création d'une demande d'enregistrement de produits")
+                            .entity(EntityType.DEMANDE, created.getId(), created.getReference())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("products_count", request.getProducts() != null ? request.getProducts().size() : 0)
+                            .detail("ip_address", clientIp)
+            );
+
             return new ResponseEntity<>(created, HttpStatus.CREATED);
 
-        } catch (ProductDeclarationException e) {
-            // Retourner l'exception métier au front-end
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getErrorCode());
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(e.getStatus()).body(errorResponse);
-
         } catch (Exception e) {
-            // Retourner l'erreur technique au front-end
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_CREER_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec création demande d'enregistrement")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
-            errorResponse.put("message", e.getMessage()); // ← Le message d'erreur complet
+            errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
@@ -385,16 +522,60 @@ public class ProduitController {
     @Operation(summary = "Uploader un document")
     @PreAuthorize("hasRole('EXPORTATEUR')")
     public ResponseEntity<DocumentDTO> uploadDocument(
-            @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
-            @Parameter(description = "Type de document") @RequestParam String documentType,
-            @Parameter(description = "ID du produit (optionnel)") @RequestParam(required = false) Long productId,
-            @Parameter(description = "Fichier à uploader") @RequestParam("file") MultipartFile file,
-            @RequestHeader("Authorization") String authHeader) {
+            @PathVariable Long demandeId,
+            @RequestParam String documentType,
+            @RequestParam(required = false) Long productId,
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
 
-        ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        DocumentDTO document = demandeService.uploadDocument(demandeId, exportateur.getId(),
-                file, documentType, productId);
-        return ResponseEntity.ok(document);
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
+
+            DocumentDTO document = demandeService.uploadDocument(demandeId, exportateur.getId(), file, documentType, productId);
+
+            // AUDIT: Upload document
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_UPLOAD_DOCUMENT")
+                            .actionType(ActionType.UPLOAD)
+                            .description("Upload de document pour une demande")
+                            .entity(EntityType.DOCUMENT, document.getId(), document.getFileName())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("document_type", documentType)
+                            .detail("product_id", productId)
+                            .detail("file_name", file.getOriginalFilename())
+                            .detail("file_size", file.getSize())
+                            .detail("ip_address", clientIp)
+            );
+
+            return ResponseEntity.ok(document);
+
+        } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_UPLOAD_DOCUMENT")
+                            .actionType(ActionType.UPLOAD)
+                            .description("Échec upload document")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("document_type", documentType)
+                            .detail("product_id", productId)
+                            .detail("file_name", file.getOriginalFilename())
+                            .detail("ip_address", clientIp)
+            );
+
+            throw e;
+        }
     }
 
     /**
@@ -405,60 +586,75 @@ public class ProduitController {
     @PreAuthorize("hasRole('EXPORTATEUR')")
     public ResponseEntity<?> submitDemande(
             @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
+        String reference = null;
 
         System.out.println("=== DÉBUT submitDemande ===");
-        System.out.println("Demande ID reçu: " + id);
 
         try {
-            // 1. Extraire l'exportateur du token
-            System.out.println("1. Extraction de l'exportateur depuis le token...");
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-            System.out.println("   ✅ Exportateur trouvé - ID: " + exportateur.getId() + ", Email: " + exportateur.getEmail());
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
 
-            // 2. Appeler le service pour soumettre la demande
-            System.out.println("2. Appel du service submitDemande avec demandeId=" + id + ", exportateurId=" + exportateur.getId());
             DemandeEnregistrementDTO demande = demandeService.submitDemande(id, exportateur.getId());
+            reference = demande.getReference();
 
-            System.out.println("   ✅ Demande soumise avec succès:");
-            System.out.println("      - ID: " + demande.getId());
-            System.out.println("      - Référence: " + demande.getReference());
-            System.out.println("      - Statut: " + demande.getStatus());
-            System.out.println("      - Date de soumission: " + demande.getSubmittedAt());
+            // AUDIT: Soumission demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_SOUMETTRE_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Soumission d'une demande d'enregistrement")
+                            .entity(EntityType.DEMANDE, id, reference)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demande_id", id)
+                            .detail("reference", reference)
+                            .detail("ip_address", clientIp)
+            );
 
-            System.out.println("=== FIN SUCCÈS submitDemande ===");
             return ResponseEntity.ok(demande);
 
         } catch (ProductDeclarationException e) {
-            // Capturer les exceptions métier et retourner le code HTTP approprié
-            System.err.println("=== ProductDeclarationException dans submitDemande ===");
-            System.err.println("Error code: " + e.getErrorCode());
-            System.err.println("Message: " + e.getMessage());
-            System.err.println("Status: " + e.getStatus());
-            e.printStackTrace();
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_SOUMETTRE_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec soumission demande")
+                            .entity(EntityType.DEMANDE, id, reference)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", id)
+                            .detail("error_code", e.getErrorCode())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", e.getErrorCode());
             errorResponse.put("message", e.getMessage());
-            errorResponse.put("timestamp", java.time.LocalDateTime.now().toString());
-
-            System.err.println("=== FIN ERREUR METIER submitDemande ===");
             return ResponseEntity.status(e.getStatus()).body(errorResponse);
 
         } catch (Exception e) {
-            // Capturer les erreurs inattendues
-            System.err.println("=== ERREUR INATTENDUE dans submitDemande ===");
-            System.err.println("Exception type: " + e.getClass().getName());
-            System.err.println("Message: " + e.getMessage());
-            System.err.println("Cause: " + (e.getCause() != null ? e.getCause().getMessage() : "null"));
-            e.printStackTrace();
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_SOUMETTRE_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Erreur technique soumission demande")
+                            .entity(EntityType.DEMANDE, id, reference)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", id)
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
             errorResponse.put("message", "Une erreur inattendue s'est produite: " + e.getMessage());
-            errorResponse.put("timestamp", java.time.LocalDateTime.now().toString());
-
-            System.err.println("=== FIN ERREUR TECHNIQUE submitDemande ===");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
@@ -471,49 +667,69 @@ public class ProduitController {
     public ResponseEntity<?> updateDemande(
             @PathVariable Long id,
             @Valid @RequestBody DemandeEnregistrementRequestDTO request,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         System.out.println("=== DÉBUT updateDemande ===");
-        System.out.println("Demande ID à modifier: " + id);
 
         try {
-            // 1. Extraire l'exportateur du token
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-            System.out.println("Exportateur connecté - ID: " + exportateur.getId() + ", Email: " + exportateur.getEmail());
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
 
-            // 2. Récupérer la demande
             DemandeEnregistrement demande = demandeEnregistrementRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
-            System.out.println("Demande trouvée - ID: " + demande.getId());
-            System.out.println("  - Statut: " + demande.getStatus());
-            System.out.println("  - Exportateur ID de la demande: " + demande.getExportateur().getId());
-            System.out.println("  - Exportateur email: " + demande.getExportateur().getEmail());
-
-            // 3. Comparaison des IDs
-            System.out.println("Comparaison: " + demande.getExportateur().getId() + " == " + exportateur.getId() + " ? " +
-                    (demande.getExportateur().getId().equals(exportateur.getId())));
 
             if (!demande.getExportateur().getId().equals(exportateur.getId())) {
-                System.err.println("❌ ACCÈS NON AUTORISÉ!");
-                System.err.println("  La demande appartient à l'exportateur ID: " + demande.getExportateur().getId());
-                System.err.println("  L'utilisateur connecté est ID: " + exportateur.getId());
+                auditService.log(
+                        AuditService.AuditLogBuilder.builder()
+                                .action("PRODUITS_UPDATE_DEMANDE")
+                                .actionType(ActionType.MODIFICATION)
+                                .description("Tentative non autorisée de modification demande")
+                                .entity(EntityType.DEMANDE, id, null)
+                                .user(userId, userEmail, "EXPORTATEUR")
+                                .failure("Utilisateur non autorisé")
+                                .detail("ip_address", clientIp)
+                );
 
-                Map<String, String> errorResponse = new HashMap<>();
-                errorResponse.put("error", "UNAUTHORIZED");
-                errorResponse.put("message", "Vous n'êtes pas autorisé à modifier cette demande");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "UNAUTHORIZED", "message", "Vous n'êtes pas autorisé à modifier cette demande"));
             }
-
-            System.out.println("✅ Autorisation OK");
 
             request.setExportateurId(exportateur.getId());
             DemandeEnregistrementDTO updatedDemande = demandeService.updateDemandeWithDocuments(id, request);
 
+            // AUDIT: Mise à jour demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_UPDATE_DEMANDE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Mise à jour d'une demande d'enregistrement")
+                            .entity(EntityType.DEMANDE, id, updatedDemande.getReference())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demande_id", id)
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.ok(updatedDemande);
 
         } catch (Exception e) {
-            System.err.println("Exception: " + e.getMessage());
-            e.printStackTrace();
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_UPDATE_DEMANDE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec mise à jour demande")
+                            .entity(EntityType.DEMANDE, id, null)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", id)
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
             errorResponse.put("message", e.getMessage());
@@ -527,20 +743,35 @@ public class ProduitController {
     @Operation(summary = "Supprimer une demande en brouillon")
     @PreAuthorize("hasRole('EXPORTATEUR')")
     public ResponseEntity<?> deleteDemande(
-            @Parameter(description = "ID de la demande") @PathVariable Long id,
-            @RequestHeader("Authorization") String authHeader) {
+            @PathVariable Long id,
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
         System.out.println("=== DÉBUT deleteDemande ===");
-        System.out.println("Demande ID à supprimer: " + id);
 
         try {
-            // 1. Extraire l'exportateur du token
             ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-            System.out.println("Exportateur ID: " + exportateur.getId());
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
 
-            // 2. Appeler le service pour supprimer la demande
             demandeService.deleteDemande(id, exportateur.getId());
-            System.out.println("✅ Demande supprimée avec succès");
+
+            // AUDIT: Suppression demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_DELETE_DEMANDE")
+                            .actionType(ActionType.DELETION)
+                            .description("Suppression d'une demande d'enregistrement")
+                            .entity(EntityType.DEMANDE, id, null)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demande_id", id)
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, String> response = new HashMap<>();
             response.put("message", "Demande supprimée avec succès");
@@ -548,24 +779,22 @@ public class ProduitController {
 
             return ResponseEntity.ok(response);
 
-        } catch (ProductDeclarationException e) {
-            System.err.println("=== ProductDeclarationException dans deleteDemande ===");
-            System.err.println("Error code: " + e.getErrorCode());
-            System.err.println("Message: " + e.getMessage());
-
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getErrorCode());
-            errorResponse.put("message", e.getMessage());
-            return ResponseEntity.status(e.getStatus()).body(errorResponse);
-
         } catch (Exception e) {
-            System.err.println("=== ERREUR INATTENDUE dans deleteDemande ===");
-            System.err.println("Message: " + e.getMessage());
-            e.printStackTrace();
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_DELETE_DEMANDE")
+                            .actionType(ActionType.DELETION)
+                            .description("Échec suppression demande")
+                            .entity(EntityType.DEMANDE, id, null)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", id)
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "INTERNAL_ERROR");
-            errorResponse.put("message", "Une erreur inattendue s'est produite: " + e.getMessage());
+            errorResponse.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
@@ -577,12 +806,47 @@ public class ProduitController {
     @Operation(summary = "Mes demandes")
     @PreAuthorize("hasRole('EXPORTATEUR')")
     public ResponseEntity<List<DemandeEnregistrementDTO>> getMyDemandes(
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
 
-        ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
-        List<DemandeEnregistrementDTO> demandes = demandeService.getDeclarationsProduitsByExportateur(exportateur.getId());
+        String clientIp = getClientIp(httpRequest);
+        Long userId = null;
+        String userEmail = null;
 
-        return ResponseEntity.ok(demandes);
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userId = exportateur.getId();
+            userEmail = exportateur.getEmail();
+
+            List<DemandeEnregistrementDTO> demandes = demandeService.getDeclarationsProduitsByExportateur(exportateur.getId());
+
+            // AUDIT: Consultation mes demandes
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_MES_DEMANDES_GET")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation des demandes de l'exportateur")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("demandes_count", demandes.size())
+                            .detail("ip_address", clientIp)
+            );
+
+            return ResponseEntity.ok(demandes);
+
+        } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("PRODUITS_MES_DEMANDES_GET")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation demandes exportateur")
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
+            throw e;
+        }
     }
 
     /**

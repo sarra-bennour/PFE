@@ -19,6 +19,7 @@ import DeclarationsList from './pages/Exportateur/DeclarationsList';
 import { DossierStatus } from './types/DossierStatus';
 import { User, UserRole } from './types/User';
 import ProductsCatalog from './pages/ProductsCatalog';
+import PersonalHistory from './pages/PersonalHistory';
 
 
 
@@ -280,6 +281,11 @@ const App: React.FC = () => {
             <Route path="/dashboard" element={
               <ProtectedRoute roles={['ADMIN', 'INSTANCE_VALIDATION']}>
                 <DecisionAid />
+              </ProtectedRoute>
+            } />
+            <Route path="/history" element={
+              <ProtectedRoute roles={['EXPORTATEUR', 'IMPORTATEUR', 'INSTANCE_VALIDATION']}>
+                <PersonalHistory />
               </ProtectedRoute>
             } />
             <Route path="/admin" element={

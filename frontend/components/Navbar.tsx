@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../App';
 import Notification from './Notification';
 
-
 // Liste des pays
 const countries = [
   { code: 'FR', name: 'France', dial: '+33' },
@@ -39,24 +38,6 @@ const Navbar: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-
-  const mockNotifications = [
-    { 
-      id: 4, 
-      title: 'Sarra Importer a ajouté ton produit Huile d\'Olive', 
-      time: 'À l\'instant', 
-      icon: 'fa-plus-circle', 
-      color: 'text-tunisia-red',
-      type: 'action',
-      role: 'EXPORTATEUR'
-    },
-    { id: 1, title: 'Déclaration validée', time: 'Il y a 2h', icon: 'fa-check-circle', color: 'text-emerald-500', type: 'info' },
-    { id: 2, title: 'Nouveau message', time: 'Il y a 5h', icon: 'fa-envelope', color: 'text-blue-500', type: 'info' },
-    { id: 3, title: 'Paiement reçu', time: 'Hier', icon: 'fa-credit-card', color: 'text-amber-500', type: 'info' },
-  ];
-
-  const filteredNotifications = mockNotifications.filter(n => !n.role || (user && n.role === user.role));
 
   const isAdminPanel = location.pathname === '/admin' && user?.role === 'ADMIN';
 
@@ -119,14 +100,6 @@ const Navbar: React.FC = () => {
       const raisonSociale = user.raisonSociale;
       return raisonSociale.length > 15 ? raisonSociale.substring(0, 12) + '...' : raisonSociale;
     }
-    
-    // if (user.prenom || user.nom) {
-    //   const fullName = `${user.prenom || ''} ${user.nom || ''}`.trim();
-    //   if (fullName.length > 0) {
-    //     const firstName = user.prenom || user.nom || '';
-    //     return firstName.length > 12 ? firstName.substring(0, 10) + '...' : firstName;
-    //   }
-    // }
     
     return user.email.split('@')[0];
   };
@@ -313,17 +286,18 @@ const Navbar: React.FC = () => {
                           </div>
                         </Link>
                         
+                        {/* Au lieu de "Paramètres", on affiche "Historique" */}
                         <Link
-                          to="/settings"
+                          to="/history"
                           className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-50 transition-colors text-left"
                         >
-                          <i className="fas fa-cog text-slate-400 text-xs"></i>
+                          <i className="fas fa-history text-slate-400 text-xs"></i>
                           <div>
                             <div className="text-[9px] font-black text-slate-900 uppercase tracking-widest">
-                              {t('settings')}
+                              {t('activity_log')}
                             </div>
                             <div className="text-[7px] text-slate-400 font-medium">
-                              {t('preferences')}
+                              {t('view_activity_log') || 'Consulter vos activités'}
                             </div>
                           </div>
                         </Link>

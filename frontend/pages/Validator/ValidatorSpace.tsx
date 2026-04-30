@@ -8,13 +8,15 @@ import InstructionModal, { ValidationRequest, RequestType, AttachedDocument } fr
 import { Product } from '@/types/Product';
 import { ImportDetails, DemandeStatus } from '@/types/DemandeEnregistrement';
 import ValidatorProfile from './ValidatorProfile';
+import PersonalHistory from '../PersonalHistory';
+
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const ValidatorSpace: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'instruction' | 'stats' | 'archive' | 'profile'>('instruction');
+  const [activeTab, setActiveTab] = useState<'instruction' | 'stats' | 'archive' | 'history' | 'profile'>('instruction');
   const [inboxTab, setInboxTab] = useState<RequestType>('REGISTRATION');
   const [archiveTab, setArchiveTab] = useState<RequestType>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<ValidationRequest | null>(null);
@@ -37,6 +39,7 @@ const ValidatorSpace: React.FC = () => {
     { id: 'instruction', label: 'Instruction', icon: 'fa-folder-open' },
     { id: 'stats', label: 'Statistiques', icon: 'fa-chart-bar' },
     { id: 'archive', label: 'Archives', icon: 'fa-archive' },
+    { id: 'history', label: 'Audit', icon: 'fa-fingerprint' },
     { id: 'profile', label: 'Mon Profil', icon: 'fa-user' },
     { id: 'admin', label: 'Admin Panel', icon: 'fa-shield-halved', path: '/admin', roles: ['admin'] as any },
   ];
@@ -371,6 +374,7 @@ interface BackendDemande {
               {activeTab === 'instruction' && "Instruction des Dossiers"}
               {activeTab === 'stats' && "Analyse des Performances"}
               {activeTab === 'archive' && "Historique des Décisions"}
+              {activeTab === 'history' && "Mon Historique d'Audit"}
               {activeTab === 'profile' && "Profil Validateur"}
             </h2>
           </div>
@@ -637,6 +641,10 @@ interface BackendDemande {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'history' && (
+           <PersonalHistory />
         )}
 
         {activeTab === 'profile' && (

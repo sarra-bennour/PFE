@@ -7,10 +7,13 @@ import com.tunisia.commerce.dto.user.UserDTO;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
 import com.tunisia.commerce.entity.Document;
 import com.tunisia.commerce.entity.ImportateurTunisien;
+import com.tunisia.commerce.enums.ActionType;
+import com.tunisia.commerce.enums.EntityType;
 import com.tunisia.commerce.exception.ImportateurException;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ImportateurRepository;
 import com.tunisia.commerce.service.ImportateurService;
+import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.DemandeImportationService;
 import com.tunisia.commerce.config.JwtUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -54,8 +57,30 @@ public class ImportateurController {
     private final JwtUtil jwtUtil;
     private final ImportateurRepository importateurRepository;
     private final DocumentRepository documentRepository;
+    private final AuditService auditService;
+
 
     private static final String UPLOAD_DIR = "uploads/importateur/documents/";
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+            ip = "127.0.0.1";
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
 
     // ==================== ENDPOINTS EXISTANTS POUR LA RECHERCHE ====================
 
@@ -66,7 +91,12 @@ public class ImportateurController {
     @GetMapping("/exportateurs/recherche")
     public ResponseEntity<?> rechercherExportateurs(
             @Parameter(description = "Terme de recherche (pays, raison sociale, produit, code NGP)")
-            @RequestParam(required = false) String q) {
+            @RequestParam(required = false) String q,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== DÉBUT RECHERCHE EXPORTATEURS ==========");
         log.info("Terme de recherche reçu: '{}'", q);
@@ -81,15 +111,51 @@ public class ImportateurController {
 
             log.info("Résultats trouvés: {} exportateur(s)", resultats.size());
             log.info("Temps d'exécution: {} ms", duration);
-
             log.info("========== FIN RECHERCHE EXPORTATEURS ==========");
+
+            // AUDIT: Recherche exportateurs
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_RECHERCHER_EXPORTATEURS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Recherche d'exportateurs validés")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("search_term", q != null ? q : "")
+                            .detail("results_count", resultats.size())
+                            .detail("duration_ms", duration)
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(resultats);
 
         } catch (ImportateurException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_RECHERCHER_EXPORTATEURS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec recherche exportateurs")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("search_term", q != null ? q : "")
+                            .detail("error_code", e.getErrorCode())
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("ERREUR ImportateurException: Code={}, Message={}", e.getErrorCode(), e.getMessage());
             return handleImportateurException(e);
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_RECHERCHER_EXPORTATEURS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Erreur inattendue recherche exportateurs")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("search_term", q != null ? q : "")
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("ERREUR inattendue: {}", e.getMessage());
             return handleGenericException(e);
         }
@@ -101,7 +167,10 @@ public class ImportateurController {
             description = "Récupère la liste de tous les exportateurs avec un agrément VALIDE"
     )
     @GetMapping("/exportateurs")
-    public ResponseEntity<?> getAllExportateursValides() {
+    public ResponseEntity<?> getAllExportateursValides(HttpServletRequest httpRequest) {
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== LISTE TOUS EXPORTATEURS VALIDÉS ==========");
 
@@ -115,9 +184,32 @@ public class ImportateurController {
             log.info("Nombre total d'exportateurs validés: {}", exportateurs.size());
             log.info("Temps d'exécution: {} ms", endTime - startTime);
 
+            // AUDIT: Liste tous exportateurs
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_GET_ALL_EXPORTATEURS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Liste de tous les exportateurs validés")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("exportateurs_count", exportateurs.size())
+                            .detail("duration_ms", endTime - startTime)
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.ok(exportateurs);
 
         } catch (ImportateurException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_GET_ALL_EXPORTATEURS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec liste exportateurs")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("ERREUR lors de la récupération de tous les exportateurs: {}", e.getMessage());
             return handleImportateurException(e);
         }
@@ -136,22 +228,55 @@ public class ImportateurController {
     @PreAuthorize("hasRole('IMPORTATEUR')")
     public ResponseEntity<?> createImportationDemande(
             @Valid @RequestBody DemandeImportationRequestDTO request,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== CRÉATION DEMANDE D'IMPORTATION ==========");
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
 
-            // Le service retourne maintenant un DTO avec toutes les informations
             DemandeEnregistrementDTO demande = demandeImportationService.createImportationDemande(
                     importateur.getId(),
                     request
             );
 
+            // AUDIT: Création demande importation
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_CREER_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Création d'une demande d'importation")
+                            .entity(EntityType.DEMANDE, demande.getId(), demande.getReference())
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("product_id", request.getProduitId())
+                            .detail("exporter_id", request.getExportateurId())
+                            .detail("amount", request.getAmount())
+                            .detail("currency", request.getCurrency())
+                            .detail("ip_address", clientIp)
+            );
+
             return new ResponseEntity<>(demande, HttpStatus.CREATED);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_CREER_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec création demande d'importation")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("product_id", request.getProduitId())
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur lors de la création de la demande: {}", e.getMessage());
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "CREATION_FAILED");
@@ -173,7 +298,12 @@ public class ImportateurController {
             @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
             @Parameter(description = "Type de document") @RequestParam String documentType,
             @Parameter(description = "Fichier à uploader") @RequestParam("file") MultipartFile file,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== UPLOAD DOCUMENT ==========");
         log.info("Demande ID: {}", demandeId);
@@ -182,9 +312,11 @@ public class ImportateurController {
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
+
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            // Sauvegarder le document en base de données
             DocumentDTO document = demandeImportationService.uploadDocument(
                     demandeId,
                     importateur.getId(),
@@ -194,6 +326,22 @@ public class ImportateurController {
 
             log.info("Document uploadé avec succès, ID: {}", document.getId());
             log.info("========== FIN UPLOAD ==========");
+
+            // AUDIT: Upload document
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_UPLOAD_DOCUMENT")
+                            .actionType(ActionType.UPLOAD)
+                            .description("Upload de document pour une demande d'importation")
+                            .entity(EntityType.DOCUMENT, document.getId(), document.getFileName())
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("document_type", documentType)
+                            .detail("file_name", file.getOriginalFilename())
+                            .detail("file_size", file.getSize())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -208,6 +356,19 @@ public class ImportateurController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_UPLOAD_DOCUMENT")
+                            .actionType(ActionType.UPLOAD)
+                            .description("Échec upload document")
+                            .user(userId, userEmail,"IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("document_type", documentType)
+                            .detail("file_name", file.getOriginalFilename())
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur lors de l'upload du document: {}", e.getMessage());
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "UPLOAD_FAILED");
@@ -227,13 +388,21 @@ public class ImportateurController {
     @PreAuthorize("hasRole('IMPORTATEUR')")
     public ResponseEntity<?> submitDemande(
             @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== SOUMISSION DEMANDE D'IMPORTATION ==========");
         log.info("Demande ID: {}", demandeId);
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
+
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
             DemandeEnregistrementDTO demande = demandeImportationService.submitImportationDemande(
@@ -243,6 +412,19 @@ public class ImportateurController {
 
             log.info("Demande soumise avec succès, référence: {}", demande.getReference());
             log.info("========== FIN SOUMISSION ==========");
+
+            // AUDIT: Soumission demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_SOUMETTRE_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Soumission d'une demande d'importation")
+                            .entity(EntityType.DEMANDE, demande.getId(), demande.getReference())
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -255,6 +437,17 @@ public class ImportateurController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_SOUMETTRE_DEMANDE")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec soumission demande")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur lors de la soumission de la demande: {}", e.getMessage());
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "SUBMISSION_FAILED");
@@ -273,16 +466,38 @@ public class ImportateurController {
     // Ajouter/modifier cet endpoint pour retourner les données formatées
     @GetMapping("/mes-demandes")
     @PreAuthorize("hasRole('IMPORTATEUR')")
-    public ResponseEntity<?> getMyDemandes(@RequestHeader("Authorization") String authHeader) {
+    public ResponseEntity<?> getMyDemandes(
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
+
         log.info("========== RÉCUPÉRATION MES DEMANDES POUR TRACKING ==========");
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
+
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
             List<Map<String, Object>> demandes = demandeImportationService.getDemandesForTracking(importateur.getId());
 
             log.info("Nombre de demandes trouvées: {}", demandes.size());
+
+            // AUDIT: Consultation mes demandes
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_GET_MES_DEMANDES")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation de ses demandes d'importation")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("demandes_count", demandes.size())
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -292,6 +507,16 @@ public class ImportateurController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_GET_MES_DEMANDES")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation demandes")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur lors de la récupération des demandes: {}", e.getMessage());
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "RETRIEVAL_FAILED");
@@ -312,13 +537,20 @@ public class ImportateurController {
     @PreAuthorize("hasRole('IMPORTATEUR')")
     public ResponseEntity<?> getDocumentsForDemande(
             @Parameter(description = "ID de la demande") @PathVariable Long demandeId,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== RÉCUPÉRATION DOCUMENTS ==========");
         log.info("Demande ID: {}", demandeId);
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
 
             List<Document> documents = documentRepository.findByDemandeId(demandeId);
 
@@ -335,6 +567,20 @@ public class ImportateurController {
                     })
                     .collect(Collectors.toList());
 
+            // AUDIT: Consultation documents
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_GET_DOCUMENTS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation des documents d'une demande")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("documents_count", result.size())
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("documents", result);
@@ -343,6 +589,17 @@ public class ImportateurController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_GET_DOCUMENTS")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation documents")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur: {}", e.getMessage());
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("error", "RETRIEVAL_FAILED");
@@ -367,7 +624,12 @@ public class ImportateurController {
             @RequestParam(value = "files", required = false) MultipartFile[] files,
             @RequestParam(value = "documentTypes", required = false) String[] documentTypes,
             @RequestParam(value = "documentsToDelete", required = false) List<Long> documentsToDelete,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== MODIFICATION DEMANDE AVEC DOCUMENTS ==========");
         log.info("Demande ID: {}", demandeId);
@@ -376,15 +638,17 @@ public class ImportateurController {
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
+
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            // Convertir le tableau de fichiers en Map avec les types de documents
             Map<String, MultipartFile> filesMap = new HashMap<>();
             if (files != null && documentTypes != null) {
                 for (int i = 0; i < files.length && i < documentTypes.length; i++) {
                     String documentType = documentTypes[i];
                     MultipartFile file = files[i];
-                    filesMap.put(documentType, file);  // ✅ Utilise le type exact envoyé
+                    filesMap.put(documentType, file);
                     log.info("Fichier: {} -> Type reçu: {}", file.getOriginalFilename(), documentType);
                 }
             }
@@ -400,6 +664,21 @@ public class ImportateurController {
             log.info("Demande ID: {} modifiée avec succès", demandeId);
             log.info("========== FIN MODIFICATION ==========");
 
+            // AUDIT: Modification demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_MODIFIER_DEMANDE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Modification d'une demande d'importation")
+                            .entity(EntityType.DEMANDE, demande.getId(), demande.getReference())
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("documents_added", files != null ? files.length : 0)
+                            .detail("documents_deleted", documentsToDelete != null ? documentsToDelete.size() : 0)
+                            .detail("ip_address", clientIp)
+            );
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "Demande modifiée avec succès");
@@ -410,6 +689,17 @@ public class ImportateurController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_MODIFIER_DEMANDE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec modification demande")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur lors de la modification de la demande {}: {}", demandeId, e.getMessage());
 
             Map<String, String> errorResponse = new HashMap<>();
@@ -439,20 +729,40 @@ public class ImportateurController {
     @PreAuthorize("hasRole('IMPORTATEUR')")
     public ResponseEntity<?> deleteDemande(
             @Parameter(description = "ID de la demande à supprimer") @PathVariable Long demandeId,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
 
         log.info("========== SUPPRESSION DEMANDE D'IMPORTATION ==========");
         log.info("Demande ID: {}", demandeId);
 
         try {
             ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            userEmail = importateur.getEmail();
+            userId = importateur.getId();
+
             log.info("Importateur authentifié: ID={}", importateur.getId());
 
-            // Appeler le service pour supprimer la demande
             demandeImportationService.deleteImportationDemande(demandeId, importateur.getId());
 
             log.info("Demande ID: {} supprimée avec succès", demandeId);
             log.info("========== FIN SUPPRESSION ==========");
+
+            // AUDIT: Suppression demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_SUPPRIMER_DEMANDE")
+                            .actionType(ActionType.DELETION)
+                            .description("Suppression d'une demande d'importation")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .success()
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -462,6 +772,17 @@ public class ImportateurController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("IMPORTATEUR_SUPPRIMER_DEMANDE")
+                            .actionType(ActionType.DELETION)
+                            .description("Échec suppression demande")
+                            .user(userId, userEmail, "IMPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("demande_id", demandeId)
+                            .detail("ip_address", clientIp)
+            );
+
             log.error("Erreur lors de la suppression de la demande {}: {}", demandeId, e.getMessage());
 
             Map<String, String> errorResponse = new HashMap<>();

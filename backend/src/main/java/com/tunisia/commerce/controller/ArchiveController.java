@@ -2,8 +2,12 @@ package com.tunisia.commerce.controller;
 
 import com.tunisia.commerce.dto.archive.ArchiveDemandeDTO;
 import com.tunisia.commerce.entity.DemandeEnregistrement;
+import com.tunisia.commerce.enums.ActionType;
+import com.tunisia.commerce.enums.EntityType;
 import com.tunisia.commerce.service.impl.ArchiveService;
 import com.tunisia.commerce.config.JwtUtil;
+import com.tunisia.commerce.service.impl.AuditService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,18 +25,44 @@ public class ArchiveController {
 
     private final ArchiveService archiveService;
     private final JwtUtil jwtUtil;
+    private final AuditService auditService;
+
     private final Logger logger = Logger.getLogger(getClass().getName());
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+            ip = "127.0.0.1";
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
 
     // 1. Archivage manuel par admin (une seule demande)
     @PostMapping("/demande/{demandeId}")
     public ResponseEntity<?> archiveDemande(
             @PathVariable Long demandeId,
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody(required = false) Map<String, String> body) {
+            @RequestBody(required = false) Map<String, String> body,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String adminEmail = null;
 
         try {
-            // Vérifier le token et le rôle
             String email = validateAdminToken(authHeader);
+            adminEmail = email;
 
             String reason = body != null && body.containsKey("reason")
                     ? body.get("reason")
@@ -40,16 +70,62 @@ public class ArchiveController {
 
             archiveService.manualArchive(demandeId, email, reason);
 
+            // AUDIT: Archivage manuel
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_MANUAL")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Archivage manuel d'une demande par admin")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .success()
+                            .detail("reason", reason)
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Demande archivée avec succès"
             ));
 
         } catch (IllegalArgumentException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_MANUAL")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec archivage manuel - argument invalide")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_MANUAL")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec archivage manuel - non autorisé")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_MANUAL")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Erreur interne archivage manuel")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             logger.severe("Erreur lors de l'archivage: " + e.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "Erreur interne du serveur"));
         }
@@ -59,13 +135,17 @@ public class ArchiveController {
     @PostMapping("/bulk")
     public ResponseEntity<?> bulkArchive(
             @RequestHeader("Authorization") String authHeader,
-            @RequestBody Map<String, Object> request) {
+            @RequestBody Map<String, Object> request,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String adminEmail = null;
+        List<Long> demandeIds = new ArrayList<>();
 
         logger.info("=== DÉBUT ARCHIVAGE MULTIPLE ===");
         logger.info("Request body reçu: " + request);
 
         try {
-            // 1. Extraction du token
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 logger.warning("Token manquant ou invalide");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -74,7 +154,6 @@ public class ArchiveController {
 
             String token = authHeader.substring(7);
 
-            // 2. Validation du token
             if (!jwtUtil.validateToken(token)) {
                 logger.warning("Token invalide ou expiré");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -82,11 +161,11 @@ public class ArchiveController {
             }
 
             String email = jwtUtil.extractUsername(token);
+            adminEmail = email;
             String role = jwtUtil.extractRole(token);
 
             logger.info("Utilisateur: " + email + ", Rôle: " + role);
 
-            // 3. Vérification du rôle ADMIN
             if (!"ADMIN".equals(role)) {
                 logger.warning("Accès non autorisé pour le rôle: " + role);
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -95,7 +174,6 @@ public class ArchiveController {
 
             logger.info("Admin authentifié: " + email);
 
-            // 4. Récupération des IDs
             Object demandeIdsObj = request.get("demandeIds");
             logger.info("demandeIds reçu: " + demandeIdsObj);
 
@@ -104,8 +182,6 @@ public class ArchiveController {
                 return ResponseEntity.badRequest()
                         .body(Map.of("error", "La liste des IDs des demandes est requise"));
             }
-
-            List<Long> demandeIds = new ArrayList<>();
 
             if (demandeIdsObj instanceof List) {
                 List<?> rawList = (List<?>) demandeIdsObj;
@@ -136,11 +212,23 @@ public class ArchiveController {
                         .body(Map.of("error", "Aucun ID valide dans la liste"));
             }
 
-            // 5. Récupération de la raison
             String reason = request.containsKey("reason") ? (String) request.get("reason") : "Archivage massif par administrateur";
 
-            // 6. Appel du service
             archiveService.bulkArchive(demandeIds, email, reason);
+
+            // AUDIT: Archivage multiple
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_BULK")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Archivage multiple de demandes par admin")
+                            .user(null, adminEmail, "ADMIN")
+                            .success()
+                            .detail("demande_ids", demandeIds.toString())
+                            .detail("count", demandeIds.size())
+                            .detail("reason", reason)
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -148,6 +236,17 @@ public class ArchiveController {
             ));
 
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_BULK")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Erreur lors de l'archivage multiple")
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("demande_ids", demandeIds.toString())
+                            .detail("ip_address", clientIp)
+            );
+
             logger.severe("Erreur lors de l'archivage: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -159,12 +258,31 @@ public class ArchiveController {
     @PostMapping("/request/{demandeId}")
     public ResponseEntity<?> requestArchive(
             @PathVariable Long demandeId,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        String userRole = null;
 
         try {
             String email = validateUserToken(authHeader);
+            userEmail = email;
+            userRole = extractRoleFromToken(authHeader);
 
             archiveService.userArchiveRequest(demandeId, email);
+
+            // AUDIT: Demande d'archivage par utilisateur
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_REQUEST")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Demande d'archivage soumise par utilisateur")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, userEmail, userRole)
+                            .success()
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -172,10 +290,43 @@ public class ArchiveController {
             ));
 
         } catch (IllegalArgumentException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_REQUEST")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec demande d'archivage - argument invalide")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_REQUEST")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec demande d'archivage - non autorisé")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_REQUEST")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Erreur interne demande d'archivage")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             logger.severe("Erreur lors de la demande d'archivage: " + e.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "Erreur interne du serveur"));
         }
@@ -185,12 +336,29 @@ public class ArchiveController {
     @PostMapping("/restore/{demandeId}")
     public ResponseEntity<?> restoreDemande(
             @PathVariable Long demandeId,
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String adminEmail = null;
 
         try {
             String email = validateAdminToken(authHeader);
+            adminEmail = email;
 
             archiveService.restoreDemande(demandeId, email);
+
+            // AUDIT: Restauration demande
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_RESTORE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Restauration d'une demande archivée")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .success()
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -198,10 +366,43 @@ public class ArchiveController {
             ));
 
         } catch (IllegalArgumentException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_RESTORE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec restauration - argument invalide")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_RESTORE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Échec restauration - non autorisé")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_RESTORE")
+                            .actionType(ActionType.MODIFICATION)
+                            .description("Erreur interne restauration")
+                            .entity(EntityType.DEMANDE, demandeId, null)
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             logger.severe("Erreur lors de la restauration: " + e.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "Erreur interne du serveur"));
         }
@@ -210,12 +411,29 @@ public class ArchiveController {
     // 5. Récupérer toutes les demandes archivées (admin)
     @GetMapping("/all")
     public ResponseEntity<?> getAllArchivedDemandes(
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String adminEmail = null;
 
         try {
-            validateAdminToken(authHeader);
+            String email = validateAdminToken(authHeader);
+            adminEmail = email;
 
             List<DemandeEnregistrement> archivedDemandes = archiveService.getArchivedDemandes();
+
+            // AUDIT: Consultation toutes archives
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_ALL")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation de toutes les demandes archivées")
+                            .user(null, adminEmail, "ADMIN")
+                            .success()
+                            .detail("count", archivedDemandes.size())
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -224,10 +442,40 @@ public class ArchiveController {
             ));
 
         } catch (IllegalArgumentException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_ALL")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation archives - argument invalide")
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_ALL")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation archives - non autorisé")
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_ALL")
+                            .actionType(ActionType.SEARCH)
+                            .description("Erreur interne consultation archives")
+                            .user(null, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             logger.severe("Erreur lors de la récupération: " + e.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "Erreur interne du serveur"));
         }
@@ -236,15 +484,32 @@ public class ArchiveController {
     // 6. Récupérer les demandes archivées par l'utilisateur connecté
     @GetMapping("/my-archives")
     public ResponseEntity<?> getMyArchivedDemandes(
-            @RequestHeader("Authorization") String authHeader) {
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        String userRole = null;
 
         try {
             System.out.println("***archive");
             String email = validateUserToken(authHeader);
-            String role = extractRoleFromToken(authHeader); // ← Récupérer le rôle
+            userEmail = email;
+            userRole = extractRoleFromToken(authHeader);
 
+            List<ArchiveDemandeDTO> archivedDemandes = archiveService.getArchivedDemandesByUser(email, userRole);
 
-            List<ArchiveDemandeDTO> archivedDemandes = archiveService.getArchivedDemandesByUser(email,role);
+            // AUDIT: Consultation ses propres archives
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_MY")
+                            .actionType(ActionType.SEARCH)
+                            .description("Consultation de ses propres demandes archivées")
+                            .user(null, userEmail, userRole)
+                            .success()
+                            .detail("count", archivedDemandes.size())
+                            .detail("ip_address", clientIp)
+            );
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -253,10 +518,40 @@ public class ArchiveController {
             ));
 
         } catch (IllegalArgumentException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_MY")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation ses archives - argument invalide")
+                            .user(null, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_MY")
+                            .actionType(ActionType.SEARCH)
+                            .description("Échec consultation ses archives - non autorisé")
+                            .user(null, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ARCHIVE_GET_MY")
+                            .actionType(ActionType.SEARCH)
+                            .description("Erreur interne consultation ses archives")
+                            .user(null, userEmail, userRole)
+                            .failure(e.getMessage())
+                            .detail("ip_address", clientIp)
+            );
+
             logger.severe("Erreur lors de la récupération: " + e.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "Erreur interne du serveur"));
         }
