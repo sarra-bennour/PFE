@@ -9,6 +9,8 @@ import { Product } from '@/types/Product';
 import { ImportDetails, DemandeStatus } from '@/types/DemandeEnregistrement';
 import ValidatorProfile from './ValidatorProfile';
 import PersonalHistory from '../PersonalHistory';
+import ValidatorDashboard from './ValidatorDashboard';
+import ExporterMap from './ExporterMap';
 
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
@@ -16,7 +18,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api
 const ValidatorSpace: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'instruction' | 'stats' | 'archive' | 'history' | 'profile'>('instruction');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'instruction' | 'stats' | 'archive' | 'history' | 'profile'>('dashboard');
   const [inboxTab, setInboxTab] = useState<RequestType>('REGISTRATION');
   const [archiveTab, setArchiveTab] = useState<RequestType>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<ValidationRequest | null>(null);
@@ -36,8 +38,9 @@ const ValidatorSpace: React.FC = () => {
   ];
 
   const sidebarItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
     { id: 'instruction', label: 'Instruction', icon: 'fa-folder-open' },
-    { id: 'stats', label: 'Statistiques', icon: 'fa-chart-bar' },
+    { id: 'stats', label: 'Carte Globale', icon: 'fa-earth-africa' },
     { id: 'archive', label: 'Archives', icon: 'fa-archive' },
     { id: 'history', label: 'Audit', icon: 'fa-fingerprint' },
     { id: 'profile', label: 'Mon Profil', icon: 'fa-user' },
@@ -371,8 +374,9 @@ interface BackendDemande {
               <span className="text-tunisia-red">{activeTab}</span>
             </div>
             <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter">
+              {activeTab === 'dashboard' && "Tableau de Bord"}
               {activeTab === 'instruction' && "Instruction des Dossiers"}
-              {activeTab === 'stats' && "Analyse des Performances"}
+              {activeTab === 'stats' && "Répartition Géographique"}
               {activeTab === 'archive' && "Historique des Décisions"}
               {activeTab === 'history' && "Mon Historique d'Audit"}
               {activeTab === 'profile' && "Profil Validateur"}
@@ -392,6 +396,13 @@ interface BackendDemande {
             </div>
           </div>
         </div>
+
+        {activeTab === 'dashboard' && (
+          <ValidatorDashboard 
+            requests={requests} 
+            onViewFullMap={() => setActiveTab('stats')} 
+          />
+        )}
 
         {activeTab === 'instruction' && (
           <div className="space-y-10 animate-fade-in">
@@ -500,23 +511,8 @@ interface BackendDemande {
         </AnimatePresence>
 
         {activeTab === 'stats' && (
-          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 animate-fade-in">
-            <h3 className="text-xl font-black italic text-slate-900 uppercase tracking-tighter mb-8">Analyse des Performances</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="p-6 bg-emerald-50 rounded-2xl">
-                <div className="text-3xl font-black text-emerald-600">{requests.filter(r => r.type === 'REGISTRATION').length}</div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mt-2">Dossiers en attente</p>
-              </div>
-              <div className="p-6 bg-blue-50 rounded-2xl">
-                <div className="text-3xl font-black text-blue-600">{requests.filter(r => r.type === 'PRODUCT_DECLARATION').length}</div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mt-2">Déclarations produits</p>
-              </div>
-              <div className="p-6 bg-purple-50 rounded-2xl">
-                <div className="text-3xl font-black text-purple-600">{requests.filter(r => r.type === 'IMPORT').length}</div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-purple-600 mt-2">Demandes importation</p>
-              </div>
-            </div>
-            <p className="text-slate-500 text-center">Visualisation détaillée des performances en cours de développement...</p>
+          <div className="animate-fade-in">
+            <ExporterMap height="h-[750px]" />
           </div>
         )}
 

@@ -11,14 +11,17 @@
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
+    "@types/leaflet": "^1.9.21",
     "axios": "^1.13.5",
     "html2canvas": "^1.4.1",
     "i18next": "^25.8.0",
     "jspdf": "^4.2.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.0.1",
     "motion": "^12.34.3",
     "react": "^19.2.3",
     "react-i18next": "^16.5.3",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.12.0",
     "recharts": "^3.6.0"
   },
