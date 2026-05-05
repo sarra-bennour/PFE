@@ -74,7 +74,7 @@ public class AuthController {
     public ResponseEntity<?> signup(@RequestBody ExportateurSignupRequest request,HttpServletRequest httpRequest) {
         String clientIp = getClientIp(httpRequest);
         try {
-            UserDTO userDTO = userService.registerExportateur(request);
+            UserDTO userDTO = userService.registerExportateur(request,clientIp);
 
             // AUDIT: SUCCÈS inscription
             auditService.log(

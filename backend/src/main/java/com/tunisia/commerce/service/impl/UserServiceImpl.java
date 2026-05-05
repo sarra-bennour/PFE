@@ -18,20 +18,17 @@ import dev.samstevens.totp.time.SystemTimeProvider;
 import dev.samstevens.totp.time.TimeProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -66,7 +63,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserDTO registerExportateur(ExportateurSignupRequest request) {
+    public UserDTO registerExportateur(ExportateurSignupRequest request, String clientIp) {
         logger.info("=== INSCRIPTION EXPORTATEUR ===");
 
         // Validation des champs obligatoires
@@ -129,6 +126,13 @@ public class UserServiceImpl implements UserService {
 
         // Création de l'exportateur
         ExportateurEtranger exportateur = new ExportateurEtranger();
+
+        if (clientIp != null && !clientIp.isEmpty()) {
+            exportateur.setIpAddressSignup(clientIp);
+            logger.info("IP enregistrée pour l'exportateur: {}"+ clientIp);
+        } else {
+            logger.severe("Impossible de récupérer l'IP du client");
+        }
 
         // === CHAMPS DE LA CLASSE PARENT (User) ===
         // Récupérer le nom complet du représentant légal

@@ -11,11 +11,12 @@ import InternalStructureForm from './InternalStructureForm';
 import AdminRequestList from './AdminRequestList';
 import axios from 'axios';
 import UserHistory from './UserHistory';
+import RiskManagement from './RiskManagement.';
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests' | 'risk'>('overview');
   
   // État pour les structures
   const [structures, setStructures] = useState<InternalStructure[]>([]);
@@ -158,6 +159,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
     { id: 'structures', label: 'Structures', icon: 'fa-sitemap' },
     { id: 'requests', label: 'Demandes', icon: 'fa-file-invoice' },
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
+    { id: 'risk', label: 'Gestion Risques', icon: 'fa-shield-virus' },
     { id: 'security', label: 'Sécurité', icon: 'fa-lock' },
     { id: 'dashboard', label: 'Décisionnel', icon: 'fa-shield-halved', path: '/dashboard' },
   ];
@@ -376,6 +378,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
               {activeTab === 'structures' && "Structures Internes"}
               {activeTab === 'requests' && "Suivi des Demandes"}
               {activeTab === 'traffic' && "Surveillance des Flux"}
+              {activeTab === 'risk' && "Analyse des Risques Exportateurs"}
               {activeTab === 'security' && "Centre de Sécurité"}
             </h2>
           </div>
@@ -519,6 +522,9 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
           )}
           {activeTab === 'requests' && (
             <AdminRequestList />
+          )}
+          {activeTab === 'risk' && (
+            <RiskManagement />
           )}
           {activeTab === 'traffic' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

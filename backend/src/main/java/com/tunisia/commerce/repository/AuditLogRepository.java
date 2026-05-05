@@ -77,4 +77,18 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 
     @Query("SELECT a.userIpAddress, COUNT(a) FROM AuditLog a WHERE a.performedAt > :since AND a.status = 'FAILURE' GROUP BY a.userIpAddress ORDER BY COUNT(a) DESC")
     List<Object[]> findSuspiciousIps(@Param("since") LocalDateTime since);
+
+    List<AuditLog> findByUserIdAndPerformedAtAfter(Long userId, LocalDateTime date);
+
+    List<AuditLog> findByUserEmailAndPerformedAtAfter(String email, LocalDateTime date);
+
+    @Query("SELECT COUNT(DISTINCT a.userId) FROM AuditLog a WHERE a.userIpAddress = :ip AND a.performedAt >= :since")
+    long countDistinctUsersByIpInLastDays(@Param("ip") String ip, @Param("since") LocalDateTime since);
+
+    default long countDistinctUsersByIpInLastDays(String ip, int days) {
+        return countDistinctUsersByIpInLastDays(ip, LocalDateTime.now().minusDays(days));
+    }
+
+    @Query("SELECT a FROM AuditLog a WHERE a.userId = :userId ORDER BY a.performedAt DESC")
+    List<AuditLog> findRecentByUserId(@Param("userId") Long userId, org.springframework.data.domain.Pageable pageable);
 }

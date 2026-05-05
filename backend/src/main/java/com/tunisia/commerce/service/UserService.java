@@ -7,7 +7,7 @@ import com.tunisia.commerce.entity.User;
 import java.util.List;
 
 public interface UserService {
-    UserDTO registerExportateur(ExportateurSignupRequest request);
+    UserDTO registerExportateur(ExportateurSignupRequest request, String clientIp);
     LoginResponse login(LoginRequest request);
     LoginResponse mobileLogin(MobileLoginRequest request);
     UserDTO getUserByEmail(String email);

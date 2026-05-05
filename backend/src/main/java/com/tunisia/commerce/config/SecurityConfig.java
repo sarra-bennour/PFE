@@ -37,10 +37,12 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(auth -> auth
+                        //.requestMatchers("/api/risk/**").permitAll()
                         .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/uploads/**", "/api/uploads/**", "/api/produits/uploads/**").permitAll()
                         .requestMatchers("/api/admin/document/*/preview").hasAnyAuthority("ADMIN", "INSTANCE_VALIDATION")
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/risk/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/exportateur/**").hasAuthority("EXPORTATEUR")
                         .requestMatchers("/api/importateur/**").hasAuthority("IMPORTATEUR")
                         .anyRequest().authenticated()

@@ -115,6 +115,9 @@ public class ExportateurEtranger extends User {
     @Column(name = "last_password_change")
     private LocalDateTime lastPasswordChange;
 
+    @Column(name = "ip_address_signup", length = 45)
+    private String ipAddressSignup;
+
     @OneToMany(mappedBy = "exportateur", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Builder.Default
     @ToString.Exclude
