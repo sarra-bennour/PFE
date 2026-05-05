@@ -4,17 +4,18 @@ import ExporterDirectory from './ExporterDirectory';
 import ImporterTracking from './ImporterTracking';
 import ImporterDashboard from './ImporterDashboard';
 import RequestArchive from '../RequestArchive';
+import ArrivalCalendar from './ArrivalCalendar';
 
 
 const ImporterSpace: React.FC = () => {
   const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState('');
-  const [view, setView] = useState<'main' | 'track' | 'archive'>('main');
+  const [view, setView] = useState<'main' | 'track' | 'archive' | 'calendar'>('main');
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState<any>(null);
 
-  const handleViewChange = (newView: 'main' | 'track' | 'archive') => {
+  const handleViewChange = (newView: 'main' | 'track' | 'archive' | 'calendar') => {
     if (newView === view) return;
     setIsTransitioning(true);
     setTimeout(() => {
@@ -111,6 +112,15 @@ const ImporterSpace: React.FC = () => {
               Suivi
             </button>
             <button
+              onClick={() => handleViewChange('calendar')}
+              className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${view === 'calendar'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-600'
+                }`}
+            >
+              Arrivage
+            </button>
+            <button
               onClick={() => handleViewChange('archive')}
               className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${view === 'archive'
                   ? 'bg-white text-slate-900 shadow-sm'
@@ -155,6 +165,16 @@ const ImporterSpace: React.FC = () => {
                 <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">Suivi en temps réel</span>
               </div>
               <ImporterTracking onModalOpen={handleModalOpen} />
+            </div>
+          ) : view === 'calendar' ? (
+            <div className="space-y-6 animate-slide-up">
+              <div className="flex items-center justify-between">
+                <button onClick={() => setView('main')} className="group text-slate-400 font-black uppercase text-[9px] tracking-widest hover:text-tunisia-red flex items-center gap-2 transition-all">
+                  <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i> Retour
+                </button>
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest italic">Planning des Arrivages</span>
+              </div>
+              <ArrivalCalendar />
             </div>
           ) : (
             <div className="animate-fade-in">

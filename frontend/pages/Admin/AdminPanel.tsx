@@ -11,7 +11,7 @@ import InternalStructureForm from './InternalStructureForm';
 import AdminRequestList from './AdminRequestList';
 import axios from 'axios';
 import UserHistory from './UserHistory';
-import RiskManagement from './RiskManagement.';
+import RiskManagement from './RiskManagement';
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
