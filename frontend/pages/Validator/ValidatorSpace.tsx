@@ -11,6 +11,7 @@ import ValidatorProfile from './ValidatorProfile';
 import PersonalHistory from '../PersonalHistory';
 import ValidatorDashboard from './ValidatorDashboard';
 import ExporterMap from './ExporterMap';
+import PredictiveDashboard from './PredictiveDashboard';
 
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
@@ -18,7 +19,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api
 const ValidatorSpace: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'instruction' | 'stats' | 'archive' | 'history' | 'profile'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'instruction' | 'stats' | 'archive' | 'history'|'predictive' | 'profile'>('dashboard');
   const [inboxTab, setInboxTab] = useState<RequestType>('REGISTRATION');
   const [archiveTab, setArchiveTab] = useState<RequestType>('REGISTRATION');
   const [selectedRequest, setSelectedRequest] = useState<ValidationRequest | null>(null);
@@ -37,15 +38,25 @@ const ValidatorSpace: React.FC = () => {
     "Ministère de l'Agriculture"
   ];
 
-  const sidebarItems = [
+  const canSeePredictive = user?.structureName === 'Ministère du Commerce et du Développement des Exportations';
+
+  const allSidebarItems  = [
     { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
     { id: 'instruction', label: 'Instruction', icon: 'fa-folder-open' },
     { id: 'stats', label: 'Carte Globale', icon: 'fa-earth-africa' },
     { id: 'archive', label: 'Archives', icon: 'fa-archive' },
     { id: 'history', label: 'Audit', icon: 'fa-fingerprint' },
+    { id: 'predictive', label: 'Analyse IA', icon: 'fa-brain' },
     { id: 'profile', label: 'Mon Profil', icon: 'fa-user' },
     { id: 'admin', label: 'Admin Panel', icon: 'fa-shield-halved', path: '/admin', roles: ['admin'] as any },
   ];
+
+  const sidebarItems = allSidebarItems.filter(item => {
+    if (item.id === 'predictive') {
+      return canSeePredictive;
+    }
+    return true;
+  });
 
 // ✅ Fonction pour obtenir les onglets visibles selon le ministère
   const getVisibleTabs = () => {
@@ -641,6 +652,10 @@ interface BackendDemande {
 
         {activeTab === 'history' && (
            <PersonalHistory />
+        )}
+
+        {activeTab === 'predictive' && (
+            <PredictiveDashboard />
         )}
 
         {activeTab === 'profile' && (

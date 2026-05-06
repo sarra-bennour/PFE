@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import ResetPasswordForm from '../../components/ResetPasswordForm';
-import { useAuth } from '../../App'; // Assure-toi d'avoir le bon chemin
+import { useAuth } from '../../App';
 import { User, UserRoleType } from '@/types/User';
 
+// ✅ AJOUTER cette interface pour les activités
+interface RecentActivity {
+  id: number;
+  reference: string;
+  description: string;
+  status: 'APPROUVÉ' | 'REJETÉ' | 'INFO_REQUISE';
+  time: string;
+  actionType: string;
+}
 
 interface ProfileStat {
   label: string;
@@ -13,7 +22,6 @@ interface ProfileStat {
   bg: string;
 }
 
-// Interface pour l'utilisateur InstanceValidation
 interface InstanceValidationUser {
   id: number;
   email: string;
@@ -36,6 +44,10 @@ const ValidatorProfile: React.FC = () => {
   const [isChangingPwd, setIsChangingPwd] = useState(false);
   const [isDeclaringAbsence, setIsDeclaringAbsence] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  // ✅ AJOUTER ces states
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  
   const [profileData, setProfileData] = useState({
     nom: '',
     prenom: '',
@@ -56,8 +68,7 @@ const ValidatorProfile: React.FC = () => {
 
   // Fonction pour mapper les données backend vers frontend
   const mapBackendUserToFrontend = (backendUser: any): Partial<User> => {
-  // Normaliser le rôle pour correspondre à l'enum
-  let role: UserRoleType = UserRoleType.EXPORTATEUR; // Valeur par défault
+  let role: UserRoleType = UserRoleType.EXPORTATEUR;
   
   switch (backendUser.role?.toUpperCase()) {
     case 'EXPORTATEUR':
@@ -89,7 +100,6 @@ const ValidatorProfile: React.FC = () => {
     structureType: backendUser.structureType || '',
     slaTraitementJours: backendUser.slaTraitementJours || 0,
     statut: backendUser.statut || 'ACTIF',
-    // Ajouter d'autres champs si nécessaire
     isTwoFactorEnabled: backendUser.twoFactorEnabled || false,
     emailVerified: backendUser.emailVerified || false,
   };
@@ -128,7 +138,6 @@ const ValidatorProfile: React.FC = () => {
             statut: mappedUser.statut || 'ACTIF'
           });
           
-          // Mettre à jour le contexte auth si nécessaire
           if (updateUser) {
             updateUser(mappedUser);
           }
@@ -143,10 +152,75 @@ const ValidatorProfile: React.FC = () => {
     fetchProfileData();
   }, [authUser?.email]);
 
+  // ✅ AJOUTER: Charger les activités récentes
+  const fetchRecentActivities = async () => {
+  setLoadingActivities(true);
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`http://localhost:8080/api/audit-logs/my-logs?offset=0&limit=10`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.data && data.data.length > 0) {
+      // ✅ AJOUTER le typage explicite pour le paramètre 'log'
+      const activities = data.data.map((log: any) => {
+        let status: 'APPROUVÉ' | 'REJETÉ' | 'INFO_REQUISE' = 'APPROUVÉ';
+        
+        if (log.action === 'VALIDATION_APPROVE_DEMANDE') status = 'APPROUVÉ';
+        else if (log.action === 'VALIDATION_REJECT_DEMANDE') status = 'REJETÉ';
+        else if (log.action === 'VALIDATION_REQUEST_INFO') status = 'INFO_REQUISE';
+        
+        let reference = '';
+        if (log.details?.reference) reference = log.details.reference;
+        else {
+          const match = log.description?.match(/DEM-\d+-\w+|DOS-\d+-\w+|IMP-\d+-\w+/);
+          if (match) reference = match[0];
+        }
+        
+        const createdAt = new Date(log.createdAt);
+        const now = new Date();
+        const diffHours = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60));
+        let timeDisplay = diffHours < 1 ? 'Il y a quelques minutes' :
+                         diffHours < 24 ? `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}` :
+                         `Il y a ${Math.floor(diffHours / 24)} jour${Math.floor(diffHours / 24) > 1 ? 's' : ''}`;
+        
+        return {
+          id: log.id,
+          reference: reference,
+          description: log.description || '',
+          status: status,
+          time: timeDisplay,
+          actionType: log.action
+        };
+      });
+      
+      // ✅ CORRECTION: Ajouter le typage explicite pour le paramètre 'act'
+      const validationActivities = activities.filter((act: RecentActivity) => 
+        act.actionType === 'VALIDATION_APPROVE_DEMANDE' ||
+        act.actionType === 'VALIDATION_REJECT_DEMANDE' ||
+        act.actionType === 'VALIDATION_REQUEST_INFO'
+      );
+      
+      setRecentActivities(validationActivities.slice(0, 5));
+    }
+  } catch (err) {
+    console.error('Erreur chargement activités:', err);
+  } finally {
+    setLoadingActivities(false);
+  }
+};
+
+  // ✅ AJOUTER: Appeler au chargement
+  useEffect(() => {
+    fetchRecentActivities();
+  }, []);
+
   const profileStats: ProfileStat[] = [
-    { label: 'Dossiers Traités', value: '1,428', icon: 'fa-box-archive', color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    { label: 'Dossiers Traités', value: recentActivities.length.toString(), icon: 'fa-box-archive', color: 'text-emerald-500', bg: 'bg-emerald-50' },
     { label: 'Temps Moyen', value: '18m', icon: 'fa-bolt', color: 'text-amber-500', bg: 'bg-amber-50' },
-    { label: 'Taux Approbation', value: '84%', icon: 'fa-check-double', color: 'text-blue-500', bg: 'bg-blue-50' },
+    { label: 'Taux Approbation', value: recentActivities.length > 0 ? `${Math.round((recentActivities.filter(a => a.status === 'APPROUVÉ').length / recentActivities.length) * 100)}%` : '0%', icon: 'fa-check-double', color: 'text-blue-500', bg: 'bg-blue-50' },
     { label: 'Score Qualité', value: '4.9/5', icon: 'fa-star', color: 'text-purple-500', bg: 'bg-purple-50' },
   ];
 
@@ -237,6 +311,15 @@ const ValidatorProfile: React.FC = () => {
     }
   };
 
+  const getStatusClass = (status: string): string => {
+    switch (status) {
+      case 'APPROUVÉ': return 'bg-emerald-50/50 text-emerald-600/80 border-emerald-100/50';
+      case 'REJETÉ': return 'bg-red-50/50 text-red-600/80 border-red-100/50';
+      case 'INFO_REQUISE': return 'bg-amber-50/50 text-amber-600/80 border-amber-100/50';
+      default: return 'bg-slate-50 text-slate-500 border-slate-100';
+    }
+  };
+
   if (loadingProfile && !profileData.email) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -249,7 +332,7 @@ const ValidatorProfile: React.FC = () => {
   return (
     <div className="space-y-10 animate-fade-in pb-20">
       
-      {/* Modals */}
+      {/* Modals - inchangé */}
       <AnimatePresence>
         {isEditing && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -293,8 +376,7 @@ const ValidatorProfile: React.FC = () => {
                     type="text" 
                     value={profileData.structureName}
                     disabled
-                    onChange={(e) => setProfileData({...profileData, structureName: e.target.value})}
-                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all cursor-not-allowed"
+                    className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none cursor-not-allowed"
                   />
                 </div>
                 
@@ -305,8 +387,7 @@ const ValidatorProfile: React.FC = () => {
                       type="text" 
                       value={profileData.structureCode}
                       disabled
-                      onChange={(e) => setProfileData({...profileData, structureCode: e.target.value})}
-                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none focus:border-tunisia-red transition-all cursor-not-allowed"
+                      className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-xs font-bold outline-none cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -429,7 +510,7 @@ const ValidatorProfile: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Profile Header Card */}
+      {/* Profile Header Card - inchangé */}
       <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden relative">
         <div className="h-48 bg-slate-50/80 relative">
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-blue-400 via-transparent to-transparent"></div>
@@ -502,7 +583,7 @@ const ValidatorProfile: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        {/* Left: Professional Info */}
+        {/* Left: Professional Info - inchangé */}
         <div className="lg:col-span-2 space-y-10">
           <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
             <h3 className="text-lg font-black italic text-slate-700 uppercase tracking-tighter mb-8 flex items-center gap-3">
@@ -540,43 +621,66 @@ const ValidatorProfile: React.FC = () => {
             </div>
           </div>
 
+          {/* ✅ SECTION ACTIVITÉ RÉCENTE - SEULE PARTIE MODIFIÉE */}
           <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
-            <h3 className="text-lg font-black italic text-slate-700 uppercase tracking-tighter mb-8 flex items-center gap-3">
-               <i className="fas fa-shield-halved text-blue-300"></i> Activité Récente de Validation
-            </h3>
-            <div className="space-y-4">
-               {[
-                 { ref: 'IMP-2024-991', desc: 'Importation Sucre', status: 'APPROUVÉ', time: 'Il y a 2h' },
-                 { ref: 'REG-2024-105', desc: 'Enregistrement Exportateur', status: 'EN ATTENTE INFO', time: 'Il y a 4h' },
-                 { ref: 'IMP-2024-882', desc: 'Produits Industriels', status: 'REJETÉ', time: 'Hier' },
-               ].map((act, i) => (
-                 <div key={i} className="flex items-center justify-between p-5 bg-slate-50/30 hover:bg-blue-50/20 transition-all rounded-3xl border border-slate-50">
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-blue-200">
-                         <i className="fas fa-file-contract"></i>
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-lg font-black italic text-slate-700 uppercase tracking-tighter flex items-center gap-3">
+                <i className="fas fa-shield-halved text-blue-300"></i> Activité Récente de Validation
+              </h3>
+              <button 
+                onClick={fetchRecentActivities}
+                className="text-[8px] font-black uppercase tracking-widest text-slate-400 hover:text-tunisia-red transition-all"
+              >
+                <i className="fas fa-sync-alt mr-1"></i> Rafraîchir
+              </button>
+            </div>
+            
+            {loadingActivities ? (
+              <div className="flex justify-center items-center py-12">
+                <i className="fas fa-spinner fa-spin text-tunisia-red text-xl"></i>
+              </div>
+            ) : recentActivities.length > 0 ? (
+              <div className="space-y-4">
+                {recentActivities.map((act, i) => (
+                  <div key={i} className="flex items-center justify-between p-5 bg-slate-50/30 hover:bg-blue-50/20 transition-all rounded-3xl border border-slate-50">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center ${
+                        act.status === 'APPROUVÉ' ? 'text-emerald-500' : 
+                        act.status === 'REJETÉ' ? 'text-red-500' : 'text-amber-500'
+                      }`}>
+                        <i className={`fas ${
+                          act.status === 'APPROUVÉ' ? 'fa-check-circle' : 
+                          act.status === 'REJETÉ' ? 'fa-times-circle' : 'fa-question-circle'
+                        }`}></i>
                       </div>
                       <div>
-                         <p className="text-xs font-black text-slate-700 italic tracking-tight uppercase">{act.ref}</p>
-                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{act.desc}</p>
+                        <p className="text-xs font-black text-slate-700 italic tracking-tight uppercase">{act.reference || 'N/A'}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{act.description}</p>
                       </div>
-                   </div>
-                   <div className="text-right">
-                      <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full border mb-1 block ${
-                        act.status === 'APPROUVÉ' ? 'bg-emerald-50/50 text-emerald-600/80 border-emerald-100/50' :
-                        act.status === 'REJETÉ' ? 'bg-red-50/50 text-red-600/80 border-red-100/50' :
-                        'bg-amber-50/50 text-amber-600/80 border-amber-100/50'
-                      }`}>
-                         {act.status}
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full border mb-1 block ${getStatusClass(act.status)}`}>
+                        {act.status === 'APPROUVÉ' ? 'Approuvé' : act.status === 'REJETÉ' ? 'Rejeté' : 'Info requise'}
                       </span>
                       <span className="text-[8px] font-black uppercase tracking-widest text-slate-300 italic">{act.time}</span>
-                   </div>
-                 </div>
-               ))}
-            </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i className="fas fa-inbox text-2xl text-slate-300"></i>
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Aucune activité récente
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right Column: Security & Settings */}
+        {/* Right Column: Security & Settings - inchangé */}
         <div className="space-y-10">
           <div className="bg-blue-50/30 border border-blue-100/50 p-10 rounded-[3rem] relative overflow-hidden">
             <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-400/5 rounded-full blur-3xl"></div>

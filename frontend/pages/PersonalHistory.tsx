@@ -171,6 +171,7 @@ const PersonalHistory: React.FC = () => {
 
   return (
     <div className="space-y-10 animate-fade-in">
+      <br />
       {/* Modal Détails Log */}
       {selectedLog && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in">

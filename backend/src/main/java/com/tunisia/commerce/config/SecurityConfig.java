@@ -40,12 +40,13 @@ public class SecurityConfig {
                         //.requestMatchers("/api/risk/**").permitAll()
                         .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/uploads/**", "/api/uploads/**", "/api/produits/uploads/**").permitAll()
+                        .requestMatchers("/api/chatbot/**").hasAnyAuthority("EXPORTATEUR", "IMPORTATEUR")
                         .requestMatchers("/api/admin/document/*/preview").hasAnyAuthority("ADMIN", "INSTANCE_VALIDATION")
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/risk/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/exportateur/**").hasAuthority("EXPORTATEUR")
                         .requestMatchers("/api/importateur/**").hasAuthority("IMPORTATEUR")
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/taxes/**").hasAnyAuthority("EXPORTATEUR", "IMPORTATEUR")                        .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

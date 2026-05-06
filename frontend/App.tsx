@@ -20,6 +20,7 @@ import { DossierStatus } from './types/DossierStatus';
 import { User, UserRole } from './types/User';
 import ProductsCatalog from './pages/ProductsCatalog';
 import PersonalHistory from './pages/PersonalHistory';
+import TaxCalculator from './pages/TaxCalculator';
 
 
 
@@ -286,6 +287,11 @@ const App: React.FC = () => {
             <Route path="/history" element={
               <ProtectedRoute roles={['EXPORTATEUR', 'IMPORTATEUR', 'INSTANCE_VALIDATION']}>
                 <PersonalHistory />
+              </ProtectedRoute>
+            } />
+            <Route path="/calculator" element={
+              <ProtectedRoute roles={['EXPORTATEUR', 'IMPORTATEUR']}>
+                <TaxCalculator />
               </ProtectedRoute>
             } />
             <Route path="/admin" element={

@@ -85,6 +85,7 @@ const resources = {
       "my_declarations": "Mes Déclarations",
       "activity_log": "Historique d'activité",
       "view_activity_log": "Consulter mon historique d'activité",
+      "tax_calculator": "Calculateur de Taxes",
     }
   },
   ar: {
@@ -166,6 +167,7 @@ const resources = {
       "catalogue_products": "كتالوج المنتجات",
       "my_declarations": "سجل الأنشطة",
       "view_activity_log": "عرض سجل أنشطتي",
+      "tax_calculator": "حاسبة الضرائب",
     }
   },
   en: {
@@ -183,6 +185,7 @@ const resources = {
       "my_declarations": "My Declarations",
       "activity_log": "Activity Log",
       "view_activity_log": "View my activity log",
+      "tax_calculator": "Tax Calculator",
     }
   }    
 };

@@ -5,7 +5,7 @@ import ImporterTracking from './ImporterTracking';
 import ImporterDashboard from './ImporterDashboard';
 import RequestArchive from '../RequestArchive';
 import ArrivalCalendar from './ArrivalCalendar';
-
+import SupportChatbot from '../SupportChatbot';
 
 const ImporterSpace: React.FC = () => {
   const { t } = useTranslation();
@@ -200,6 +200,7 @@ const ImporterSpace: React.FC = () => {
           )}
         </div>
       </div>
+      <SupportChatbot context="importer" />
     </div>
   );
 };

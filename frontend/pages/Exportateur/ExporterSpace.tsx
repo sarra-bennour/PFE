@@ -15,6 +15,7 @@ import { DemandeEnregistrement } from '../../types/DemandeEnregistrement';
 import {  ProductDeclarationDemande } from '../../types/ProductDeclarationFormProps';
 import { DemandeStatus } from '../../types/DemandeEnregistrement';
 import { PaymentStatus } from '../../types/PaymentResult';
+import SupportChatbot  from '../SupportChatbot';
 
 
 
@@ -1240,6 +1241,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
     console.log('Dossier Info:', dossierInfo);
 
   return (
+    <>
     <div className="max-w-6xl mx-auto space-y-8 animate-fade-in-scale">
       <br />
 
@@ -1287,6 +1289,8 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
           <i className="fas fa-robot mr-2"></i> Support Expert IA
         </button>
       </div>
+            <SupportChatbot context="exporter" />
+
 
 
 {/* SECTION PIPELINE DE DÉCLARATION */}
@@ -1570,6 +1574,8 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
         </div>
       )}
     </div>
+    <SupportChatbot context="exporter" />
+    </>
   );
 };
 
