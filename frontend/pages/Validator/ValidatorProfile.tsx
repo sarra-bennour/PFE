@@ -12,6 +12,7 @@ interface RecentActivity {
   status: 'APPROUVÉ' | 'REJETÉ' | 'INFO_REQUISE';
   time: string;
   actionType: string;
+  createdAt: Date; 
 }
 
 interface ProfileStat {
@@ -152,61 +153,119 @@ const ValidatorProfile: React.FC = () => {
     fetchProfileData();
   }, [authUser?.email]);
 
-  // ✅ AJOUTER: Charger les activités récentes
-  const fetchRecentActivities = async () => {
+// Charger TOUT l'historique des demandes traitées
+const fetchRecentActivities = async () => {
   setLoadingActivities(true);
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:8080/api/audit-logs/my-logs?offset=0&limit=10`, {
+    const response = await fetch(`http://localhost:8080/api/audit-logs/my-logs?offset=0&limit=1000`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
     const data = await response.json();
     
     if (data.success && data.data && data.data.length > 0) {
-      // ✅ AJOUTER le typage explicite pour le paramètre 'log'
-      const activities = data.data.map((log: any) => {
+      // Log tous les logs de validation pour inspecter
+      const allValidationLogs = data.data.filter((log: any) => 
+        log.action === 'VALIDATION_APPROVE_DEMANDE' ||
+        log.action === 'VALIDATION_REJECT_DEMANDE' || 
+        log.action === 'VALIDATION_REQUEST_INFO'
+      );
+      
+      console.log('📋 Logs de validation trouvés:', allValidationLogs.length);
+      allValidationLogs.forEach((log: any, index: number) => {
+        console.log(`📋 Validation log ${index + 1}:`, {
+          action: log.action,
+          entityReference: log.entityReference,
+          entityId: log.entityId,
+          description: log.description,
+          details: log.details
+        });
+      });
+      
+      const validationActions = ['VALIDATION_APPROVE_DEMANDE', 'VALIDATION_REJECT_DEMANDE', 'VALIDATION_REQUEST_INFO'];
+      
+      const validationLogs = data.data.filter((log: any) => 
+        validationActions.includes(log.action)
+      );
+      
+      const activities: RecentActivity[] = validationLogs.map((log: any) => {
         let status: 'APPROUVÉ' | 'REJETÉ' | 'INFO_REQUISE' = 'APPROUVÉ';
         
         if (log.action === 'VALIDATION_APPROVE_DEMANDE') status = 'APPROUVÉ';
         else if (log.action === 'VALIDATION_REJECT_DEMANDE') status = 'REJETÉ';
         else if (log.action === 'VALIDATION_REQUEST_INFO') status = 'INFO_REQUISE';
         
+        // 🔥 RÉCUPÉRER LA RÉFÉRENCE - Plusieurs tentatives
         let reference = '';
-        if (log.details?.reference) reference = log.details.reference;
-        else {
-          const match = log.description?.match(/DEM-\d+-\w+|DOS-\d+-\w+|IMP-\d+-\w+/);
+        
+        // 1. Essayer entityReference directement
+        if (log.entityReference && log.entityReference !== '') {
+          reference = log.entityReference;
+        }
+        // 2. Essayer depuis details.reference
+        else if (log.details?.reference && log.details.reference !== '') {
+          reference = log.details.reference;
+        }
+        // 3. Essayer depuis details.demandeReference
+        else if (log.details?.demandeReference && log.details.demandeReference !== '') {
+          reference = log.details.demandeReference;
+        }
+        // 4. Extraire depuis la description
+        else if (log.description) {
+          const match = log.description.match(/(?:DEM|DOS|IMP)-\d+-\w+/);
           if (match) reference = match[0];
         }
         
-        const createdAt = new Date(log.createdAt);
-        const now = new Date();
-        const diffHours = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60));
-        let timeDisplay = diffHours < 1 ? 'Il y a quelques minutes' :
-                         diffHours < 24 ? `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}` :
-                         `Il y a ${Math.floor(diffHours / 24)} jour${Math.floor(diffHours / 24) > 1 ? 's' : ''}`;
+        // 🔥 Si pas de référence, utiliser entityId comme fallback
+        if (!reference && log.entityId) {
+          reference = `ID:${log.entityId}`;
+        }
+        
+        const createdAt = new Date(log.performedAt);
+        const formattedDate = createdAt.toLocaleDateString('fr-FR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
         
         return {
           id: log.id,
           reference: reference,
           description: log.description || '',
           status: status,
-          time: timeDisplay,
-          actionType: log.action
+          time: formattedDate,
+          actionType: log.action,
+          createdAt: createdAt
         };
       });
       
-      // ✅ CORRECTION: Ajouter le typage explicite pour le paramètre 'act'
-      const validationActivities = activities.filter((act: RecentActivity) => 
-        act.actionType === 'VALIDATION_APPROVE_DEMANDE' ||
-        act.actionType === 'VALIDATION_REJECT_DEMANDE' ||
-        act.actionType === 'VALIDATION_REQUEST_INFO'
+      // 🔥 Afficher uniquement les activités qui ont une référence
+      const activitiesWithRef = activities.filter(act => act.reference && act.reference !== '');
+      const activitiesWithoutRef = activities.filter(act => !act.reference || act.reference === '');
+      
+      console.log(`📊 Activités avec référence: ${activitiesWithRef.length}`);
+      console.log(`⚠️ Activités sans référence: ${activitiesWithoutRef.length}`);
+      
+      if (activitiesWithoutRef.length > 0) {
+        console.log('Détails des activités sans référence:', activitiesWithoutRef);
+      }
+      
+      // Trier par date
+      const sortedActivities = activitiesWithRef.sort((a: RecentActivity, b: RecentActivity) => 
+        b.createdAt.getTime() - a.createdAt.getTime()
       );
       
-      setRecentActivities(validationActivities.slice(0, 5));
+      setRecentActivities(sortedActivities);
+      
+    } else {
+      setRecentActivities([]);
     }
   } catch (err) {
-    console.error('Erreur chargement activités:', err);
+    console.error('Erreur chargement historique:', err);
+    setRecentActivities([]);
   } finally {
     setLoadingActivities(false);
   }

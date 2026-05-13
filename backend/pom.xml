@@ -166,6 +166,12 @@
 			<artifactId>google-genai</artifactId>
 			<version>1.0.0</version>
 		</dependency>
+
+		<!-- Spring WebFlux pour WebClient -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>

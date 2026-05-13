@@ -122,6 +122,18 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   const [loading, setLoading] = React.useState(false);
   const [decisionComment, setDecisionComment] = React.useState('');
   const [confirmationDecision, setConfirmationDecision] = React.useState<DemandeStatus| null>(null);
+  const [activeRightTab, setActiveRightTab] = React.useState<'MANUAL' | 'AI'>('MANUAL');
+  const [docAnalyses, setDocAnalyses] = React.useState<Record<string, {
+    status: 'AUTHENTIQUE' | 'FRAUDULEUX' | 'ERROR';
+    confidence?: number;
+    recommendation?: string;
+    reasons?: string[];
+    pointsOfAttention?: string[];
+    isLoading?: boolean;
+    geminiAnalysis?: any;
+    textAnalysis?: any;
+    finalDecision?: any;
+  }>>({});
 
   const filteredProducts = filterProductsByInstance(localRequest.products || [], currentStructureName);
   // Filtrer les documents
@@ -167,7 +179,368 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
     }
   };
 
-  const handleAutoValidateAll = () => {
+  const validateDocWithAI = async (doc: AttachedDocument) => {
+    setDocAnalyses(prev => ({ ...prev, [doc.id]: { status: 'AUTHENTIQUE', isLoading: true } }));
+    
+    try {
+      const token = localStorage.getItem('token');
+      
+      const fileResponse = await axios.get(doc.fileUrl!, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const formData = new FormData();
+      formData.append('file', fileResponse.data, doc.name);
+      
+      if (doc.id) {
+        formData.append('documentId', doc.id);
+      }
+      
+      // AJOUTER LE CONTEXTE DE LA DEMANDE
+      if (request.type === 'REGISTRATION' || request.type === 'PRODUCT_DECLARATION') {
+          // C'est un EXPORTATEUR ÉTRANGER
+          formData.append('demande_type', request.type);
+          formData.append('soumissionnaire_type', 'EXPORTATEUR');
+          formData.append('soumissionnaire_nom', request.applicantName);
+          formData.append('soumissionnaire_pays', 'Étranger');
+      } else if (request.type === 'IMPORT') {
+          // C'est un IMPORTATEUR TUNISIEN
+          formData.append('demande_type', request.type);
+          formData.append('soumissionnaire_type', 'IMPORTATEUR');
+          formData.append('soumissionnaire_nom', request.applicantName);
+          formData.append('soumissionnaire_pays', 'Tunisie');
+      }
+
+      const response = await axios.post(`${API_BASE_URL}/fraud/detect`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        },
+        timeout: 120000
+      });
+      
+      const aiResult = response.data.data;
+      
+      let isFraud = false;
+      let confidence = 0;
+      let reasons: string[] = [];
+      let recommendation = "";
+      let warnings: string[] = [];
+      
+      if (aiResult.is_fraud === true) {
+        isFraud = true;
+      }
+      
+      if (aiResult.final_decision?.is_fraud === true) {
+        isFraud = true;
+      }
+      
+      if (aiResult.label === 'fake') {
+        isFraud = true;
+      }
+      
+      if (aiResult.confidence) {
+        confidence = aiResult.confidence * 100;
+      } else if (aiResult.final_decision?.confidence) {
+        confidence = aiResult.final_decision.confidence * 100;
+      }
+      
+      if (aiResult.final_decision?.reasons && aiResult.final_decision.reasons.length > 0) {
+        reasons = aiResult.final_decision.reasons;
+      } else if (aiResult.reasons && aiResult.reasons.length > 0) {
+        reasons = aiResult.reasons;
+      } else if (aiResult.gemini_analysis?.anomalies) {
+        reasons = aiResult.gemini_analysis.anomalies.map((a: any) => a.description);
+      }
+      
+      if (aiResult.recommendation) {
+        recommendation = aiResult.recommendation;
+      } else if (aiResult.gemini_analysis?.recommendation) {
+        recommendation = aiResult.gemini_analysis.recommendation;
+      } else {
+        recommendation = isFraud ? "🔴 REJETER - Fraude documentaire confirmée" : "🟢 ACCEPTER - Document valide";
+      }
+      
+      if (aiResult.text_analysis?.warnings) {
+        warnings = aiResult.text_analysis.warnings;
+      } else if (aiResult.textAnalysis?.warnings) {
+        warnings = aiResult.textAnalysis.warnings;
+      }
+      
+      const analysisData = {
+        status: isFraud ? 'FRAUDULEUX' as const : 'AUTHENTIQUE' as const,
+        confidence: confidence,
+        recommendation: recommendation,
+        reasons: reasons,
+        pointsOfAttention: warnings,
+        isLoading: false as const,
+        geminiAnalysis: aiResult.gemini_analysis,
+        textAnalysis: aiResult.text_analysis,
+        finalDecision: aiResult.final_decision
+      };
+      
+      setDocAnalyses(prev => ({ ...prev, [doc.id]: analysisData }));
+      
+      // 🔥 SUPPRIMÉ : plus d'auto-validation automatique
+      // L'utilisateur doit maintenant cliquer sur Valider ou Rejeter manuellement
+      
+      console.log(`✅ Analyse terminée pour ${doc.name}`);
+      console.log(`📊 Résultat: ${isFraud ? 'FRAUDULEUX' : 'AUTHENTIQUE'} (confiance: ${confidence.toFixed(1)}%)`);
+
+    } catch (error) {
+      console.error('Erreur lors de l\'analyse IA:', error);
+      setDocAnalyses(prev => ({ ...prev, [doc.id]: { status: 'ERROR', isLoading: false } }));
+    }
+  };
+
+  const handleAutoValidateAll = async () => {
+    for (const doc of filteredDocuments) {
+      if (doc.status === 'PENDING' && !docAnalyses[doc.id]) {
+        await validateDocWithAI(doc);
+      }
+    }
+  };
+
+  const AIAnalysisCard = ({ docId, onCloseAnalysis }: { docId: string; onCloseAnalysis?: () => void }) => {
+    const analysis = docAnalyses[docId];
+    const doc = filteredDocuments.find(d => d.id === docId);
+    const [expanded, setExpanded] = React.useState(false);
+    
+    if (!analysis) return null;
+
+    if (analysis.isLoading) {
+      return (
+        <div className="mt-4 p-6 bg-slate-50 border border-slate-100 rounded-3xl flex flex-col items-center justify-center gap-3 animate-pulse">
+          <div className="w-10 h-10 border-4 border-slate-200 border-t-tunisia-red rounded-full animate-spin"></div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 italic">Analyse IA en cours...</span>
+        </div>
+      );
+    }
+
+    if (analysis.status === 'ERROR') {
+      return (
+        <div className="mt-4 border border-amber-200 rounded-2xl overflow-hidden bg-amber-50/30">
+          <div className="p-6 text-center space-y-2">
+            <h5 className="text-sm font-black uppercase text-amber-600 tracking-tighter">Service Indisponible</h5>
+            <p className="text-[10px] font-bold text-slate-500">Contactez l'administrateur système</p>
+            <button 
+              onClick={() => doc && validateDocWithAI(doc)}
+              className="mt-2 px-4 py-2 bg-amber-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-sm"
+            >
+              Réessayer
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const isFraud = analysis.status === 'FRAUDULEUX';
+    
+    // Récupérer les listes avec des valeurs par défaut sécurisées
+    const reasonsList = analysis.reasons || [];
+    const pointsList = analysis.pointsOfAttention || [];
+    const itemsToShow = isFraud ? reasonsList : pointsList;
+    const hasMoreItems = itemsToShow.length > 3;
+
+    return (
+      <div className={`mt-4 border ${isFraud ? 'border-red-200' : 'border-emerald-200'} rounded-2xl overflow-hidden bg-white relative`}>
+        {onCloseAnalysis && (
+          <button 
+            onClick={onCloseAnalysis}
+            className="absolute top-3 right-3 w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all z-10"
+            title="Fermer l'analyse"
+          >
+            <i className="fas fa-times text-xs"></i>
+          </button>
+        )}
+        
+        <div className={`p-4 text-center border-b border-slate-100 ${isFraud ? 'bg-red-50/50' : 'bg-emerald-50/50'}`}>
+          <div className="flex items-center justify-between">
+            <h5 className={`text-sm font-black uppercase tracking-tighter ${isFraud ? 'text-red-600' : 'text-emerald-600'}`}>
+              <i className={`fas ${isFraud ? 'fa-exclamation-triangle' : 'fa-check-circle'} mr-2`}></i>
+              Document {analysis.status.toLowerCase()}
+            </h5>
+            <span className="text-[10px] font-bold text-slate-400">
+              <i className="fas fa-microchip mr-1"></i> IA
+            </span>
+          </div>
+          <p className="text-[9px] font-bold text-slate-400 mt-1">
+            Expertise assistée par ordinateur
+          </p>
+        </div>
+
+        {analysis.confidence && (
+          <div className="p-4 border-b border-slate-100">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Fiabilité de l'analyse</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(analysis.confidence, 100)}%` }}
+                  className={`h-full ${isFraud ? 'bg-red-500' : 'bg-emerald-500'}`}
+                ></motion.div>
+              </div>
+              <span className="text-[10px] font-black text-slate-900">{analysis.confidence.toFixed(1)}%</span>
+            </div>
+          </div>
+        )}
+
+        <div className="p-4 border-b border-slate-100">
+          <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Conclusion</p>
+          <p className={`text-[11px] font-bold ${isFraud ? 'text-red-700' : 'text-emerald-700'}`}>
+            {analysis.recommendation}
+          </p>
+        </div>
+
+        {(reasonsList.length > 0 || pointsList.length > 0) && (
+          <div className="p-4 border-b border-slate-100">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">
+              {isFraud ? '🔍 Raisons de la fraude' : '📝 Points d\'attention'}
+            </p>
+            <div className="space-y-1.5 max-h-32 overflow-y-auto">
+              {itemsToShow.slice(0, expanded ? undefined : 3).map((item, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${isFraud ? 'bg-red-400' : 'bg-emerald-400'}`}></div>
+                  <p className="text-[10px] font-medium text-slate-600 leading-relaxed">{item}</p>
+                </div>
+              ))}
+            </div>
+            {hasMoreItems && (
+              <button 
+                onClick={() => setExpanded(!expanded)}
+                className="mt-2 text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline"
+              >
+                {expanded ? 'Voir moins' : `Voir plus (${itemsToShow.length - 3})`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {analysis.geminiAnalysis && (
+          <div className="p-4 border-b border-slate-100 bg-purple-50/20">
+            <p className="text-[9px] font-black uppercase tracking-widest text-purple-600 mb-2 flex items-center gap-1">
+              <i className="fas fa-brain"></i> Analyse Gemini
+            </p>
+            
+            {(analysis.geminiAnalysis.exportateur || analysis.geminiAnalysis.importer) && (
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                {analysis.geminiAnalysis.exportateur && (
+                  <div className="bg-white rounded-xl p-2 border border-purple-100">
+                    <p className="text-[8px] font-black text-purple-500">EXPORTATEUR</p>
+                    <p className="text-[9px] font-bold text-slate-700">{analysis.geminiAnalysis.exportateur.nom || 'N/A'}</p>
+                    <p className="text-[8px] text-slate-400">{analysis.geminiAnalysis.exportateur.pays || 'N/A'}</p>
+                  </div>
+                )}
+                {analysis.geminiAnalysis.importateur && (
+                  <div className="bg-white rounded-xl p-2 border border-purple-100">
+                    <p className="text-[8px] font-black text-purple-500">IMPORTATEUR</p>
+                    <p className="text-[9px] font-bold text-slate-700">{analysis.geminiAnalysis.importateur.nom || 'N/A'}</p>
+                    <p className="text-[8px] text-slate-400">{analysis.geminiAnalysis.importateur.pays || 'N/A'}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {analysis.geminiAnalysis.anomalies && analysis.geminiAnalysis.anomalies.length > 0 && (
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-widest text-slate-400 mb-1">Anomalies détectées</p>
+                <div className="space-y-1.5">
+                  {(analysis.geminiAnalysis.anomalies.slice(0, expanded ? undefined : 2) as any[]).map((anomaly: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <div className={`w-1 h-1 rounded-full mt-1.5 shrink-0 ${
+                        anomaly.severity === 'high' ? 'bg-red-400' : 
+                        anomaly.severity === 'medium' ? 'bg-orange-400' : 'bg-yellow-400'
+                      }`}></div>
+                      <p className="text-[9px] text-slate-600 leading-relaxed">{anomaly.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {analysis.geminiAnalysis.tax_analysis && (
+              <div className="mt-3 pt-2 border-t border-purple-100">
+                <div className="flex justify-between items-center">
+                  <span className="text-[8px] font-black text-slate-400">Analyse fiscale</span>
+                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                    analysis.geminiAnalysis.tax_analysis.is_valid ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                  }`}>
+                    {analysis.geminiAnalysis.tax_analysis.is_valid ? 'VALIDE' : 'INVALIDE'}
+                  </span>
+                </div>
+                {analysis.geminiAnalysis.tax_analysis.taux_tva && (
+                  <p className="text-[9px] text-slate-600 mt-1">TVA: {analysis.geminiAnalysis.tax_analysis.taux_tva}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {analysis.textAnalysis && (
+          <div className="p-4 bg-slate-50/30">
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1">
+              <i className="fas fa-file-alt"></i> Analyse OCR
+            </p>
+            
+            {analysis.textAnalysis.warnings && analysis.textAnalysis.warnings.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[8px] font-black text-amber-600">⚠️ Alertes</p>
+                <div className="space-y-1">
+                  {(analysis.textAnalysis.warnings as string[]).map((warning: string, i: number) => (
+                    <p key={i} className="text-[9px] text-amber-700">• {warning}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {analysis.textAnalysis.extracted_info?.companies && analysis.textAnalysis.extracted_info.companies.length > 0 && (
+              <div>
+                <p className="text-[8px] font-black text-slate-400">🏢 Sociétés détectées</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {(analysis.textAnalysis.extracted_info.companies as string[]).slice(0, 3).map((company: string, i: number) => (
+                    <span key={i} className="text-[8px] bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                      {company.substring(0, 30)}...
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {analysis.textAnalysis.extracted_info?.is_tunisian_document !== undefined && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[8px] font-black text-slate-400">Document Tunisien:</span>
+                <span className={`text-[8px] font-black px-2 py-0.5 rounded-full ${
+                  analysis.textAnalysis.extracted_info.is_tunisian_document ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                }`}>
+                  {analysis.textAnalysis.extracted_info.is_tunisian_document ? 'OUI' : 'NON'}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {!readOnly && (
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
+            <button 
+              onClick={() => handleUpdateDocStatus(docId, 'ACCEPTED', analysis.recommendation)}
+              className="flex-1 py-2 bg-emerald-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all"
+            >
+              <i className="fas fa-check mr-1"></i> Valider
+            </button>
+            <button 
+              onClick={() => handleUpdateDocStatus(docId, 'REJECTED', `Fraude détectée: ${reasonsList.slice(0, 2).join(', ')}`)}
+              className="flex-1 py-2 bg-red-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-600 transition-all"
+            >
+              <i className="fas fa-times mr-1"></i> Rejeter
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleAutoValidateAllOld = () => {
     if (loading || isSubmitting.current) return;
     const updatedDocs = localRequest.documents.map(doc => ({ ...doc, status: 'ACCEPTED' as DocStatus }));
     setLocalRequest({ ...localRequest, documents: updatedDocs });
@@ -494,12 +867,43 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
             {/* Right Column: Documents */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h4 className="text-sm font-black italic text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                  <i className="fas fa-file-shield text-tunisia-red"></i> Documents Attachés
-                </h4>
-                {!readOnly && (
+                <div className="flex bg-slate-100 p-1 rounded-2xl">
                   <button 
-                    onClick={handleAutoValidateAll}
+                    onClick={() => setActiveRightTab('MANUAL')}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeRightTab === 'MANUAL' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    Vérification
+                  </button>
+                  <button 
+                    onClick={() => setActiveRightTab('AI')}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeRightTab === 'AI' ? 'bg-white text-tunisia-red shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    Expertise IA
+                  </button>
+                </div>
+                
+                {activeRightTab === 'AI' && !readOnly && (
+                  <div className="flex gap-2">
+                    {Object.keys(docAnalyses).length > 0 && (
+                      <button 
+                        onClick={() => setDocAnalyses({})}
+                        className="px-3 py-1.5 bg-red-50 text-red-500 border border-red-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-red-100 transition-all"
+                      >
+                        <i className="fas fa-trash-alt mr-1"></i> Effacer tout
+                      </button>
+                    )}
+                    <button 
+                      onClick={handleAutoValidateAll}
+                      className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Lancer l'Audit Global
+                    </button>
+                  </div>
+                )}
+                
+                {activeRightTab === 'MANUAL' && !readOnly && (
+                  <button 
+                    onClick={handleAutoValidateAllOld}
                     disabled={loading || isSubmitting.current}
                     className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[8px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -508,83 +912,142 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                 )}
               </div>
 
-              <div className="space-y-4">
-                {filteredDocuments.map((doc) => (
-                  <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
-                          <i className="fas fa-file-pdf text-lg"></i>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-xs font-black text-slate-800 uppercase tracking-tight italic">{doc.name}</span>
-                          <button 
-                            onClick={() => handleViewDocument(doc)}
-                            className="text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline text-left"
-                          >
-                            <i className="fas fa-eye mr-1"></i> Consulter le document
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {readOnly ? (
-                          <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${
-                            doc.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-500 border border-emerald-100' :
-                            doc.status === 'REJECTED' ? 'bg-red-50 text-red-500 border border-red-100' :
-                            'bg-amber-50 text-amber-500 border border-amber-100'
-                          }`}>
-                            {doc.status === 'ACCEPTED' ? 'VALIDÉ' : doc.status === 'REJECTED' ? 'REJETÉ' : 'EN ATTENTE'}
+              {activeRightTab === 'MANUAL' ? (
+                <div className="space-y-4">
+                  {filteredDocuments.map((doc) => (
+                    <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
+                            <i className="fas fa-file-pdf text-lg"></i>
                           </div>
-                        ) : (
-                          <>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-black text-slate-800 uppercase tracking-tight italic">{doc.name}</span>
                             <button 
-                              onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
-                              disabled={loading || isSubmitting.current}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all 
-                                ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                              onClick={() => handleViewDocument(doc)}
+                              className="text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline text-left"
                             >
-                              <i className="fas fa-check"></i>
+                              <i className="fas fa-eye mr-1"></i> Consulter le document
                             </button>
-                            <button 
-                              onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
-                              disabled={loading || isSubmitting.current}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                            >
-                              <i className="fas fa-question"></i>
-                            </button>
-                            <button 
-                              onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
-                              disabled={loading || isSubmitting.current}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                            >
-                              <i className="fas fa-times"></i>
-                            </button>
-                          </>
-                        )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {readOnly ? (
+                            <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                              doc.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-500 border border-emerald-100' :
+                              doc.status === 'REJECTED' ? 'bg-red-50 text-red-500 border border-red-100' :
+                              'bg-amber-50 text-amber-500 border border-amber-100'
+                            }`}>
+                              {doc.status === 'ACCEPTED' ? 'VALIDÉ' : doc.status === 'REJECTED' ? 'REJETÉ' : 'EN ATTENTE'}
+                            </div>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
+                                disabled={loading || isSubmitting.current}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all 
+                                  ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                              >
+                                <i className="fas fa-check"></i>
+                              </button>
+                              <button 
+                                onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
+                                disabled={loading || isSubmitting.current}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                              >
+                                <i className="fas fa-question"></i>
+                              </button>
+                              <button 
+                                onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
+                                disabled={loading || isSubmitting.current}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                              >
+                                <i className="fas fa-times"></i>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
+
+                      {(doc.status === 'REJECTED' || doc.status === 'NOT_SURE') && !readOnly && (
+                        <textarea 
+                          placeholder="Pourquoi ? (Commentaire obligatoire)"
+                          value={doc.comment || ''}
+                          onChange={(e) => handleUpdateDocStatus(doc.id, doc.status, e.target.value)}
+                          disabled={loading || isSubmitting.current}
+                          className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all h-16 resize-none disabled:opacity-50"
+                        ></textarea>
+                      )}
                     </div>
+                  ))}
 
-                    {(doc.status === 'REJECTED' || doc.status === 'NOT_SURE') && !readOnly && (
-                      <textarea 
-                        placeholder="Pourquoi ? (Commentaire obligatoire)"
-                        value={doc.comment || ''}
-                        onChange={(e) => handleUpdateDocStatus(doc.id, doc.status, e.target.value)}
-                        disabled={loading || isSubmitting.current}
-                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all h-16 resize-none disabled:opacity-50"
-                      ></textarea>
-                    )}
-                  </div>
-                ))}
-
-                {hiddenDocsCount > 0 && !readOnly && (
-                  <div className="p-3 bg-amber-50 rounded-xl text-center border border-amber-100">
-                    <p className="text-[8px] font-bold text-amber-600">
-                      <i className="fas fa-eye-slash mr-1"></i>
-                      {hiddenDocsCount} document(s) non visible(s) car hors de votre périmètre
-                    </p>
-                  </div>
-                )}
-              </div>
+                  {hiddenDocsCount > 0 && !readOnly && (
+                    <div className="p-3 bg-amber-50 rounded-xl text-center border border-amber-100">
+                      <p className="text-[8px] font-bold text-amber-600">
+                        <i className="fas fa-eye-slash mr-1"></i>
+                        {hiddenDocsCount} document(s) non visible(s) car hors de votre périmètre
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredDocuments.map((doc) => {
+                    const analysis = docAnalyses[doc.id];
+                    return (
+                      <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center gap-3">
+                            <i className="fas fa-microchip text-slate-400"></i>
+                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{doc.name}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            {!analysis && !readOnly && (
+                              <button 
+                                onClick={() => validateDocWithAI(doc)}
+                                className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all"
+                              >
+                                <i className="fas fa-search mr-1"></i> Scanner
+                              </button>
+                            )}
+                            {analysis && !analysis.isLoading && (
+                              <button 
+                                onClick={() => {
+                                  setDocAnalyses(prev => {
+                                    const newAnalyses = { ...prev };
+                                    delete newAnalyses[doc.id];
+                                    return newAnalyses;
+                                  });
+                                }}
+                                className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all"
+                                title="Fermer l'analyse"
+                              >
+                                <i className="fas fa-times text-xs"></i>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {analysis && <AIAnalysisCard 
+                          docId={doc.id} 
+                          onCloseAnalysis={() => {
+                            setDocAnalyses(prev => {
+                              const newAnalyses = { ...prev };
+                              delete newAnalyses[doc.id];
+                              return newAnalyses;
+                            });
+                          }}
+                        />}
+                      </div>
+                    );
+                  })}
+                  
+                  {filteredDocuments.length === 0 && (
+                    <div className="py-20 text-center space-y-4">
+                      <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucun document à analyser</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Decision Comment Section */}
               {!readOnly && (
@@ -670,8 +1133,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
       </motion.div>
 
       {/* Document Preview Overlay */}
-      {/* Document Preview Overlay - Version avec affichage du dossier */}
-<AnimatePresence>
+      <AnimatePresence>
   {previewDoc && (
     <motion.div 
       initial={{ opacity: 0 }}
