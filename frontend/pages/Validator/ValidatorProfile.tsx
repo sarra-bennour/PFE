@@ -764,26 +764,6 @@ const fetchRecentActivities = async () => {
                </button>
             </div>
           </div>
-
-          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
-            <h3 className="text-lg font-black italic text-slate-700 uppercase tracking-tighter mb-8">Disponibilité</h3>
-            <div className="space-y-6">
-               <div className="flex items-center justify-between p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100/50">
-                  <div className="flex items-center gap-3">
-                     <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                     <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600/80">En Poste</span>
-                  </div>
-                  <div className="text-[10px] font-bold text-emerald-500/80 italic">Présent</div>
-               </div>
-               
-               <button 
-                onClick={() => setIsDeclaringAbsence(true)}
-                className="w-full py-5 bg-white border border-blue-100 text-blue-600 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-blue-50 transition-all font-sans"
-               >
-                 Déclarer une absence <i className="fas fa-calendar-alt ml-2 text-blue-200"></i>
-               </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
