@@ -12,18 +12,19 @@ import AdminRequestList from './AdminRequestList';
 import axios from 'axios';
 import UserHistory from './UserHistory';
 import RiskManagement from './RiskManagement';
-import CaseVerifier from '../CaseVerifier';
+import CaseVerifier from '../../components/CaseVerifier';
+import StripeTransactionHistory from '../../components/StripeTransactionHistory';
 
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests' | 'case-verifier' | 'risk'>('overview');
-  
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests' | 'case-verifier' | 'risk' | 'stripe-history'>('overview');
+
   // État pour les structures
   const [structures, setStructures] = useState<InternalStructure[]>([]);
   const [loadingStructures, setLoadingStructures] = useState(false);
-  
+
   // Modals state
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
@@ -45,7 +46,7 @@ const AdminPanel: React.FC = () => {
       const response = await axios.get('http://localhost:8080/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       if (response.data.success) {
         setUsers(response.data.users);
         console.log('✅ Utilisateurs chargés:', response.data.users.length);
@@ -68,7 +69,7 @@ const AdminPanel: React.FC = () => {
 
   // Configuration API
   const API_URL = 'http://localhost:8080/api/admin/structures';
-  
+
   const getAuthHeader = () => {
     const token = localStorage.getItem('token');
     return { Authorization: `Bearer ${token}` };
@@ -100,45 +101,45 @@ const AdminPanel: React.FC = () => {
 
   // Créer une structure
   const handleCreateStructure = async (data: { type: StructureType; officialName: string; officialNameAr: string }) => {
-  try {
-    const response = await axios.post(API_URL, data, { headers: getAuthHeader() });
-    
-    if (response.data.success) {
-      // ✅ Succès - mettre à jour la liste et fermer le modal
-      setStructures(prev => [response.data.data, ...prev]);
-      setShowStructureForm(false);
-      // ✅ Retourner normalement (pas d'erreur)
-      return;
-    } else {
-      // ✅ Échec - LANCER UNE ERREUR pour que le formulaire la capture
-      throw new Error(response.data.error || 'Erreur lors de la création');
-    }
-  } catch (err: any) {
-    console.error('Erreur création:', err);
-    // ✅ Propager l'erreur (peut venir d'axios ou de notre throw)
-    throw err;
-  }
-};
+    try {
+      const response = await axios.post(API_URL, data, { headers: getAuthHeader() });
 
-const handleUpdateStructure = async (id: number, data: { type: StructureType; officialName: string; officialNameAr: string }) => {
-  try {
-    const response = await axios.put(`${API_URL}/${id}`, data, { headers: getAuthHeader() });
-    
-    if (response.data.success) {
-      // ✅ Succès
-      setStructures(prev => prev.map(s => s.id === id ? response.data.data : s));
-      setShowStructureForm(false);
-      setSelectedStructure(null);
-      return;
-    } else {
-      // ✅ Échec - LANCER UNE ERREUR
-      throw new Error(response.data.error || 'Erreur lors de la mise à jour');
+      if (response.data.success) {
+        // ✅ Succès - mettre à jour la liste et fermer le modal
+        setStructures(prev => [response.data.data, ...prev]);
+        setShowStructureForm(false);
+        // ✅ Retourner normalement (pas d'erreur)
+        return;
+      } else {
+        // ✅ Échec - LANCER UNE ERREUR pour que le formulaire la capture
+        throw new Error(response.data.error || 'Erreur lors de la création');
+      }
+    } catch (err: any) {
+      console.error('Erreur création:', err);
+      // ✅ Propager l'erreur (peut venir d'axios ou de notre throw)
+      throw err;
     }
-  } catch (err: any) {
-    console.error('Erreur mise à jour:', err);
-    throw err;
-  }
-};
+  };
+
+  const handleUpdateStructure = async (id: number, data: { type: StructureType; officialName: string; officialNameAr: string }) => {
+    try {
+      const response = await axios.put(`${API_URL}/${id}`, data, { headers: getAuthHeader() });
+
+      if (response.data.success) {
+        // ✅ Succès
+        setStructures(prev => prev.map(s => s.id === id ? response.data.data : s));
+        setShowStructureForm(false);
+        setSelectedStructure(null);
+        return;
+      } else {
+        // ✅ Échec - LANCER UNE ERREUR
+        throw new Error(response.data.error || 'Erreur lors de la mise à jour');
+      }
+    } catch (err: any) {
+      console.error('Erreur mise à jour:', err);
+      throw err;
+    }
+  };
   // Supprimer une structure (sans confirmation, gérée par le modal du composant enfant)
   const handleDeleteStructure = async (id: number) => {
     try {
@@ -163,8 +164,10 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
     { id: 'risk', label: 'Gestion Risques', icon: 'fa-shield-virus' },
     { id: 'security', label: 'Sécurité', icon: 'fa-lock' },
-    { id: 'case-verifier', label: 'Vérificateur de Cas', icon: 'fa-search'},
+    { id: 'case-verifier', label: 'Vérificateur de Cas', icon: 'fa-search' },
     { id: 'dashboard', label: 'Décisionnel', icon: 'fa-shield-halved', path: '/dashboard' },
+    { id: 'stripe-history', label: 'Transactions Stripe', icon: 'fa-credit-card' }
+
   ];
 
   const stats = [
@@ -202,21 +205,21 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
   // Fonction pour réinitialiser le mot de passe via l'API backend
   const handleResetPassword = async (u: any) => {
     const token = localStorage.getItem('token');
-    
+
     // Vérifier si c'est un importateur
     if (u.role === 'IMPORTATEUR') {
       alert("Les importateurs n'utilisent pas de mot de passe.\nIls s'authentifient via Mobile ID.");
       return;
     }
-    
+
     // Confirmation avant réinitialisation
     if (!window.confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe de ${u.email} ?`)) {
       return;
     }
-    
+
     setLoadingPassword(true);
     setSelectedUser(u);
-    
+
     try {
       const response = await fetch(`http://localhost:8080/api/admin/users/${u.id}/reset-password`, {
         method: 'POST',
@@ -225,9 +228,9 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
           'Authorization': `Bearer ${token}`
         }
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok && data.success) {
         // Récupérer le mot de passe généré depuis la réponse
         const tempPassword = data.newPassword || "Vérifiez votre email";
@@ -246,7 +249,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <Sidebar 
+      <Sidebar
         activeTab={activeTab}
         onTabChange={(tab) => setActiveTab(tab as any)}
         items={sidebarItems}
@@ -257,7 +260,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
 
       {/* Main Content */}
       <main className="flex-1 p-10 space-y-10 overflow-y-auto relative">
-        
+
         {/* Modals / Overlays */}
         {showCreateUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
@@ -272,7 +275,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
                 </button>
               </div>
               <div className="p-10 max-h-[70vh] overflow-y-auto scrollbar-hide">
-                <CreateUserForm 
+                <CreateUserForm
                   structures={structures}  // Changé de InternalStructure à structures
                   onSuccess={() => {
                     setShowCreateUser(false);
@@ -307,7 +310,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Nouveau Mot de Passe Généré</p>
                     <div className="bg-slate-50 p-6 rounded-2xl border-2 border-dashed border-slate-200 group relative overflow-hidden">
                       <span className="text-xl md:text-2xl font-black text-slate-900 tracking-[0.5em] font-mono italic">{generatedPassword}</span>
-                      <button 
+                      <button
                         onClick={() => {
                           navigator.clipboard.writeText(generatedPassword || '');
                           setCopied(true);
@@ -326,7 +329,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
                       Un e-mail contenant ces identifiants a été envoyé à l'utilisateur.
                     </p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setShowResetPassword(false)}
                     className="w-full py-4 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
                   >
@@ -341,7 +344,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
         {/* Modal Structure Form */}
         {showStructureForm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-            <InternalStructureForm 
+            <InternalStructureForm
               initialData={selectedStructure || undefined}
               onCancel={() => {
                 setShowStructureForm(false);
@@ -385,21 +388,21 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
               {activeTab === 'security' && "Centre de Sécurité"}
             </h2>
           </div>
-          
+
           <div className="flex gap-4">
             <button className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
               <i className="fas fa-download mr-2"></i> Rapport
             </button>
             {activeTab === 'users' && (
-            <button 
-              onClick={() => setShowCreateUser(true)}
-              className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
-            >
-              <i className="fas fa-user-plus mr-2"></i> Créer Utilisateur
-            </button>
+              <button
+                onClick={() => setShowCreateUser(true)}
+                className="px-6 py-3 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl hover:bg-slate-800 transition-all"
+              >
+                <i className="fas fa-user-plus mr-2"></i> Créer Utilisateur
+              </button>
             )}
             {activeTab === 'structures' && (
-              <button 
+              <button
                 onClick={() => {
                   setSelectedStructure(null);
                   setShowStructureForm(true);
@@ -455,20 +458,20 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={trafficData}>
                       <defs>
-                        <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient>
-                        <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#E70013" stopOpacity={0.1}/><stop offset="95%" stopColor="#E70013" stopOpacity={0}/></linearGradient>
+                        <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.1} /><stop offset="95%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
+                        <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#E70013" stopOpacity={0.1} /><stop offset="95%" stopColor="#E70013" stopOpacity={0} /></linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} />
-                      <YAxis axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 800, fill: '#94a3b8'}} />
-                      <Tooltip contentStyle={{borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'}} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }} />
+                      <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
                       <Area type="monotone" dataKey="in" stroke="#10b981" strokeWidth={3} fill="url(#colorIn)" />
                       <Area type="monotone" dataKey="out" stroke="#E70013" strokeWidth={3} fill="url(#colorOut)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-              
+
               <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col justify-between">
                 <div>
                   <h3 className="text-lg font-black italic text-slate-900 uppercase tracking-tighter mb-8">Santé du Système</h3>
@@ -499,6 +502,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
             </div>
           )}
 
+
           {activeTab === 'users' && (
             <UserManagement onResetPassword={handleResetPassword} />
           )}
@@ -506,14 +510,14 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
           {activeTab === 'user-history' && (
             <UserHistory />
           )}
-          
+
           {activeTab === 'structures' && (
             loadingStructures ? (
               <div className="flex items-center justify-center py-20">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-tunisia-red"></div>
               </div>
             ) : (
-              <InternalStructureList 
+              <InternalStructureList
                 structures={structures}
                 onEdit={(s) => {
                   setSelectedStructure(s);
@@ -579,6 +583,9 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
             </div>
           )}
 
+          {activeTab === 'stripe-history' && <StripeTransactionHistory />}
+
+
           {activeTab === 'security' && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
@@ -601,7 +608,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
                   ))}
                 </div>
               </div>
-              
+
               <div className="bg-tunisia-red text-white p-10 rounded-[2.5rem] shadow-xl flex flex-col justify-between">
                 <div className="text-center space-y-6">
                   <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto border-2 border-white/30">
