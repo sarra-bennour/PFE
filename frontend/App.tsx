@@ -21,6 +21,8 @@ import { User, UserRole } from './types/User';
 import ProductsCatalog from './pages/ProductsCatalog';
 import PersonalHistory from './pages/PersonalHistory';
 import TaxCalculator from './pages/TaxCalculator';
+import BankSpace from './pages/BankSpace';
+import CustomsSpace from './pages/CustomsSpace';
 
 
 
@@ -84,7 +86,9 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     '/forgot-password', 
     '/reset-password',
     '/admin',
-    '/instance-validation'
+    '/instance-validation',
+    '/banque',
+    '/douane'
   ];
   
   const shouldHideNavbar = noNavbarRoutes.includes(location.pathname);
@@ -292,6 +296,16 @@ const App: React.FC = () => {
             <Route path="/calculator" element={
               <ProtectedRoute roles={['EXPORTATEUR', 'IMPORTATEUR']}>
                 <TaxCalculator />
+              </ProtectedRoute>
+            } />
+            <Route path="/banque" element={
+              <ProtectedRoute roles={['BANQUE']}>
+                <BankSpace />
+              </ProtectedRoute>
+            } />
+            <Route path="/douane" element={
+              <ProtectedRoute roles={['DOUANE']}>
+                <CustomsSpace />
               </ProtectedRoute>
             } />
             <Route path="/admin" element={

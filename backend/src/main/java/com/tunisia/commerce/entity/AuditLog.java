@@ -42,12 +42,13 @@ public class AuditLog {
     private Long id;
 
     // Informations sur l'action
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String action;
 
     @Enumerated(EnumType.STRING)
     private ActionType actionType;
 
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     // Entité concernée
@@ -56,6 +57,7 @@ public class AuditLog {
 
     private Long entityId;
 
+    @Column(columnDefinition = "TEXT")
     private String entityReference;
 
     // Utilisateur
@@ -63,6 +65,8 @@ public class AuditLog {
     private String userEmail;
     private String userRole;
     private String userIpAddress;
+
+    @Column(columnDefinition = "TEXT")
     private String userAgent;
 
     // Détails de l'action (JSON)
@@ -72,6 +76,7 @@ public class AuditLog {
     // Statut de l'action
     private String status;
 
+    @Column(columnDefinition = "TEXT")
     private String errorMessage;
 
     // Métadonnées

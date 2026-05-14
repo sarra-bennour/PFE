@@ -240,101 +240,114 @@ const Login: React.FC = () => {
   // }
   // };
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+const handlePasswordLogin = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-    setEmailTouched(true);
-    setPasswordTouched(true);
+  setEmailTouched(true);
+  setPasswordTouched(true);
 
-    const isEmailValid = validateAndSetEmailError(email);
-    const isPasswordValid = validateAndSetPasswordError(password);
+  const isEmailValid = validateAndSetEmailError(email);
+  const isPasswordValid = validateAndSetPasswordError(password);
 
-    setShowEmailError(true);
-    setShowPasswordError(true);
+  setShowEmailError(true);
+  setShowPasswordError(true);
 
-    if (!isEmailValid || !isPasswordValid) {
-      return;
-    }
+  if (!isEmailValid || !isPasswordValid) {
+    return;
+  }
 
-    setLoading(true);
-    closeAlert();
+  setLoading(true);
+  closeAlert();
 
-    try {
-      const response = await fetch('http://localhost:8080/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email,
-          password: password
-        }),
-      });
+  try {
+    const response = await fetch('http://localhost:8080/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email,
+        password: password
+      }),
+    });
 
-      const data = await response.json();
-      console.log('Réponse de ROLEEEEEE', data.user.role);
+    const data = await response.json();
+    console.log('Réponse de login:', data);
 
-      if (response.ok) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+    if (response.ok) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
 
-        login(data.user, data.token);
+      login(data.user, data.token);
 
-        if (data.requiresTwoFactor) {
-          setView('two_factor');
-        } else {
-          showAlert('✅ Connexion réussie ! Redirection en cours...', 'success');
-          setTimeout(() => {
-            // Redirection directe sans executeLogin
-            const role = data.user?.role?.toLowerCase();
-            if (role === 'admin') {
-              navigate('/admin');
-            } else if (role === 'exportateur') {
-              navigate('/exportateur');
-            } else if (role === 'importateur') {
-              navigate('/importateur');
-            } else if (role === 'instance_validation') {
-              navigate('/instance-validation');
-            } else {
-              navigate(`/${role}`);
-            }
-          }, 1500);
-        }
+      if (data.requiresTwoFactor) {
+        setView('two_factor');
       } else {
-        switch (data.error) {
-          case 'EMAIL_NOT_VERIFIED':
-            setUnverifiedEmail(email);
-            showAlert(`❌ ${data.message || 'Email non vérifié. Veuillez vérifier votre email avant de vous connecter.'}`, 'error');
-            break;
-          case 'INVALID_CREDENTIALS':
-            showAlert(`❌ ${data.message || 'Email ou mot de passe incorrect'}`, 'error');
-            break;
-          case 'ACCOUNT_LOCKED':
-            showAlert(`❌ ${data.message || 'Compte temporairement verrouillé. Réessayez plus tard.'}`, 'error');
-            break;
-          case 'MAX_ATTEMPTS_EXCEEDED':
-            showAlert(`❌ ${data.message || 'Trop de tentatives échouées. Compte verrouillé.'}`, 'error');
-            break;
-          case 'ACCOUNT_DISABLED':
-            showAlert(`❌ ${data.message || 'Compte désactivé. Contactez l\'administrateur.'}`, 'error');
-            break;
-          case 'USER_NOT_FOUND':
-            showAlert(`❌ ${data.message || 'Aucun compte trouvé avec cet email'}`, 'error');
-            break;
-          case 'PASSWORD_EXPIRED':
-            showAlert(`❌ ${data.message || 'Votre mot de passe a expiré. Veuillez le réinitialiser.'}`, 'error');
-            break;
-          default:
-            showAlert(`❌ ${data.message || 'Échec de la connexion'}`, 'error');
-        }
+        showAlert('✅ Connexion réussie ! Redirection en cours...', 'success');
+        setTimeout(() => {
+          // Redirection basée sur le rôle
+          const role = data.user?.role?.toLowerCase();
+          
+          // 🔥 Mapping des rôles vers les routes
+          const roleRoutes: Record<string, string> = {
+            'admin': '/admin',
+            'exportateur': '/exportateur',
+            'importateur': '/importateur',
+            'instance_validation': '/instance-validation',
+            'banque': '/banque',
+            'douane': '/douane'
+          };
+          
+          // Redirection avec fallback
+          if (role && roleRoutes[role]) {
+            navigate(roleRoutes[role]);
+          } else {
+            // Fallback: rediriger vers une page par défaut ou afficher une erreur
+            console.warn(`Rôle non reconnu: ${role}`);
+            navigate('/dashboard');
+          }
+        }, 1500);
       }
-    } catch (error) {
-      console.error('Erreur lors de la connexion:', error);
-      showAlert('❌ Erreur de connexion au serveur', 'error');
-    } finally {
-      setLoading(false);
+    } else {
+      // Gestion des erreurs améliorée
+      switch (data.error) {
+        case 'EMAIL_NOT_VERIFIED':
+          setUnverifiedEmail(email);
+          showAlert(`❌ ${data.message || 'Email non vérifié. Veuillez vérifier votre email avant de vous connecter.'}`, 'error');
+          break;
+        case 'INVALID_CREDENTIALS':
+          showAlert(`❌ ${data.message || 'Email ou mot de passe incorrect'}`, 'error');
+          break;
+        case 'ACCOUNT_LOCKED':
+          const minutes = data.remainingMinutes || 30;
+          showAlert(`❌ ${data.message || `Compte temporairement verrouillé. Réessayez dans ${minutes} minutes.`}`, 'error');
+          break;
+        case 'MAX_ATTEMPTS_EXCEEDED':
+          showAlert(`❌ ${data.message || 'Trop de tentatives échouées. Compte verrouillé.'}`, 'error');
+          break;
+        case 'ACCOUNT_DISABLED':
+          showAlert(`❌ ${data.message || 'Compte désactivé. Contactez l\'administrateur.'}`, 'error');
+          break;
+        case 'USER_NOT_FOUND':
+          showAlert(`❌ ${data.message || 'Aucun compte trouvé avec cet email'}`, 'error');
+          break;
+        case 'PASSWORD_EXPIRED':
+          showAlert(`❌ ${data.message || 'Votre mot de passe a expiré. Veuillez le réinitialiser.'}`, 'error');
+          break;
+        case 'EMAIL_NOT_VERIFIED_RESEND':
+          showAlert(`❌ ${data.message || 'Email non vérifié. Un nouveau lien de vérification a été envoyé.'}`, 'error');
+          break;
+        default:
+          showAlert(`❌ ${data.message || 'Échec de la connexion'}`, 'error');
+      }
     }
-  };
+  } catch (error) {
+    console.error('Erreur lors de la connexion:', error);
+    showAlert('❌ Erreur de connexion au serveur. Vérifiez votre connexion internet.', 'error');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleMobileLogin = async (e: React.FormEvent) => {
     e.preventDefault();

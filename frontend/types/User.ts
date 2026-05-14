@@ -4,10 +4,12 @@ export enum UserRoleType {
   EXPORTATEUR = 'EXPORTATEUR',
   IMPORTATEUR = 'IMPORTATEUR',
   INSTANCE_VALIDATION = 'INSTANCE_VALIDATION',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  BANQUE = 'BANQUE',
+  DOUANE = 'DOUANE'
 }
 
-export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'INSTANCE_VALIDATION' | 'ADMIN';
+export type UserRole = 'EXPORTATEUR' | 'IMPORTATEUR' | 'INSTANCE_VALIDATION' | 'ADMIN' | 'BANQUE' | 'DOUANE';
 
 export interface User {
   id: number;
@@ -62,6 +64,7 @@ export interface User {
   structureCode?: string | null;
   structureType?: string | null;
   slaTraitementJours?: number | null;
+  poste?: string | null;
   products?: Product[];
   
   

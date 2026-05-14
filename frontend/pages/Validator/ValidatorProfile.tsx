@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import ResetPasswordForm from '../../components/ResetPasswordForm';
 import { useAuth } from '../../App';
 import { User, UserRoleType } from '@/types/User';
+import { getFormalAvatar } from '../../utils/avatarService';
+
 
 // ✅ AJOUTER cette interface pour les activités
 interface RecentActivity {
@@ -23,21 +25,6 @@ interface ProfileStat {
   bg: string;
 }
 
-interface InstanceValidationUser {
-  id: number;
-  email: string;
-  role: string;
-  nom: string;
-  prenom: string;
-  telephone: string;
-  structureName: string;
-  structureCode: string;
-  structureType: string;
-  slaTraitementJours: number;
-  statut: string;
-  lastLogin: string;
-  updatedAt: string;
-}
 
 const ValidatorProfile: React.FC = () => {
   const { user: authUser, updateUser } = useAuth();
@@ -58,6 +45,7 @@ const ValidatorProfile: React.FC = () => {
     structureCode: '',
     structureType: '',
     slaTraitementJours: 0,
+    poste: '',
     statut: ''
   });
 
@@ -101,6 +89,7 @@ const ValidatorProfile: React.FC = () => {
     structureType: backendUser.structureType || '',
     slaTraitementJours: backendUser.slaTraitementJours || 0,
     statut: backendUser.statut || 'ACTIF',
+    poste: backendUser.poste || '',
     isTwoFactorEnabled: backendUser.twoFactorEnabled || false,
     emailVerified: backendUser.emailVerified || false,
   };
@@ -136,9 +125,11 @@ const ValidatorProfile: React.FC = () => {
             structureCode: mappedUser.structureCode || '',
             structureType: mappedUser.structureType || '',
             slaTraitementJours: mappedUser.slaTraitementJours || 0,
-            statut: mappedUser.statut || 'ACTIF'
+            statut: mappedUser.statut || 'ACTIF',
+            poste: mappedUser.poste || ''
           });
           
+          console.log("***** profile", mappedUser);
           if (updateUser) {
             updateUser(mappedUser);
           }
@@ -321,7 +312,8 @@ const fetchRecentActivities = async () => {
           structureCode: mappedUser.structureCode || '',
           structureType: mappedUser.structureType || '',
           slaTraitementJours: mappedUser.slaTraitementJours || 0,
-          statut: mappedUser.statut || 'ACTIF'
+          statut: mappedUser.statut || 'ACTIF',
+          poste: mappedUser.poste || ''
         });
         
         if (updateUser) {
@@ -581,8 +573,12 @@ const fetchRecentActivities = async () => {
           <div className="flex flex-col md:flex-row items-end gap-8 mb-8">
             <div className="relative">
               <div className="w-40 h-40 rounded-[2.5rem] bg-white p-2 shadow-xl shadow-blue-900/5">
-                <div className="w-full h-full rounded-[2rem] bg-blue-50/30 flex items-center justify-center overflow-hidden border-4 border-white">
-                  <i className="fas fa-landmark text-6xl text-blue-200"></i>
+                <div className="w-full h-full rounded-[2rem] bg-white flex items-center justify-center overflow-hidden border-4 border-white">
+                  <img 
+                    src={getFormalAvatar(profileData.prenom, profileData.nom)} 
+                    alt={`Avatar ${profileData.prenom} ${profileData.nom}`}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               </div>
               <div className="absolute bottom-4 right-4 w-8 h-8 rounded-full bg-emerald-400 border-4 border-white shadow-lg flex items-center justify-center">
@@ -664,6 +660,10 @@ const fetchRecentActivities = async () => {
                 <div className="flex justify-between border-b border-slate-50 pb-3">
                   <span className="text-slate-400 font-black uppercase tracking-widest">Délai SLA (jours)</span>
                   <span className="font-black text-blue-500/70 uppercase tracking-widest">{profileData.slaTraitementJours} jours</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-50 pb-3">
+                  <span className="text-slate-400 font-black uppercase tracking-widest">Poste</span>
+                  <span className="font-black text-slate-600 uppercase italic tracking-tight">{profileData.poste || 'Non défini'}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-50 pb-3">
                   <span className="text-slate-400 font-black uppercase tracking-widest">Statut du Compte</span>

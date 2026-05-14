@@ -1,9 +1,7 @@
 package com.tunisia.commerce.controller;
 
 import com.tunisia.commerce.dto.admin.AdminDemandeDTO;
-import com.tunisia.commerce.dto.user.CreateInstanceValidationRequest;
-import com.tunisia.commerce.dto.user.DeactivationRequestAdminDTO;
-import com.tunisia.commerce.dto.user.UserDTO;
+import com.tunisia.commerce.dto.user.*;
 import com.tunisia.commerce.entity.Administrateur;
 import com.tunisia.commerce.entity.Document;
 import com.tunisia.commerce.entity.InstanceValidation;
@@ -808,6 +806,178 @@ public class AdminController {
                             .description("Erreur technique création instance")
                             .failure(e.getMessage())
                             .detail("structure_name", request.getStructure())
+                            .detail("email", request.getEmail())
+                            .detail("ip_address", clientIp)
+            );
+
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue: " + e.getMessage()
+            ));
+        }
+    }
+
+    // Endpoint pour créer un utilisateur BANQUE
+    @PostMapping("/banque/create")
+    public ResponseEntity<?> createBanqueUser(
+            @RequestBody CreateBanqueUserRequest request,
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String adminEmail = null;
+        Long adminId = null;
+
+        try {
+            log.info("=== CRÉATION UTILISATEUR BANQUE ===");
+
+            // 🔥 Récupérer l'admin pour l'audit
+            try {
+                Administrateur admin = getAdminFromToken(authHeader);
+                adminId = admin.getId();
+                adminEmail = admin.getEmail();
+                validateAdmin(authHeader);
+            } catch (Exception e) {
+                log.warn("Admin non authentifié, création sans audit admin");
+            }
+
+            UserDTO created = userService.createBanqueUser(request);
+
+            // Audit
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ADMIN_CREATE_BANQUE_USER")
+                            .actionType(ActionType.CREATION)
+                            .description("Création d'un utilisateur banque")
+                            .entity(EntityType.USER, created.getId(), created.getEmail())
+                            .user(adminId, adminEmail, "ADMIN")
+                            .success()
+                            .detail("structure_name", request.getStructure() != null ? request.getStructure().getOfficialName() : null)
+                            .detail("email", request.getEmail())
+                            .detail("ip_address", clientIp)
+            );
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Utilisateur banque créé avec succès.",
+                    "data", created
+            ));
+
+        } catch (InstanceValidationException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ADMIN_CREATE_BANQUE_USER")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec création utilisateur banque")
+                            .user(adminId, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("email", request.getEmail())
+                            .detail("error_code", e.getErrorCode())
+                            .detail("ip_address", clientIp)
+            );
+
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+
+        } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ADMIN_CREATE_BANQUE_USER")
+                            .actionType(ActionType.CREATION)
+                            .description("Erreur technique création utilisateur banque")
+                            .user(adminId, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("email", request.getEmail())
+                            .detail("ip_address", clientIp)
+            );
+
+            log.error("Erreur technique: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "error", "Une erreur technique est survenue: " + e.getMessage()
+            ));
+        }
+    }
+
+    // Endpoint pour créer un utilisateur DOUANE
+    @PostMapping("/douane/create")
+    public ResponseEntity<?> createDouaneUser(
+            @RequestBody CreateDouaneUserRequest request,
+            @RequestHeader("Authorization") String authHeader,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String adminEmail = null;
+        Long adminId = null;
+
+        try {
+            log.info("=== CRÉATION UTILISATEUR DOUANE ===");
+
+            // 🔥 Récupérer l'admin pour l'audit
+            try {
+                Administrateur admin = getAdminFromToken(authHeader);
+                adminId = admin.getId();
+                adminEmail = admin.getEmail();
+                validateAdmin(authHeader);
+            } catch (Exception e) {
+                log.warn("Admin non authentifié, création sans audit admin");
+            }
+
+            UserDTO created = userService.createDouaneUser(request);
+
+            // Audit
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ADMIN_CREATE_DOUANE_USER")
+                            .actionType(ActionType.CREATION)
+                            .description("Création d'un utilisateur douane")
+                            .entity(EntityType.USER, created.getId(), created.getEmail())
+                            .user(adminId, adminEmail, "ADMIN")
+                            .success()
+                            .detail("structure_name", request.getStructure() != null ? request.getStructure().getOfficialName() : null)
+                            .detail("email", request.getEmail())
+                            .detail("ip_address", clientIp)
+            );
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Utilisateur douane créé avec succès.",
+                    "data", created
+            ));
+
+        } catch (InstanceValidationException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ADMIN_CREATE_DOUANE_USER")
+                            .actionType(ActionType.CREATION)
+                            .description("Échec création utilisateur douane")
+                            .user(adminId, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
+                            .detail("email", request.getEmail())
+                            .detail("error_code", e.getErrorCode())
+                            .detail("ip_address", clientIp)
+            );
+
+            log.error("Erreur métier: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage(),
+                    "errorCode", e.getErrorCode()
+            ));
+
+        } catch (Exception e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("ADMIN_CREATE_DOUANE_USER")
+                            .actionType(ActionType.CREATION)
+                            .description("Erreur technique création utilisateur douane")
+                            .user(adminId, adminEmail, "ADMIN")
+                            .failure(e.getMessage())
                             .detail("email", request.getEmail())
                             .detail("ip_address", clientIp)
             );

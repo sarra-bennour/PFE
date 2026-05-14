@@ -62,5 +62,7 @@ public interface DemandeEnregistrementRepository extends JpaRepository<DemandeEn
 
     // Nouvelle méthode pour les demandes actives
     List<DemandeEnregistrement> findByArchivedFalse();
+    Optional<DemandeEnregistrement> findByReference(String reference);
+
 }
 

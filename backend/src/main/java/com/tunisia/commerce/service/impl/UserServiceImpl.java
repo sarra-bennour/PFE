@@ -45,6 +45,8 @@ public class UserServiceImpl implements UserService {
     private final AdministrateurRepository administrateurRepository;
     private final InstanceValidationRepository instanceValidationRepository;
     private final StructureInterneRepository structureRepository;
+    private final BanqueRepository banqueRepository;
+    private final DouaneRepository douaneRepository;
 
 
 
@@ -265,6 +267,19 @@ public class UserServiceImpl implements UserService {
             return verifyInstanceValidationEmail(instanceOpt.get());
         }
 
+        // 3. 👇 Chercher dans les utilisateurs banque
+        Optional<Banque> banqueOpt = banqueRepository.findByVerificationToken(token);
+        if (banqueOpt.isPresent()) {
+            return verifyBanqueUserEmail(banqueOpt.get());
+        }
+
+        // 4. 👇 Chercher dans les utilisateurs douane
+        Optional<Douane> douaneOpt = douaneRepository.findByVerificationToken(token);
+        if (douaneOpt.isPresent()) {
+            return verifyDouaneUserEmail(douaneOpt.get());
+        }
+
+
         // 3. Aucun token trouvé
         logger.severe("ÉCHEC: Aucun utilisateur trouvé avec ce token!");
         throw new RuntimeException("Token de vérification invalide");
@@ -298,6 +313,38 @@ public class UserServiceImpl implements UserService {
         instance.setVerificationToken(null);
         instance.setVerificationTokenExpiry(null);
         instanceValidationRepository.save(instance);
+
+        return true;
+    }
+
+    private boolean verifyBanqueUserEmail(Banque user) {
+        logger.info("Utilisateur BANQUE trouvé: " + user.getEmail());
+
+        if (user.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Le token de vérification a expiré");
+        }
+
+        user.setEmailVerified(true);
+        user.setUserStatut(UserStatus.ACTIF);
+        user.setVerificationToken(null);
+        user.setVerificationTokenExpiry(null);
+        banqueRepository.save(user);
+
+        return true;
+    }
+
+    private boolean verifyDouaneUserEmail(Douane user) {
+        logger.info("Utilisateur DOUANE trouvé: " + user.getEmail());
+
+        if (user.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Le token de vérification a expiré");
+        }
+
+        user.setEmailVerified(true);
+        user.setUserStatut(UserStatus.ACTIF);
+        user.setVerificationToken(null);
+        user.setVerificationTokenExpiry(null);
+        douaneRepository.save(user);
 
         return true;
     }
@@ -376,6 +423,16 @@ public class UserServiceImpl implements UserService {
                         .orElseThrow(AuthException::userNotFound);
                 passwordMatches = passwordEncoder.matches(request.getPassword(), instance.getPasswordHash());
                 logger.info("Vérification mot de passe pour instance: "+ passwordMatches);
+            }
+            else if (user.getRole() == UserRole.BANQUE) {
+                Banque banqueUser = banqueRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                passwordMatches = passwordEncoder.matches(request.getPassword(), banqueUser.getPasswordHash());
+            }
+            else if (user.getRole() == UserRole.DOUANE) {
+                Douane douaneUser = douaneRepository.findByEmail(request.getEmail())
+                        .orElseThrow(AuthException::userNotFound);
+                passwordMatches = passwordEncoder.matches(request.getPassword(), douaneUser.getPasswordHash());
             }
             // Pour les autres rôles (si nécessaire)
             else {
@@ -641,7 +698,21 @@ public class UserServiceImpl implements UserService {
             dto.setStructureName(instanceValidation.getStructure().getOfficialName());
             dto.setStructureCode(instanceValidation.getStructure().getCode());
             dto.setStructureType(instanceValidation.getStructure().getType());
-
+            dto.setPoste(instanceValidation.getPoste());
+        }else if(user instanceof Banque){
+            Banque banque = (Banque) user;
+            dto.setStructureId(banque.getStructure().getId());
+            dto.setStructureName(banque.getStructure().getOfficialName());
+            dto.setStructureCode(banque.getStructure().getCode());
+            dto.setStructureType(banque.getStructure().getType());
+            dto.setPoste(banque.getPoste());
+        }else if(user instanceof Douane){
+            Douane douane = (Douane) user;
+            dto.setStructureId(douane.getStructure().getId());
+            dto.setStructureName(douane.getStructure().getOfficialName());
+            dto.setStructureCode(douane.getStructure().getCode());
+            dto.setStructureType(douane.getStructure().getType());
+            dto.setPoste(douane.getPoste());
         }
 
 
@@ -713,8 +784,10 @@ public class UserServiceImpl implements UserService {
         // Chercher l'utilisateur dans les deux tables
         Optional<ExportateurEtranger> exportateurOpt = exportateurRepository.findByEmail(email);
         Optional<InstanceValidation> instanceValidationOpt = instanceValidationRepository.findByEmail(email);
+        Optional<Banque> banqueOpt = banqueRepository.findByEmail(email);
+        Optional<Douane> douaneOpt = douaneRepository.findByEmail(email);
 
-        if (exportateurOpt.isEmpty() && instanceValidationOpt.isEmpty()) {
+        if (exportateurOpt.isEmpty() && instanceValidationOpt.isEmpty() && banqueOpt.isEmpty() && douaneOpt.isEmpty()) {
             throw new RuntimeException("Utilisateur non trouvé");
         }
 
@@ -810,6 +883,103 @@ public class UserServiceImpl implements UserService {
                 emailService.sendPasswordChangeNotification(
                         email,
                         instanceValidation.getStructure().getOfficialName()
+                );
+                logger.info("Notification de changement de mot de passe envoyée à: " + email);
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            }
+        }
+        else if (banqueOpt.isPresent()) {
+            // Cas InstanceValidation
+            Banque banque = banqueOpt.get();
+            logger.info("banque trouvé: " + banque.getEmail());
+
+            // Vérifier le mot de passe actuel
+            if (!passwordEncoder.matches(request.getCurrentPassword(), banque.getPasswordHash())) {
+                logger.severe("Mot de passe actuel incorrect");
+                throw new IllegalArgumentException("Mot de passe actuel incorrect");
+            }
+
+            logger.info("Mot de passe actuel validé");
+
+            // Vérifier que le nouveau mot de passe est différent de l'ancien
+            if (passwordEncoder.matches(request.getNewPassword(), banque.getPasswordHash())) {
+                logger.warning("Le nouveau mot de passe est identique à l'ancien");
+                throw new IllegalArgumentException("Le nouveau mot de passe doit être différent de l'actuel");
+            }
+
+            // Vérifier la force du mot de passe
+            validatePasswordStrength(request.getNewPassword());
+
+            // Mettre à jour le mot de passe
+            banque.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+
+            // Mettre à jour la date de changement
+            if (banque.getLastPasswordChange() != null) {
+                banque.setLastPasswordChange(LocalDateTime.now());
+            }
+
+            // Nettoyer le token de réinitialisation s'il existe
+            banque.setResetPasswordToken(null);
+            banque.setResetPasswordTokenExpiry(null);
+
+            banqueRepository.save(banque);
+
+            logger.info("Mot de passe changé avec succès pour banque: " + banque.getEmail());
+
+            // Envoyer une notification par email
+            try {
+                emailService.sendPasswordChangeNotification(
+                        email,
+                        banque.getStructure().getOfficialName()
+                );
+                logger.info("Notification de changement de mot de passe envoyée à: " + email);
+            } catch (Exception e) {
+                logger.warning("Erreur lors de l'envoi de la notification: " + e.getMessage());
+            }
+        }else if (douaneOpt.isPresent()) {
+            // Cas InstanceValidation
+            Douane douane = douaneOpt.get();
+            logger.info("douane trouvé: " + douane.getEmail());
+
+            // Vérifier le mot de passe actuel
+            if (!passwordEncoder.matches(request.getCurrentPassword(), douane.getPasswordHash())) {
+                logger.severe("Mot de passe actuel incorrect");
+                throw new IllegalArgumentException("Mot de passe actuel incorrect");
+            }
+
+            logger.info("Mot de passe actuel validé");
+
+            // Vérifier que le nouveau mot de passe est différent de l'ancien
+            if (passwordEncoder.matches(request.getNewPassword(), douane.getPasswordHash())) {
+                logger.warning("Le nouveau mot de passe est identique à l'ancien");
+                throw new IllegalArgumentException("Le nouveau mot de passe doit être différent de l'actuel");
+            }
+
+            // Vérifier la force du mot de passe
+            validatePasswordStrength(request.getNewPassword());
+
+            // Mettre à jour le mot de passe
+            douane.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+
+            // Mettre à jour la date de changement
+            if (douane.getLastPasswordChange() != null) {
+                douane.setLastPasswordChange(LocalDateTime.now());
+            }
+
+            // Nettoyer le token de réinitialisation s'il existe
+            douane.setResetPasswordToken(null);
+            douane.setResetPasswordTokenExpiry(null);
+
+            douaneRepository.save(douane);
+
+            logger.info("Mot de passe changé avec succès pour douane: " + douane.getEmail());
+
+            // Envoyer une notification par email
+            try {
+                emailService.sendPasswordChangeNotification(
+                        email,
+                        douane.getStructure().getOfficialName()
                 );
                 logger.info("Notification de changement de mot de passe envoyée à: " + email);
             } catch (Exception e) {
@@ -1096,6 +1266,68 @@ public class UserServiceImpl implements UserService {
         savedUser = instanceValidationRepository.save(instance);
         logger.info("Profil instance de validation mis à jour avec succès pour: " + savedUser.getEmail());
     }
+        else if (user instanceof Banque) {
+            Banque banque = banqueRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("banque non trouvée"));
+
+            // ✅ AJOUTER LA MISE À JOUR DES CHAMPS COMMUNS
+            if (request.getNom() != null && !request.getNom().isEmpty()) {
+                banque.setNom(request.getNom());
+            }
+
+            if (request.getPrenom() != null && !request.getPrenom().isEmpty()) {
+                banque.setPrenom(request.getPrenom());
+            }
+
+            if (request.getTelephone() != null && !request.getTelephone().isEmpty()) {
+                banque.setTelephone(request.getTelephone());
+            }
+
+            if (request.getPoste() != null) {
+                banque.setPoste(request.getPoste());
+            }
+
+            // Mise à jour de la structure (si nécessaire)
+            if (request.getStructureInterne() != null && request.getStructureInterne().getId() != null) {
+                StructureInterne structure = structureRepository.findById(request.getStructureInterne().getId())
+                        .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructureInterne().getId()));
+                banque.setStructure(structure);
+            }
+
+
+            savedUser = banqueRepository.save(banque);
+            logger.info("Profil banque mis à jour avec succès pour: " + savedUser.getEmail());
+        }  else if (user instanceof Douane) {
+            Douane douane = douaneRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("douane non trouvée"));
+
+            // ✅ AJOUTER LA MISE À JOUR DES CHAMPS COMMUNS
+            if (request.getNom() != null && !request.getNom().isEmpty()) {
+                douane.setNom(request.getNom());
+            }
+
+            if (request.getPrenom() != null && !request.getPrenom().isEmpty()) {
+                douane.setPrenom(request.getPrenom());
+            }
+
+            if (request.getTelephone() != null && !request.getTelephone().isEmpty()) {
+                douane.setTelephone(request.getTelephone());
+            }
+
+            if (request.getPoste() != null) {
+                douane.setPoste(request.getPoste());
+            }
+
+            // Mise à jour de la structure (si nécessaire)
+            if (request.getStructureInterne() != null && request.getStructureInterne().getId() != null) {
+                StructureInterne structure = structureRepository.findById(request.getStructureInterne().getId())
+                        .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructureInterne().getId()));
+                douane.setStructure(structure);
+            }
+
+            savedUser = douaneRepository.save(douane);
+            logger.info("Profil douane mis à jour avec succès pour: " + savedUser.getEmail());
+        }
 
         return mapToUserDTO(savedUser != null ? savedUser : user);
     }
@@ -1743,7 +1975,26 @@ public class UserServiceImpl implements UserService {
             instanceValidationRepository.save(instance);
             logger.info("✅ Compte instance de validation réactivé: " + instance.getEmail());
 
-        } else {
+        }else if (user instanceof Banque) {
+            Banque banque = (Banque) user;
+            banque.setUserStatut(UserStatus.ACTIF);
+            banque.setEmailVerified(true);
+            banque.setVerificationToken(null);
+            banque.setVerificationTokenExpiry(null);
+            banqueRepository.save(banque);
+            logger.info("✅ Compte banque de validation réactivé: " + banque.getEmail());
+
+        }else if (user instanceof Douane) {
+            Douane douane = (Douane) user;
+            douane.setUserStatut(UserStatus.ACTIF);
+            douane.setEmailVerified(true);
+            douane.setVerificationToken(null);
+            douane.setVerificationTokenExpiry(null);
+            douaneRepository.save(douane);
+            logger.info("✅ Compte douane de validation réactivé: " + douane.getEmail());
+
+        }
+        else {
             throw new RuntimeException("Type d'utilisateur non supporté pour la réactivation: " + user.getClass().getName());
         }
 
@@ -1892,6 +2143,18 @@ public class UserServiceImpl implements UserService {
             instance.setUpdatedAt(LocalDateTime.now());
             instanceValidationRepository.save(instance);
             logger.info("✅ Mot de passe réinitialisé pour l'instance: "+ user.getEmail());
+        }else if (user instanceof Banque) {
+            Banque banque = (Banque) user;
+            banque.setPasswordHash(encodedPassword);
+            banque.setUpdatedAt(LocalDateTime.now());
+            banqueRepository.save(banque);
+            logger.info("✅ Mot de passe réinitialisé pour la banque: "+ user.getEmail());
+        }else if (user instanceof Douane) {
+            Douane douane = (Douane) user;
+            douane.setPasswordHash(encodedPassword);
+            douane.setUpdatedAt(LocalDateTime.now());
+            douaneRepository.save(douane);
+            logger.info("✅ Mot de passe réinitialisé pour la douane: "+ user.getEmail());
         }
         else {
             // Pour admin
@@ -2000,6 +2263,212 @@ public class UserServiceImpl implements UserService {
         return mapToUserDTO(saved);
     }
 
+
+    // Dans UserServiceImpl.java - ajouter ces méthodes
+
+    @Override
+    @Transactional
+    public UserDTO createBanqueUser(CreateBanqueUserRequest request) {
+        logger.info("=== CRÉATION UTILISATEUR BANQUE ===");
+
+        // Validations
+        validateRequiredField(request.getNom(), "nom");
+        validateRequiredField(request.getPrenom(), "prenom");
+        validateRequiredField(request.getEmail(), "email");
+        validateRequiredField(request.getTelephone(), "telephone");
+
+        if (request.getStructure() == null || request.getStructure().getId() == null) {
+            throw InstanceValidationException.missingRequiredField("structure");
+        }
+
+        if (!EMAIL_PATTERN.matcher(request.getEmail()).matches()) {
+            throw InstanceValidationException.invalidEmailFormat(request.getEmail());
+        }
+
+        if (!PHONE_PATTERN.matcher(request.getTelephone()).matches()) {
+            throw InstanceValidationException.invalidPhoneFormat(request.getTelephone());
+        }
+
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw InstanceValidationException.emailAlreadyExists(request.getEmail());
+        }
+
+        // Récupérer la structure
+        StructureInterne structure = structureRepository.findById(request.getStructure().getId())
+                .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructure().getId()));
+
+        // Vérifier que le type est bien BANQUE
+        if (structure.getType() != StructureType.BANK) {
+            throw new RuntimeException("La structure sélectionnée n'est pas de type BANQUE");
+        }
+
+        // Générer le token de vérification
+        String verificationToken = generateVerificationToken();
+        LocalDateTime tokenExpiry = LocalDateTime.now().plusHours(verificationExpiryHours);
+
+        // Création de l'utilisateur banque
+        Banque user = new Banque();
+        user.setNom(request.getNom());
+        user.setPrenom(request.getPrenom());
+        user.setEmail(request.getEmail());
+        user.setTelephone(request.getTelephone());
+        user.setPoste(request.getPoste());
+        user.setStructure(structure);
+        user.setRole(UserRole.BANQUE);
+        user.setUserStatut(UserStatus.INACTIF);
+        user.setDateCreation(LocalDateTime.now());
+        user.setEmailVerified(false);
+        user.setVerificationToken(verificationToken);
+        user.setVerificationTokenExpiry(tokenExpiry);
+
+        // Générer et encoder le mot de passe
+        String generatedPassword = PasswordGenerator.generatePasswordForUser(user);
+        user.setPasswordHash(passwordEncoder.encode(generatedPassword));
+
+        // Sauvegarder
+        Banque saved = banqueRepository.save(user);
+
+        logger.info("Utilisateur BANQUE créé avec ID: " + saved.getId());
+        logger.info("Mot de passe généré: " + generatedPassword);
+
+        // Envoyer l'email
+        sendBanqueUserCredentials(saved, generatedPassword, verificationToken);
+
+        return mapToUserDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public UserDTO createDouaneUser(CreateDouaneUserRequest request) {
+        logger.info("=== CRÉATION UTILISATEUR DOUANE ===");
+
+        // Validations
+        validateRequiredField(request.getNom(), "nom");
+        validateRequiredField(request.getPrenom(), "prenom");
+        validateRequiredField(request.getEmail(), "email");
+        validateRequiredField(request.getTelephone(), "telephone");
+
+        if (request.getStructure() == null || request.getStructure().getId() == null) {
+            throw InstanceValidationException.missingRequiredField("structure");
+        }
+
+        if (!EMAIL_PATTERN.matcher(request.getEmail()).matches()) {
+            throw InstanceValidationException.invalidEmailFormat(request.getEmail());
+        }
+
+        if (!PHONE_PATTERN.matcher(request.getTelephone()).matches()) {
+            throw InstanceValidationException.invalidPhoneFormat(request.getTelephone());
+        }
+
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw InstanceValidationException.emailAlreadyExists(request.getEmail());
+        }
+
+        // Récupérer la structure
+        StructureInterne structure = structureRepository.findById(request.getStructure().getId())
+                .orElseThrow(() -> new RuntimeException("Structure non trouvée avec l'ID: " + request.getStructure().getId()));
+
+        // Vérifier que le type est bien CUSTOMS
+        if (structure.getType() != StructureType.CUSTOMS) {
+            throw new RuntimeException("La structure sélectionnée n'est pas de type DOUANE");
+        }
+
+        // Générer le token de vérification
+        String verificationToken = generateVerificationToken();
+        LocalDateTime tokenExpiry = LocalDateTime.now().plusHours(verificationExpiryHours);
+
+        // Création de l'utilisateur douane
+        Douane user = new Douane();
+        user.setNom(request.getNom());
+        user.setPrenom(request.getPrenom());
+        user.setEmail(request.getEmail());
+        user.setTelephone(request.getTelephone());
+        user.setPoste(request.getPoste());
+        user.setStructure(structure);
+        user.setRole(UserRole.DOUANE);
+        user.setUserStatut(UserStatus.INACTIF);
+        user.setDateCreation(LocalDateTime.now());
+        user.setEmailVerified(false);
+        user.setVerificationToken(verificationToken);
+        user.setVerificationTokenExpiry(tokenExpiry);
+
+        // Générer et encoder le mot de passe
+        String generatedPassword = PasswordGenerator.generatePasswordForUser(user);
+        user.setPasswordHash(passwordEncoder.encode(generatedPassword));
+
+        // Sauvegarder
+        Douane saved = douaneRepository.save(user);
+
+        logger.info("Utilisateur DOUANE créé avec ID: " + saved.getId());
+        logger.info("Mot de passe généré: " + generatedPassword);
+
+        // Envoyer l'email
+        sendDouaneUserCredentials(saved, generatedPassword, verificationToken);
+
+        return mapToUserDTO(saved);
+    }
+
+// ==================== MÉTHODES PRIVÉES POUR L'ENVOI D'EMAILS ====================
+
+    private void sendBanqueUserCredentials(Banque user, String password, String verificationToken) {
+        try {
+            String activationLink = frontendUrl + "#/login?token=" + verificationToken;
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("userFirstName", user.getPrenom());
+            params.put("userLastName", user.getNom());
+            params.put("email", user.getEmail());
+            params.put("poste", user.getPoste() != null ? user.getPoste() : "Non renseigné");
+            params.put("generatedPassword", password);
+            params.put("activationLink", activationLink);
+            params.put("nomOfficiel", user.getStructure().getOfficialName());
+            params.put("codeStructure", user.getStructure().getCode());
+            params.put("typeStructure", user.getStructure().getType());
+            params.put("loginUrl", frontendUrl + "/login");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    user.getEmail(),
+                    user.getStructure().getOfficialName(),
+                    ValidationNotificationType.BANQUE_USER_CREATED,
+                    params
+            );
+
+            logger.info("Email d'activation envoyé à l'utilisateur BANQUE: " + user.getEmail());
+        } catch (Exception e) {
+            logger.severe("Erreur lors de l'envoi de l'email: " + e.getMessage());
+        }
+    }
+
+    private void sendDouaneUserCredentials(Douane user, String password, String verificationToken) {
+        try {
+            String activationLink = frontendUrl + "#/login?token=" + verificationToken;
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("userFirstName", user.getPrenom());
+            params.put("userLastName", user.getNom());
+            params.put("email", user.getEmail());
+            params.put("poste", user.getPoste() != null ? user.getPoste() : "Non renseigné");
+            params.put("generatedPassword", password);
+            params.put("activationLink", activationLink);
+            params.put("nomOfficiel", user.getStructure().getOfficialName());
+            params.put("codeStructure", user.getStructure().getCode());
+            params.put("typeStructure", user.getStructure().getType());
+            params.put("loginUrl", frontendUrl + "/login");
+            params.put("supportEmail", "support@tunisia-commerce.gov.tn");
+
+            emailService.sendValidationNotification(
+                    user.getEmail(),
+                    user.getStructure().getOfficialName(),
+                    ValidationNotificationType.DOUANE_USER_CREATED,
+                    params
+            );
+
+            logger.info("Email d'activation envoyé à l'utilisateur DOUANE: " + user.getEmail());
+        } catch (Exception e) {
+            logger.severe("Erreur lors de l'envoi de l'email: " + e.getMessage());
+        }
+    }
 
     // ==================== PRIVATE METHODS ====================
 

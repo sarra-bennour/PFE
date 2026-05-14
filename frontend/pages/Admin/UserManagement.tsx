@@ -329,7 +329,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50">
-                <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">ID</th>
                 <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Entité</th>
                 <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Email</th>
                 <th className="px-8 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Rôle</th>
@@ -342,7 +341,6 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
               {filteredUsers.length > 0 ? (
                 filteredUsers.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-8 py-5 font-black text-slate-900 italic tracking-tighter">{u.id}</td>
                     <td className="px-8 py-5">
                       <div>
                         <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{u.raisonSociale || u.nom}</p>

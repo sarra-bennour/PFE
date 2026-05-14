@@ -231,6 +231,10 @@ public class EmailService {
                 return "Bienvenue - Votre compte Instance de Validation a été créé - Portail National Tunisien";
             case INSTANCE_VALIDATION_PASSWORD_RESET:
                 return "Réinitialisation de votre mot de passe - Portail National Tunisien";
+            case BANQUE_USER_CREATED:
+                return "Bienvenue - Votre compte Banque a été créé - Portail National Tunisien";
+            case DOUANE_USER_CREATED:
+                return "Bienvenue - Votre compte Douane a été créé - Portail National Tunisien";
             default:
                 return "Notification - Portail National Tunisien";
         }
@@ -263,6 +267,10 @@ public class EmailService {
                 return "email/instance-validation-created";
             case INSTANCE_VALIDATION_PASSWORD_RESET:
                 return "email/instance-validation-password-reset";
+            case BANQUE_USER_CREATED:
+                return "email/banque-user-created";
+            case DOUANE_USER_CREATED:
+                return "email/douane-user-created";
             default:
                 return "email/notification-generique";
         }

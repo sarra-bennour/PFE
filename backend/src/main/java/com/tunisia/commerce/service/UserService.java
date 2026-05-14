@@ -43,6 +43,8 @@ public interface UserService {
     boolean canHavePassword(User user);
 
     UserDTO createInstanceValidation(CreateInstanceValidationRequest request);
+    UserDTO createBanqueUser(CreateBanqueUserRequest request);
+    UserDTO createDouaneUser(CreateDouaneUserRequest request);
     //List<UserDTO> getAllInstanceValidations();
     //UserDTO getInstanceValidationById(Long id);
     //UserDTO getInstanceValidationByEmail(String email);

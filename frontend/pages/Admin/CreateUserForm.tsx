@@ -6,7 +6,7 @@ import { InternalStructure } from '../../types/InternalStructure';
 interface CreateUserFormProps {
   onSuccess: () => void;
   onCancel: () => void;
-  structures?: InternalStructure[]; // Ajout pour recevoir les structures
+  structures?: InternalStructure[];
 }
 
 const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, structures = [] }) => {
@@ -26,7 +26,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
     slaTraitementJours: 30
   });
 
-  // Charger les structures si elles ne sont pas fournies en props
   useEffect(() => {
     if (structures.length > 0) {
       setAvailableStructures(structures);
@@ -58,6 +57,34 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
     return localStorage.getItem('token');
   };
 
+  // 🔥 Nouvelle fonction pour déterminer l'endpoint selon le type de structure
+  const getEndpointByStructureType = (type: string): string => {
+    switch (type) {
+      case 'MINISTRY':
+        return 'http://localhost:8080/api/admin/instance-validation/create';
+      case 'BANK':
+        return 'http://localhost:8080/api/admin/banque/create';
+      case 'CUSTOMS':
+        return 'http://localhost:8080/api/admin/douane/create';
+      default:
+        throw new Error(`Type de structure non supporté: ${type}`);
+    }
+  };
+
+  // 🔥 Nouvelle fonction pour obtenir le message de succès selon le type
+  const getSuccessMessage = (type: string): string => {
+    switch (type) {
+      case 'MINISTRY':
+        return 'Instance de validation créée avec succès ! Un email avec les identifiants a été envoyé.';
+      case 'BANK':
+        return 'Utilisateur banque créé avec succès ! Un email avec les identifiants a été envoyé.';
+      case 'CUSTOMS':
+        return 'Utilisateur douane créé avec succès ! Un email avec les identifiants a été envoyé.';
+      default:
+        return 'Utilisateur créé avec succès ! Un email avec les identifiants a été envoyé.';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -73,7 +100,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
         return;
       }
 
-      // Trouver la structure sélectionnée
       const selectedStructure = availableStructures.find(s => s.id === Number(formData.structureId));
       
       if (!selectedStructure) {
@@ -82,8 +108,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
         return;
       }
 
-      // Construction de la requête selon le nouveau format attendu par le backend
-      const requestData = {
+      // 🔥 Construction de la requête de base (commune à tous)
+      const baseRequestData = {
         nom: formData.nom,
         prenom: formData.prenom,
         email: formData.email,
@@ -95,23 +121,50 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
           officialName: selectedStructure.officialName,
           officialNameAr: selectedStructure.officialNameAr,
           code: selectedStructure.code
-        },
-        slaTraitementJours: formData.slaTraitementJours
+        }
       };
 
-      const response = await axios.post(
-        'http://localhost:8080/api/admin/instance-validation/create',
-        requestData,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
+      // 🔥 Construction des données spécifiques selon le type
+      let requestData: any;
+      let endpoint: string;
+
+      switch (selectedStructure.type) {
+        case 'MINISTRY':
+          endpoint = getEndpointByStructureType('MINISTRY');
+          requestData = {
+            ...baseRequestData,
+            slaTraitementJours: formData.slaTraitementJours
+          };
+          break;
+        
+        case 'BANK':
+          endpoint = getEndpointByStructureType('BANK');
+          requestData = baseRequestData;
+          break;
+        
+        case 'CUSTOMS':
+          endpoint = getEndpointByStructureType('CUSTOMS');
+          requestData = baseRequestData;
+          break;
+        
+        default:
+          setError(`Type de structure non supporté: ${selectedStructure.type}`);
+          setLoading(false);
+          return;
+      }
+
+      console.log(`📡 Envoi vers: ${endpoint}`);
+      console.log('📦 Données:', requestData);
+
+      const response = await axios.post(endpoint, requestData, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
-      );
+      });
 
       if (response.data.success) {
-        setSuccess("Instance de validation créée avec succès ! Un email avec les identifiants a été envoyé.");
+        setSuccess(getSuccessMessage(selectedStructure.type));
         
         // Réinitialiser le formulaire
         setFormData({
@@ -124,7 +177,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
           slaTraitementJours: 30
         });
         
-        // Appeler le callback onSuccess après 2 secondes
         setTimeout(() => {
           if (onSuccess) {
             onSuccess();
@@ -135,36 +187,39 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
       }
     } catch (err: any) {
       console.error('Erreur API:', err);
-      
-      // Gestion des erreurs
-      if (err.response) {
-        const errorMessage = err.response.data?.error || err.response.data?.message || "Erreur serveur";
-        const errorCode = err.response.data?.errorCode;
-        
-        if (errorCode === 'INSTANCE_VALIDATION.EMAIL_EXISTS') {
-          setError("Cet email est déjà utilisé par un autre utilisateur.");
-        } else if (errorCode === 'INSTANCE_VALIDATION.MISSING_FIELD') {
-          setError("Tous les champs obligatoires doivent être remplis.");
-        } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_EMAIL') {
-          setError("Format d'email invalide.");
-        } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_PHONE') {
-          setError("Format de téléphone invalide. Utilisez le format international (+216XXXXXXXX).");
-        } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_SLA') {
-          setError("Le SLA doit être compris entre 1 et 60 jours.");
-        } else {
-          setError(errorMessage);
-        }
-      } else if (err.request) {
-        setError("Impossible de contacter le serveur. Vérifiez votre connexion.");
-      } else {
-        setError("Une erreur est survenue. Veuillez réessayer.");
-      }
+      handleApiError(err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Validation du téléphone en temps réel
+  // 🔥 Fonction centralisée pour la gestion des erreurs
+  const handleApiError = (err: any) => {
+    if (err.response) {
+      const errorMessage = err.response.data?.error || err.response.data?.message || "Erreur serveur";
+      const errorCode = err.response.data?.errorCode;
+      
+      // Messages d'erreur communs
+      if (errorCode === 'INSTANCE_VALIDATION.EMAIL_EXISTS' || errorMessage.includes('existe déjà')) {
+        setError("Cet email est déjà utilisé par un autre utilisateur.");
+      } else if (errorCode === 'INSTANCE_VALIDATION.MISSING_FIELD') {
+        setError("Tous les champs obligatoires doivent être remplis.");
+      } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_EMAIL') {
+        setError("Format d'email invalide.");
+      } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_PHONE') {
+        setError("Format de téléphone invalide. Utilisez le format international (+216XXXXXXXX).");
+      } else if (errorCode === 'INSTANCE_VALIDATION.INVALID_SLA') {
+        setError("Le SLA doit être compris entre 1 et 60 jours.");
+      } else {
+        setError(errorMessage);
+      }
+    } else if (err.request) {
+      setError("Impossible de contacter le serveur. Vérifiez votre connexion.");
+    } else {
+      setError("Une erreur est survenue. Veuillez réessayer.");
+    }
+  };
+
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
     if (value === '' || /^\+?[0-9\s]*$/.test(value)) {
@@ -175,7 +230,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
   const closeError = () => setError(null);
   const closeSuccess = () => setSuccess(null);
 
-  // Obtenir le nom du type de structure en français
   const getStructureTypeName = (type: string): string => {
     switch (type) {
       case 'MINISTRY': return 'Ministère';
@@ -185,23 +239,24 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
     }
   };
 
+  // 🔥 Vérifier si le SLA doit être affiché (uniquement pour MINISTRY)
+  const selectedStructureType = availableStructures.find(s => s.id === Number(formData.structureId))?.type;
+  const showSlaField = selectedStructureType === 'MINISTRY';
+
+  // 🔥 Obtenir le type de compte qui va être créé
+  const getAccountTypeLabel = (): string => {
+    switch (selectedStructureType) {
+      case 'MINISTRY': return 'Instance de validation';
+      case 'BANK': return 'Compte Banque';
+      case 'CUSTOMS': return 'Compte Douane';
+      default: return 'compte';
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in-scale">
-      {error && (
-        <FormAlert 
-          message={error} 
-          type="error" 
-          onClose={closeError}
-        />
-      )}
-
-      {success && (
-        <FormAlert 
-          message={success} 
-          type="success" 
-          onClose={closeSuccess}
-        />
-      )}
+      {error && <FormAlert message={error} type="error" onClose={closeError} />}
+      {success && <FormAlert message={success} type="success" onClose={closeSuccess} />}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-1.5">
@@ -239,17 +294,18 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
           placeholder="ahmed.benali@ministere.tn"
         />
       </div>
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Poste / Fonction</label>
-          <input 
-            required
-            type="text"
-            value={formData.poste}
-            onChange={(e) => setFormData({...formData, poste: e.target.value})}
-            className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
-            placeholder="Ex: Chef de service"
-          />
-        </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Poste / Fonction</label>
+        <input 
+          required
+          type="text"
+          value={formData.poste}
+          onChange={(e) => setFormData({...formData, poste: e.target.value})}
+          className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
+          placeholder="Ex: Chef de service"
+        />
+      </div>
 
       <div className="space-y-1.5">
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Téléphone</label>
@@ -264,7 +320,6 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
         <p className="text-[9px] text-slate-400 ml-1">Format: +216XXXXXXXX</p>
       </div>
 
-      {/* Sélection de la structure */}
       <div className="space-y-1.5">
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
           Structure d'affectation <span className="text-red-500">*</span>
@@ -290,26 +345,28 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
           </select>
         )}
         <p className="text-[9px] text-slate-400 ml-1">
-          La structure détermine le nom officiel, le code et le type d'autorité
+          La structure détermine le type de compte : {selectedStructureType === 'MINISTRY' ? 'Instance de validation' : selectedStructureType === 'BANK' ? 'Compte Banque' : selectedStructureType === 'CUSTOMS' ? 'Compte Douane' : 'Sélectionnez une structure'}
         </p>
       </div>
 
-      {/* SLA */}
-      <div className="space-y-1.5">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">SLA Traitement (Jours)</label>
-        <input 
-          required
-          type="number"
-          min="1"
-          max="60"
-          value={formData.slaTraitementJours}
-          onChange={(e) => setFormData({...formData, slaTraitementJours: parseInt(e.target.value) || 30})}
-          className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
-        />
-        <p className="text-[9px] text-slate-400 ml-1">Nombre maximum de jours pour traiter un dossier</p>
-      </div>
+      {/* 🔥 SLA - Affiché uniquement pour les MINISTRY */}
+      {showSlaField && (
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">SLA Traitement (Jours)</label>
+          <input 
+            required
+            type="number"
+            min="1"
+            max="60"
+            value={formData.slaTraitementJours}
+            onChange={(e) => setFormData({...formData, slaTraitementJours: parseInt(e.target.value) || 30})}
+            className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-50 font-bold bg-slate-50 focus:border-tunisia-red outline-none transition-all text-sm shadow-sm"
+          />
+          <p className="text-[9px] text-slate-400 ml-1">Nombre maximum de jours pour traiter un dossier</p>
+        </div>
+      )}
 
-      {/* Aperçu des informations qui seront dérivées de la structure */}
+      {/* Aperçu des informations */}
       {formData.structureId && (
         <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Aperçu des informations</p>
@@ -319,8 +376,8 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
               if (selected) {
                 return (
                   <>
+                    <p><span className="font-bold text-slate-600">Compte à créer:</span> <span className="text-slate-500">{getAccountTypeLabel()}</span></p>
                     <p><span className="font-bold text-slate-600">Nom Officiel (FR):</span> <span className="text-slate-500">{selected.officialName}</span></p>
-                    <p><span className="font-bold text-slate-600">Nom Officiel (AR):</span> <span className="text-slate-500">{selected.officialNameAr}</span></p>
                     <p><span className="font-bold text-slate-600">Code:</span> <span className="text-slate-500 font-mono">{selected.code}</span></p>
                     <p><span className="font-bold text-slate-600">Type:</span> <span className="text-slate-500">{getStructureTypeName(selected.type)}</span></p>
                   </>
@@ -332,12 +389,13 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
         </div>
       )}
 
-      {/* Message d'information */}
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-        <p className="text-xs text-blue-800 font-medium">
+      {/* Message d'information dynamique */}
+      <div className={`rounded-2xl p-4 border ${selectedStructureType === 'MINISTRY' ? 'bg-blue-50 border-blue-200' : selectedStructureType === 'BANK' ? 'bg-green-50 border-green-200' : selectedStructureType === 'CUSTOMS' ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
+        <p className="text-xs font-medium" style={{
+          color: selectedStructureType === 'MINISTRY' ? '#1e40af' : selectedStructureType === 'BANK' ? '#166534' : selectedStructureType === 'CUSTOMS' ? '#6b21a5' : '#4b5563'
+        }}>
           💡 <strong>Information :</strong> Un email avec les identifiants de connexion (email et mot de passe généré) 
-          sera envoyé automatiquement à l'adresse indiquée. Les informations de la structure (nom officiel, code, type) 
-          seront automatiquement liées à l'instance.
+          sera envoyé automatiquement à l'adresse indiquée. Le compte créé sera de type <strong>{getAccountTypeLabel()}</strong>.
         </p>
       </div>
 
@@ -353,7 +411,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
               Création en cours...
             </>
           ) : (
-            "Créer l'utilisateur"
+            `Créer ${getAccountTypeLabel()}`
           )}
         </button>
         
