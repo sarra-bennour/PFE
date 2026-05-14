@@ -12,11 +12,13 @@ import AdminRequestList from './AdminRequestList';
 import axios from 'axios';
 import UserHistory from './UserHistory';
 import RiskManagement from './RiskManagement';
+import CaseVerifier from '../CaseVerifier';
+
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests' | 'risk'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests' | 'case-verifier' | 'risk'>('overview');
   
   // État pour les structures
   const [structures, setStructures] = useState<InternalStructure[]>([]);
@@ -161,6 +163,7 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
     { id: 'risk', label: 'Gestion Risques', icon: 'fa-shield-virus' },
     { id: 'security', label: 'Sécurité', icon: 'fa-lock' },
+    { id: 'case-verifier', label: 'Vérificateur de Cas', icon: 'fa-search'},
     { id: 'dashboard', label: 'Décisionnel', icon: 'fa-shield-halved', path: '/dashboard' },
   ];
 
@@ -522,6 +525,11 @@ const handleUpdateStructure = async (id: number, data: { type: StructureType; of
           )}
           {activeTab === 'requests' && (
             <AdminRequestList />
+          )}
+          {activeTab === 'case-verifier' && (
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-8">
+              <CaseVerifier compact />
+            </div>
           )}
           {activeTab === 'risk' && (
             <RiskManagement />
