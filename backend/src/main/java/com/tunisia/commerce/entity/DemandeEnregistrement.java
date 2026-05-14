@@ -44,9 +44,6 @@ public class DemandeEnregistrement {
     @Builder.Default
     private PaymentStatus paymentStatus = PaymentStatus.EN_ATTENTE;
 
-    /*@ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_to_id")
-    private InstanceValidation assignedTo;*/
 
     @Column(name = "decision_date")
     private LocalDateTime decisionDate;
@@ -84,12 +81,6 @@ public class DemandeEnregistrement {
     @Column(name = "can_be_restored")
     @Builder.Default
     private boolean canBeRestored = true;
-
-    /*@Column(name = "retention_period_months")
-    private Integer retentionPeriodMonths;
-
-    @Column(name = "scheduled_deletion_date")
-    private LocalDateTime scheduledDeletionDate;*/
 
 
     @OneToMany(mappedBy = "demande", cascade = CascadeType.ALL, orphanRemoval = true)

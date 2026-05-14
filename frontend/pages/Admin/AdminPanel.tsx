@@ -15,15 +15,39 @@ import RiskManagement from './RiskManagement';
 import CaseVerifier from '../../components/CaseVerifier';
 import StripeTransactionHistory from '../../components/StripeTransactionHistory';
 
+// Interface pour les statistiques du dashboard
+interface DashboardStats {
+  activeUsers: number;
+  transactions24h: number;
+  securityAlerts: number;
+  pendingDemandes: number;
+  uptimeSystem: number;
+  networkLatencyMs: number;
+  monthlyFluxData: { name: string; declarations: number; imports: number }[];
+  systemHealth: { name: string; val: number; color: string }[];
+}
 
 const AdminPanel: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'security' | 'structures' | 'requests' | 'case-verifier' | 'risk' | 'stripe-history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'user-history' | 'traffic' | 'structures' | 'requests' | 'case-verifier' | 'risk' | 'stripe-history'>('overview');
 
   // État pour les structures
   const [structures, setStructures] = useState<InternalStructure[]>([]);
   const [loadingStructures, setLoadingStructures] = useState(false);
+  
+  // État pour les statistiques du dashboard
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
+    activeUsers: 0,
+    transactions24h: 0,
+    securityAlerts: 0,
+    pendingDemandes: 0,
+    uptimeSystem: 99.98,
+    networkLatencyMs: 14,   // ← ajoute cette ligne
+    monthlyFluxData: [],
+    systemHealth: []
+  });
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
 
   // Modals state
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -35,8 +59,155 @@ const AdminPanel: React.FC = () => {
   const [showStructureForm, setShowStructureForm] = useState(false);
   const [selectedStructure, setSelectedStructure] = useState<InternalStructure | null>(null);
   const [users, setUsers] = useState<any[]>([]);
-
   const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Fonction pour charger les statistiques du dashboard
+  const fetchDashboardStats = async () => {
+    try {
+      setLoadingDashboard(true);
+      const token = localStorage.getItem('token');
+      
+      // 1. Récupérer les utilisateurs pour compter les actifs
+      const usersResponse = await axios.get('http://localhost:8080/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // 2. Récupérer les demandes
+      const demandesResponse = await axios.get('http://localhost:8080/api/admin/all-demandes', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // 3. Récupérer les exportateurs suspects (risque élevé)
+      const riskResponse = await axios.get('http://localhost:8080/api/risk/exportateurs', {
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => ({ data: [] }));
+      
+      // 4. Récupérer les transactions Stripe des dernières 24h
+      const transactionsResponse = await axios.get('http://localhost:8080/api/stripe-payment/all', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { limit: 1000 }
+      }).catch(() => ({ data: { success: false, transactions: [] } }));
+      
+      // Calculer les statistiques
+      let activeUsers = 0;
+      if (usersResponse.data.success) {
+        const userList = usersResponse.data.users || [];
+        activeUsers = userList.filter((u: any) => u.statut === 'ACTIF').length;
+      }
+      
+      // Calculer les transactions des dernières 24h
+      let transactions24h = 0;
+      const now = new Date();
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      if (transactionsResponse.data.success && transactionsResponse.data.transactions) {
+        transactions24h = transactionsResponse.data.transactions.filter((t: any) => {
+          let txDate = null;
+          if (t.created) txDate = new Date(t.created);
+          else if (t.paidAt) txDate = new Date(t.paidAt);
+          return txDate && txDate >= yesterday;
+        }).length;
+      }
+      
+      // Compter les exportateurs suspects (risque ÉLEVÉ)
+      let securityAlerts = 0;
+      if (riskResponse.data && Array.isArray(riskResponse.data)) {
+        securityAlerts = riskResponse.data.filter((e: any) => e.riskLevel === 'ÉLEVÉ').length;
+      }
+      
+      // Compter les demandes en attente
+      let pendingDemandes = 0;
+      if (demandesResponse.data.success) {
+        const demandes = demandesResponse.data.data || [];
+        pendingDemandes = demandes.filter((d: any) => 
+          d.status === 'SOUMISE' || d.status === 'EN_ATTENTE' || d.status === 'PENDING'
+        ).length;
+      }
+      
+      // Générer les données mensuelles des flux
+      const monthlyFluxData = generateMonthlyFluxData(demandesResponse.data.data || []);
+      
+      const healthResponse = await axios.get('http://localhost:8080/api/admin/system-health', {
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => ({ data: null }));
+
+      let systemHealth = [
+        { name: 'Base de Données', val: 99.9, color: 'bg-emerald-500' },
+        { name: 'Mémoire JVM', val: 75.0, color: 'bg-emerald-500' },
+        { name: 'Stockage Disque', val: 60.0, color: 'bg-emerald-500' },
+        { name: 'API Services', val: 99.0, color: 'bg-emerald-500' },
+        { name: 'Stripe Gateway', val: 99.5, color: 'bg-emerald-500' },
+      ];
+
+      let uptimeSystem = 99.98;
+      let networkLatencyMs = 14;
+
+      if (healthResponse.data) {
+        systemHealth = healthResponse.data.components || systemHealth;
+        uptimeSystem = healthResponse.data?.uptimePercent ?? uptimeSystem;
+        networkLatencyMs = healthResponse.data.networkLatencyMs ?? networkLatencyMs;
+      }
+      
+      setDashboardStats({
+        activeUsers,
+        transactions24h,
+        securityAlerts,
+        pendingDemandes,
+        uptimeSystem: 99.98,
+        monthlyFluxData,
+        systemHealth,
+        networkLatencyMs
+      });
+      
+    } catch (error) {
+      console.error('Erreur chargement dashboard:', error);
+      // Données par défaut
+      setDashboardStats({
+        activeUsers: 0,
+        transactions24h: 0,
+        securityAlerts: 0,
+        pendingDemandes: 0,
+        uptimeSystem: 99.98,
+        networkLatencyMs: 14,
+        monthlyFluxData: generateMonthlyFluxData([]),
+        systemHealth: [
+          { name: 'Base de Données', val: 99.9, color: 'bg-emerald-500' },
+          { name: 'Passerelle Mobile ID', val: 82, color: 'bg-amber-500' },
+          { name: 'Stockage Cloud', val: 42, color: 'bg-emerald-500' },
+          { name: 'API Services', val: 99, color: 'bg-emerald-500' },
+        ]
+      });
+    } finally {
+      setLoadingDashboard(false);
+    }
+  };
+  
+  // Fonction pour générer les données mensuelles des flux
+  // REMPLACE dans AdminPanel.tsx
+const generateMonthlyFluxData = (demandes: any[]) => {
+  const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+  const currentYear = new Date().getFullYear();
+  const monthlyData = months.map(month => ({ name: month, declarations: 0, imports: 0 }));
+
+  demandes.forEach((demande: any) => {
+    if (demande.submittedAt) {
+      const date = new Date(demande.submittedAt);
+      if (date.getFullYear() === currentYear) {
+        const monthIndex = date.getMonth();
+        // Demande déclaration produit (exportateur)
+        if (demande.typeDemande === 'PRODUCT_DECLARATION') {
+          monthlyData[monthIndex].declarations++;
+        }
+        // Demande importation (importateur tunisien)
+        else if (demande.typeDemande === 'IMPORT') {
+          monthlyData[monthIndex].imports++;
+        }
+      }
+    }
+  });
+
+  return monthlyData;
+};
 
   // Fonction pour charger tous les utilisateurs
   const loadUsers = async () => {
@@ -65,6 +236,21 @@ const AdminPanel: React.FC = () => {
     if (activeTab === 'users') {
       loadUsers();
     }
+  }, [activeTab]);
+
+  // Charger les données du dashboard au montage
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
+
+  // Rafraîchir les stats toutes les 30 secondes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (activeTab === 'overview') {
+        fetchDashboardStats();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
   }, [activeTab]);
 
   // Configuration API
@@ -105,18 +291,14 @@ const AdminPanel: React.FC = () => {
       const response = await axios.post(API_URL, data, { headers: getAuthHeader() });
 
       if (response.data.success) {
-        // ✅ Succès - mettre à jour la liste et fermer le modal
         setStructures(prev => [response.data.data, ...prev]);
         setShowStructureForm(false);
-        // ✅ Retourner normalement (pas d'erreur)
         return;
       } else {
-        // ✅ Échec - LANCER UNE ERREUR pour que le formulaire la capture
         throw new Error(response.data.error || 'Erreur lors de la création');
       }
     } catch (err: any) {
       console.error('Erreur création:', err);
-      // ✅ Propager l'erreur (peut venir d'axios ou de notre throw)
       throw err;
     }
   };
@@ -126,13 +308,11 @@ const AdminPanel: React.FC = () => {
       const response = await axios.put(`${API_URL}/${id}`, data, { headers: getAuthHeader() });
 
       if (response.data.success) {
-        // ✅ Succès
         setStructures(prev => prev.map(s => s.id === id ? response.data.data : s));
         setShowStructureForm(false);
         setSelectedStructure(null);
         return;
       } else {
-        // ✅ Échec - LANCER UNE ERREUR
         throw new Error(response.data.error || 'Erreur lors de la mise à jour');
       }
     } catch (err: any) {
@@ -140,7 +320,8 @@ const AdminPanel: React.FC = () => {
       throw err;
     }
   };
-  // Supprimer une structure (sans confirmation, gérée par le modal du composant enfant)
+  
+  // Supprimer une structure
   const handleDeleteStructure = async (id: number) => {
     try {
       const response = await axios.delete(`${API_URL}/${id}/hard`, { headers: getAuthHeader() });
@@ -163,19 +344,17 @@ const AdminPanel: React.FC = () => {
     { id: 'requests', label: 'Demandes', icon: 'fa-file-invoice' },
     { id: 'traffic', label: 'Flux Douanes', icon: 'fa-truck-moving' },
     { id: 'risk', label: 'Gestion Risques', icon: 'fa-shield-virus' },
-    { id: 'security', label: 'Sécurité', icon: 'fa-lock' },
     { id: 'case-verifier', label: 'Vérificateur de Cas', icon: 'fa-search' },
-    { id: 'dashboard', label: 'Décisionnel', icon: 'fa-shield-halved', path: '/dashboard' },
     { id: 'stripe-history', label: 'Transactions Stripe', icon: 'fa-credit-card' }
-
   ];
 
+  // Statistiques dynamiques
   const stats = [
-    { label: "Utilisateurs Actifs", value: "4,281", icon: "fa-users", color: "text-blue-500", bg: "bg-blue-50" },
-    { label: "Transactions (24h)", value: "1,240", icon: "fa-exchange-alt", color: "text-emerald-500", bg: "bg-emerald-50" },
-    { label: "Alertes Sécurité", value: "02", icon: "fa-shield-virus", color: "text-tunisia-red", bg: "bg-red-50" },
-    { label: "Dossiers en attente", value: "128", icon: "fa-folder-open", color: "text-amber-500", bg: "bg-amber-50" },
-    { label: "Uptime Système", value: "99.98%", icon: "fa-bolt", color: "text-purple-500", bg: "bg-purple-50" },
+    { label: "Utilisateurs Actifs", value: dashboardStats.activeUsers.toLocaleString(), icon: "fa-users", color: "text-blue-500", bg: "bg-blue-50" },
+    { label: "Transactions (24h)", value: dashboardStats.transactions24h.toLocaleString(), icon: "fa-exchange-alt", color: "text-emerald-500", bg: "bg-emerald-50" },
+    { label: "Alertes Sécurité", value: dashboardStats.securityAlerts.toString(), icon: "fa-shield-virus", color: "text-tunisia-red", bg: "bg-red-50" },
+    { label: "Dossiers en attente", value: dashboardStats.pendingDemandes.toLocaleString(), icon: "fa-folder-open", color: "text-amber-500", bg: "bg-amber-50" },
+    { label: "Uptime Système", value: `${dashboardStats.uptimeSystem}%`, icon: "fa-bolt", color: "text-purple-500", bg: "bg-purple-50" },
   ];
 
   const borderNodes = [
@@ -186,33 +365,22 @@ const AdminPanel: React.FC = () => {
     { id: 'melloula', name: 'Poste Melloula', type: 'Terrestre', status: 'Critique', volume: 92, load: 95, lat: '25%', lon: '15%' },
   ];
 
-  const trafficData = [
-    { name: '00:00', in: 40, out: 20 },
-    { name: '04:00', in: 120, out: 45 },
-    { name: '08:00', in: 450, out: 310 },
-    { name: '12:00', in: 680, out: 590 },
-    { name: '16:00', in: 520, out: 610 },
-    { name: '20:00', in: 280, out: 340 },
-  ];
-
   const structureStats = [
     { label: "Entités Totales", value: structures.length, icon: "fa-sitemap", color: "text-slate-900", bg: "bg-slate-100" },
-    { label: "Utilisateurs Assignés", value: "1,248", icon: "fa-users-gear", color: "text-indigo-600", bg: "bg-indigo-50" },
-    { label: "Temps de Réponse", value: "4.2m", icon: "fa-bolt", color: "text-amber-500", bg: "bg-amber-50" },
-    { label: "Conformité SLA", value: "99.2%", icon: "fa-check-double", color: "text-emerald-500", bg: "bg-emerald-50" },
+    { label: "Utilisateurs Assignés", value: dashboardStats.activeUsers.toLocaleString(), icon: "fa-users-gear", color: "text-indigo-600", bg: "bg-indigo-50" },
+    { label: "Demandes en attente", value: dashboardStats.pendingDemandes.toLocaleString(), icon: "fa-clock", color: "text-amber-500", bg: "bg-amber-50" },
+    { label: "Alertes Sécurité", value: dashboardStats.securityAlerts.toString(), icon: "fa-shield-virus", color: "text-red-500", bg: "bg-red-50" },
   ];
 
-  // Fonction pour réinitialiser le mot de passe via l'API backend
+  // Fonction pour réinitialiser le mot de passe
   const handleResetPassword = async (u: any) => {
     const token = localStorage.getItem('token');
 
-    // Vérifier si c'est un importateur
     if (u.role === 'IMPORTATEUR') {
       alert("Les importateurs n'utilisent pas de mot de passe.\nIls s'authentifient via Mobile ID.");
       return;
     }
 
-    // Confirmation avant réinitialisation
     if (!window.confirm(`Êtes-vous sûr de vouloir réinitialiser le mot de passe de ${u.email} ?`)) {
       return;
     }
@@ -232,7 +400,6 @@ const AdminPanel: React.FC = () => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // Récupérer le mot de passe généré depuis la réponse
         const tempPassword = data.newPassword || "Vérifiez votre email";
         setGeneratedPassword(tempPassword);
         setShowResetPassword(true);
@@ -246,6 +413,27 @@ const AdminPanel: React.FC = () => {
       setLoadingPassword(false);
     }
   };
+
+  if (loadingDashboard && dashboardStats.activeUsers === 0) {
+    return (
+      <div className="flex min-h-screen bg-slate-50">
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={(tab) => setActiveTab(tab as any)}
+          items={sidebarItems}
+          title="Admin Panel"
+          subtitle="Contrôle Souverain"
+          icon="fa-shield-halved"
+        />
+        <main className="flex-1 p-10 flex items-center justify-center">
+          <div className="text-center">
+            <i className="fas fa-spinner fa-spin text-tunisia-red text-4xl mb-4"></i>
+            <p className="text-sm font-bold text-slate-400">Chargement du tableau de bord...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -276,11 +464,11 @@ const AdminPanel: React.FC = () => {
               </div>
               <div className="p-10 max-h-[70vh] overflow-y-auto scrollbar-hide">
                 <CreateUserForm
-                  structures={structures}  // Changé de InternalStructure à structures
+                  structures={structures}
                   onSuccess={() => {
                     setShowCreateUser(false);
-                    // Rafraîchir la liste des utilisateurs si nécessaire
-                    loadUsers(); // Si vous avez une fonction pour recharger les utilisateurs
+                    loadUsers();
+                    fetchDashboardStats();
                   }}
                   onCancel={() => setShowCreateUser(false)}
                 />
@@ -350,16 +538,14 @@ const AdminPanel: React.FC = () => {
                 setShowStructureForm(false);
                 setSelectedStructure(null);
               }}
-              onSuccess={async (data) => {  // ← Rendre async
+              onSuccess={async (data) => {
                 try {
                   if (selectedStructure) {
                     await handleUpdateStructure(selectedStructure.id, data);
                   } else {
                     await handleCreateStructure(data);
                   }
-                  // Succès - le formulaire affichera son message de succès
                 } catch (error) {
-                  // Erreur - laisser le formulaire la capturer
                   throw error;
                 }
               }}
@@ -385,13 +571,17 @@ const AdminPanel: React.FC = () => {
               {activeTab === 'requests' && "Suivi des Demandes"}
               {activeTab === 'traffic' && "Surveillance des Flux"}
               {activeTab === 'risk' && "Analyse des Risques Exportateurs"}
-              {activeTab === 'security' && "Centre de Sécurité"}
+              {activeTab === 'case-verifier' && "Vérificateur de Cas"}
+              {activeTab === 'stripe-history' && "Historique des Transactions Stripe"}
             </h2>
           </div>
 
           <div className="flex gap-4">
-            <button className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all">
-              <i className="fas fa-download mr-2"></i> Rapport
+            <button 
+              onClick={() => fetchDashboardStats()}
+              className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-600 shadow-sm hover:bg-slate-50 transition-all"
+            >
+              <i className="fas fa-sync-alt mr-2"></i> Rafraîchir
             </button>
             {activeTab === 'users' && (
               <button
@@ -415,7 +605,7 @@ const AdminPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* Stats Grid or Deactivation Requests Carousel */}
+        {/* Stats Grid */}
         {activeTab !== 'users' && activeTab !== 'structures' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
             {stats.map((stat, i) => (
@@ -448,25 +638,37 @@ const AdminPanel: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-10">
-                  <h3 className="text-lg font-black italic text-slate-900 uppercase tracking-tighter">Volume des Flux (24h)</h3>
+                  <h3 className="text-lg font-black italic text-slate-900 uppercase tracking-tighter">Volume des Flux (Mensuel)</h3>
                   <div className="flex gap-4">
-                    <div className="flex items-center gap-2 text-[8px] font-black uppercase text-emerald-500"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> Import</div>
-                    <div className="flex items-center gap-2 text-[8px] font-black uppercase text-tunisia-red"><div className="w-1.5 h-1.5 bg-tunisia-red rounded-full"></div> Export</div>
+                    <div className="flex items-center gap-2 text-[8px] font-black uppercase text-emerald-500"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> Déclarations Produit</div>
+                    <div className="flex items-center gap-2 text-[8px] font-black uppercase text-tunisia-red"><div className="w-1.5 h-1.5 bg-tunisia-red rounded-full"></div> Demandes Importation</div>
                   </div>
                 </div>
                 <div className="h-[350px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={trafficData}>
+                    <AreaChart data={dashboardStats.monthlyFluxData}>
                       <defs>
-                        <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.1} /><stop offset="95%" stopColor="#10b981" stopOpacity={0} /></linearGradient>
-                        <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#E70013" stopOpacity={0.1} /><stop offset="95%" stopColor="#E70013" stopOpacity={0} /></linearGradient>
+                        <linearGradient id="colorDeclarations" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorImports" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#E70013" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#E70013" stopOpacity={0}/>
+                        </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 800, fill: '#94a3b8' }} />
-                      <Tooltip contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-                      <Area type="monotone" dataKey="in" stroke="#10b981" strokeWidth={3} fill="url(#colorIn)" />
-                      <Area type="monotone" dataKey="out" stroke="#E70013" strokeWidth={3} fill="url(#colorOut)" />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                        formatter={(value: number | undefined) => {
+                          if (value === undefined) return ['0', ''];
+                          return [`${value} demande(s)`, ''];
+                        }}
+                      />
+                      <Area type="monotone" dataKey="declarations" stroke="#10b981" strokeWidth={3} fill="url(#colorDeclarations)" name="Déclarations Produit" />
+                      <Area type="monotone" dataKey="imports" stroke="#E70013" strokeWidth={3} fill="url(#colorImports)" name="Demandes Importation" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -476,12 +678,7 @@ const AdminPanel: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-black italic text-slate-900 uppercase tracking-tighter mb-8">Santé du Système</h3>
                   <div className="space-y-6">
-                    {[
-                      { name: 'Base de Données', val: 99.9, color: 'bg-emerald-500' },
-                      { name: 'Passerelle Mobile ID', val: 82, color: 'bg-amber-500' },
-                      { name: 'Stockage Cloud', val: 42, color: 'bg-emerald-500' },
-                      { name: 'API Services', val: 99, color: 'bg-emerald-500' },
-                    ].map((item, i) => (
+                    {dashboardStats.systemHealth.map((item, i) => (
                       <div key={i} className="space-y-2">
                         <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-slate-500">
                           <span>{item.name}</span>
@@ -496,12 +693,13 @@ const AdminPanel: React.FC = () => {
                 </div>
                 <div className="mt-10 p-6 bg-slate-900 rounded-2xl text-center">
                   <p className="text-[8px] font-black uppercase tracking-widest text-slate-500 mb-1">Latence Réseau</p>
-                  <span className="text-xl font-black italic text-white tracking-tighter">14ms</span>
+                    <span className="text-xl font-black italic text-white tracking-tighter">
+                      {dashboardStats.networkLatencyMs ?? 14}ms
+                    </span>
                 </div>
               </div>
             </div>
           )}
-
 
           {activeTab === 'users' && (
             <UserManagement onResetPassword={handleResetPassword} />
@@ -527,17 +725,21 @@ const AdminPanel: React.FC = () => {
               />
             )
           )}
+          
           {activeTab === 'requests' && (
             <AdminRequestList />
           )}
+          
           {activeTab === 'case-verifier' && (
             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-8">
               <CaseVerifier compact />
             </div>
           )}
+          
           {activeTab === 'risk' && (
             <RiskManagement />
           )}
+          
           {activeTab === 'traffic' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-slate-900 p-10 rounded-[3rem] shadow-xl relative overflow-hidden border border-white/5">
@@ -584,45 +786,6 @@ const AdminPanel: React.FC = () => {
           )}
 
           {activeTab === 'stripe-history' && <StripeTransactionHistory />}
-
-
-          {activeTab === 'security' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black italic text-slate-900 uppercase tracking-tighter mb-8">Journal de Sécurité</h3>
-                <div className="space-y-3">
-                  {[
-                    { time: "14:22:10", type: "ACCESS", desc: "Connexion administrateur Mobile ID", level: "info" },
-                    { time: "11:05:45", type: "SECURITY", desc: "Tentatives erronées sur EXP-902", level: "warn" },
-                    { time: "09:12:01", type: "SYSTEM", desc: "Mise à jour module Douane terminée", level: "info" },
-                  ].map((log, i) => (
-                    <div key={i} className="p-4 rounded-xl bg-slate-50 flex items-center gap-4 border border-slate-100">
-                      <div className={`w-1 h-8 rounded-full ${log.level === 'warn' ? 'bg-tunisia-red' : 'bg-emerald-500'}`}></div>
-                      <div className="flex-grow">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{log.time} &bull; {log.type}</span>
-                        </div>
-                        <p className="text-[10px] font-bold text-slate-700">{log.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-tunisia-red text-white p-10 rounded-[2.5rem] shadow-xl flex flex-col justify-between">
-                <div className="text-center space-y-6">
-                  <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto border-2 border-white/30">
-                    <i className="fas fa-shield-alt text-3xl"></i>
-                  </div>
-                  <div className="text-2xl font-black italic tracking-tighter uppercase">Intégrité 100%</div>
-                  <p className="text-[8px] font-black uppercase tracking-widest text-red-100">Protection AES-256 Active</p>
-                </div>
-                <button className="w-full py-4 bg-white text-tunisia-red rounded-xl font-black uppercase tracking-widest text-[8px] shadow-lg mt-8 hover:bg-red-50 transition-all">
-                  Scan Système
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </main>
     </div>
