@@ -13,7 +13,25 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import com.itextpdf.kernel.font.PdfFont;
+import com.itextpdf.kernel.font.PdfFontFactory;
+import com.itextpdf.kernel.geom.PageSize;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.layout.Document;
+import com.itextpdf.layout.element.Cell;
+import com.itextpdf.layout.element.Paragraph;
+import com.itextpdf.layout.element.Table;
+import com.itextpdf.layout.properties.TextAlignment;
 
+import java.io.ByteArrayOutputStream;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -28,6 +46,7 @@ public class ImportateurServiceImpl implements ImportateurService {
     private final DemandeProduitRepository demandeProduitRepository;
     private final NotificationRepository notificationRepository;
     private final DemandeEnregistrementRepository demandeRepository;
+    private final ImportateurRepository importateurRepository;
 
     @Override
     public List<UserDTO> rechercherExportateursValides(String searchTerm) {
@@ -341,57 +360,291 @@ public class ImportateurServiceImpl implements ImportateurService {
                 .submittedProductIds(submittedProductIds)
                 .build();
     }
+    @Override
+    public Map<String, Object> getDashboardStats(Long importateurId) {
+        log.info("Calcul des statistiques dashboard pour importateur ID: {}", importateurId);
 
-    /**
-     * Vérifie le statut d'un produit spécifique
-     * @param importateurId L'ID de l'importateur
-     * @param productId L'ID du produit
-     * @return Le statut du produit
-     */
-    /*@Override
-    @Transactional(readOnly = true)
-    public String getProduitStatut(Long importateurId, Long productId) {
-        log.info("Vérification du statut du produit ID: {} pour importateur ID: {}", productId, importateurId);
+        Map<String, Object> stats = new HashMap<>();
 
-        // 1. Vérifier si une demande a déjà été soumise
-        boolean hasDemande = demandeRepository.existsByImportateurIdAndProduitIdAndStatusIn(
-                importateurId,
-                productId,
-                List.of(DemandeStatus.SOUMISE, DemandeStatus.EN_COURS_VALIDATION, DemandeStatus.VALIDEE)
-        );
+        try {
+            // 1. Récupérer toutes les demandes de l'importateur
+            List<DemandeEnregistrement> demandes = demandeRepository.findByImportateurId(importateurId);
 
-        if (hasDemande) {
-            log.info("Produit {}: DEMANDE_SOUMISE", productId);
-            return "DEMANDE_SOUMISE";
+            // 2. Calculer le volume mensuel (dernier mois)
+            LocalDateTime unMoisAvant = LocalDateTime.now().minusMonths(1);
+            BigDecimal volumeMensuel = demandes.stream()
+                    .filter(d -> d.getSubmittedAt() != null && d.getSubmittedAt().isAfter(unMoisAvant))
+                    .map(DemandeEnregistrement::getPaymentAmount)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            stats.put("volumeMensuel", volumeMensuel);
+
+            // 3. Calculer le score de performance (taux de validation)
+            long totalDemandes = demandes.size();
+            long demandesValidees = demandes.stream()
+                    .filter(d -> d.getStatus() == DemandeStatus.VALIDEE)
+                    .count();
+
+            int performanceScore = totalDemandes > 0 ? (int) ((demandesValidees * 100) / totalDemandes) : 0;
+            stats.put("performanceScore", performanceScore);
+
+            // 4. Volume par catégorie de produit
+            Map<String, BigDecimal> volumeParCategorie = new HashMap<>();
+            Map<String, Integer> countParCategorie = new HashMap<>();
+
+            for (DemandeEnregistrement demande : demandes) {
+                List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+                for (DemandeProduit dp : demandeProduits) {
+                    Product product = dp.getProduit();
+                    String category = product.getProductType();
+                    if (category == null) category = "AUTRE";
+
+                    BigDecimal amount = demande.getPaymentAmount() != null ? demande.getPaymentAmount() : BigDecimal.ZERO;
+                    volumeParCategorie.merge(category, amount, BigDecimal::add);
+                    countParCategorie.merge(category, 1, Integer::sum);
+                }
+            }
+
+            // Calculer les pourcentages
+            BigDecimal totalVolume = volumeParCategorie.values().stream()
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            List<Map<String, Object>> volumeParCategorieList = new ArrayList<>();
+            for (Map.Entry<String, BigDecimal> entry : volumeParCategorie.entrySet()) {
+                Map<String, Object> cat = new HashMap<>();
+                cat.put("name", getCategoryName(entry.getKey()));
+                int percentage = totalVolume.compareTo(BigDecimal.ZERO) > 0 ?
+                        entry.getValue().multiply(BigDecimal.valueOf(100)).divide(totalVolume, 0, java.math.RoundingMode.HALF_UP).intValue() : 0;
+                cat.put("value", percentage);
+                volumeParCategorieList.add(cat);
+            }
+
+            // Trier par valeur décroissante
+            volumeParCategorieList.sort((a, b) -> ((Integer) b.get("value")).compareTo((Integer) a.get("value")));
+            stats.put("volumeParCategorie", volumeParCategorieList);
+
+            // 5. Volume par pays d'origine
+            Map<String, BigDecimal> volumeParPays = new HashMap<>();
+            for (DemandeEnregistrement demande : demandes) {
+                List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+                for (DemandeProduit dp : demandeProduits) {
+                    Product product = dp.getProduit();
+                    String country = product.getOriginCountry();
+                    if (country != null && !country.isEmpty()) {
+                        BigDecimal amount = demande.getPaymentAmount() != null ? demande.getPaymentAmount() : BigDecimal.ZERO;
+                        volumeParPays.merge(country, amount, BigDecimal::add);
+                    }
+                }
+            }
+
+            List<Map<String, Object>> volumeParPaysList = new ArrayList<>();
+            for (Map.Entry<String, BigDecimal> entry : volumeParPays.entrySet()) {
+                Map<String, Object> pays = new HashMap<>();
+                pays.put("name", entry.getKey());
+                pays.put("value", entry.getValue());
+                volumeParPaysList.add(pays);
+            }
+
+            // Trier par volume décroissant et prendre top 4
+            volumeParPaysList.sort((a, b) -> ((BigDecimal) b.get("value")).compareTo((BigDecimal) a.get("value")));
+            stats.put("volumeParPays", volumeParPaysList.stream().limit(4).collect(Collectors.toList()));
+
+            // 6. Volume hebdomadaire
+            List<Map<String, Object>> volumeHebdomadaire = new ArrayList<>();
+            String[] jours = {"Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"};
+            LocalDateTime now = LocalDateTime.now();
+
+            for (int i = 6; i >= 0; i--) {
+                LocalDateTime jour = now.minusDays(i);
+                String jourNom = jours[jour.getDayOfWeek().getValue() - 1];
+
+                BigDecimal volumeJour = demandes.stream()
+                        .filter(d -> d.getSubmittedAt() != null &&
+                                d.getSubmittedAt().toLocalDate().equals(jour.toLocalDate()))
+                        .map(DemandeEnregistrement::getPaymentAmount)
+                        .filter(Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                Map<String, Object> jourData = new HashMap<>();
+                jourData.put("name", jourNom);
+                jourData.put("volume", volumeJour);
+                volumeHebdomadaire.add(jourData);
+            }
+
+            stats.put("volumeHebdomadaire", volumeHebdomadaire);
+
+            // 7. Top partenaire message
+            if (!volumeParPaysList.isEmpty()) {
+                Map<String, Object> topPays = volumeParPaysList.get(0);
+                String topCountry = (String) topPays.get("name");
+
+                // Déterminer la catégorie principale du top pays
+                String mainCategory = "produits";
+                for (DemandeEnregistrement demande : demandes) {
+                    List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+                    for (DemandeProduit dp : demandeProduits) {
+                        Product product = dp.getProduit();
+                        if (topCountry.equals(product.getOriginCountry())) {
+                            mainCategory = getCategoryName(product.getProductType());
+                            break;
+                        }
+                    }
+                }
+
+                stats.put("topPartenaire", topCountry);
+                stats.put("topPartenaireMessage", String.format(
+                        "%s reste le partenaire principal pour vos importations de %s.",
+                        topCountry, mainCategory.toLowerCase()
+                ));
+            } else {
+                stats.put("topPartenaire", "Aucun");
+                stats.put("topPartenaireMessage", "Aucune importation enregistrée pour le moment.");
+            }
+
+        } catch (Exception e) {
+            log.error("Erreur lors du calcul des statistiques: {}", e.getMessage(), e);
+            throw new RuntimeException("Erreur lors du calcul des statistiques", e);
         }
 
-        // 2. Vérifier si l'exportateur a accepté la notification
-        boolean isAccepted = notificationRepository.existsBySenderIdAndTargetEntityIdAndActionAndStatus(
-                importateurId,
-                productId,
-                NotificationAction.ACCEPT,
-                NotificationStatus.LU
-        );
+        return stats;
+    }
 
-        if (isAccepted) {
-            log.info("Produit {}: ACCEPTE", productId);
-            return "ACCEPTE";
+    @Override
+    public byte[] generateRapportPDF(Long importateurId) {
+        log.info("Génération du rapport PDF pour importateur ID: {}", importateurId);
+
+        try {
+            // Récupérer les données
+            Map<String, Object> stats = getDashboardStats(importateurId);
+            List<DemandeEnregistrement> demandes = demandeRepository.findByImportateurId(importateurId);
+            ImportateurTunisien importateur = importateurRepository.findById(importateurId).orElse(null);
+
+            // Créer un document PDF avec iText
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            PdfWriter writer = new PdfWriter(out);
+            PdfDocument pdfDoc = new PdfDocument(writer);
+            Document document = new Document(pdfDoc, PageSize.A4);
+
+            PdfFont font = PdfFontFactory.createFont("Helvetica");
+            PdfFont boldFont = PdfFontFactory.createFont("Helvetica-Bold");
+
+
+
+            // En-tête
+            document.add(new Paragraph("RAPPORT D'IMPORTATION")
+                    .setFont(boldFont)
+                    .setFontSize(18)
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setMarginBottom(20));
+
+            document.add(new Paragraph("Généré le: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")))
+                    .setFont(font)
+                    .setFontSize(10)
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setMarginBottom(30));
+
+            // Informations importateur
+            if (importateur != null) {
+                document.add(new Paragraph("INFORMATIONS IMPORTATEUR")
+                        .setFont(boldFont)
+                        .setFontSize(14)
+                        .setMarginBottom(10));
+
+                document.add(new Paragraph("Raison Sociale: " + (importateur.getRaisonSociale() != null ? importateur.getRaisonSociale() : "N/A"))
+                        .setFont(font)
+                        .setFontSize(11)
+                        .setMarginBottom(5));
+
+                document.add(new Paragraph("Email: " + importateur.getEmail())
+                        .setFont(font)
+                        .setFontSize(11)
+                        .setMarginBottom(5));
+
+                document.add(new Paragraph("Téléphone: " + (importateur.getTelephone() != null ? importateur.getTelephone() : "N/A"))
+                        .setFont(font)
+                        .setFontSize(11)
+                        .setMarginBottom(20));
+            }
+
+            // Statistiques
+            document.add(new Paragraph("STATISTIQUES GLOBALES")
+                    .setFont(boldFont)
+                    .setFontSize(14)
+                    .setMarginBottom(10));
+
+            // Créer un tableau pour les stats
+            Table statsTable = new Table(2);
+            statsTable.addCell(new Cell().add(new Paragraph("Volume Mensuel").setFont(boldFont)));
+            statsTable.addCell(new Cell().add(new Paragraph(stats.get("volumeMensuel") + " TND").setFont(font)));
+            statsTable.addCell(new Cell().add(new Paragraph("Score Performance").setFont(boldFont)));
+            statsTable.addCell(new Cell().add(new Paragraph(stats.get("performanceScore") + "%").setFont(font)));
+
+            document.add(statsTable);
+            document.add(new Paragraph(" "));
+
+            // Liste des demandes
+            document.add(new Paragraph("LISTE DES DEMANDES")
+                    .setFont(boldFont)
+                    .setFontSize(14)
+                    .setMarginBottom(10));
+
+            // Créer un tableau pour les demandes
+            Table table = new Table(5);
+            table.addCell(new Cell().add(new Paragraph("Référence").setFont(boldFont)));
+            table.addCell(new Cell().add(new Paragraph("Date").setFont(boldFont)));
+            table.addCell(new Cell().add(new Paragraph("Montant").setFont(boldFont)));
+            table.addCell(new Cell().add(new Paragraph("Statut").setFont(boldFont)));
+            table.addCell(new Cell().add(new Paragraph("Pays Origine").setFont(boldFont)));
+
+            for (DemandeEnregistrement demande : demandes) {
+                List<DemandeProduit> demandeProduits = demandeProduitRepository.findByDemandeId(demande.getId());
+                String pays = demandeProduits.isEmpty() ? "N/A" :
+                        demandeProduits.get(0).getProduit().getOriginCountry();
+
+                table.addCell(new Cell().add(new Paragraph(demande.getReference() != null ? demande.getReference() : "N/A").setFont(font)));
+                table.addCell(new Cell().add(new Paragraph(demande.getSubmittedAt() != null ?
+                        demande.getSubmittedAt().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) : "N/A").setFont(font)));
+                table.addCell(new Cell().add(new Paragraph(demande.getPaymentAmount() != null ?
+                        demande.getPaymentAmount().toString() + " TND" : "0 TND").setFont(font)));
+                table.addCell(new Cell().add(new Paragraph(demande.getStatus() != null ?
+                        demande.getStatus().toString() : "N/A").setFont(font)));
+                table.addCell(new Cell().add(new Paragraph(pays).setFont(font)));
+            }
+
+            document.add(table);
+
+            // Pied de page
+            document.add(new Paragraph(" ")
+                    .setMarginTop(30));
+            document.add(new Paragraph("Ce rapport est généré automatiquement. Pour toute question, veuillez contacter le support.")
+                    .setFont(font)
+                    .setFontSize(9)
+                    .setTextAlignment(TextAlignment.CENTER));
+
+            // Fermer le document
+            document.close();
+
+            byte[] pdfBytes = out.toByteArray();
+            log.info("PDF généré avec succès, taille: {} bytes", pdfBytes.length);
+
+            return pdfBytes;
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la génération du PDF: {}", e.getMessage(), e);
+            throw new RuntimeException("Erreur lors de la génération du rapport PDF", e);
         }
+    }
 
-        // 3. Vérifier si une notification est en attente
-        boolean isPending = notificationRepository.existsBySenderIdAndTargetEntityIdAndActionAndStatus(
-                importateurId,
-                productId,
-                NotificationAction.PENDING,
-                NotificationStatus.NON_LU
-        );
-
-        if (isPending) {
-            log.info("Produit {}: EN_ATTENTE", productId);
-            return "EN_ATTENTE";
+    private String getCategoryName(String productType) {
+        if (productType == null) return "Autre";
+        switch (productType.toLowerCase()) {
+            case "alimentaire": return "Alimentaire";
+            case "industriel": return "Industriel";
+            case "textile": return "Textile";
+            case "electronique": return "Électronique";
+            case "chimique": return "Chimique";
+            default: return "Autre";
         }
-
-        log.info("Produit {}: AUCUNE", productId);
-        return "AUCUNE";
-    }*/
+    }
 }

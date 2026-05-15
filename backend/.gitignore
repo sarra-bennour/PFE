@@ -47,7 +47,7 @@ application*.properties
 # Dossier de configuration
 /src/main/java/com/tunisia/commerce/config/
 /src/main/resources/application.properties
-
+/src/main/resources/certificates/
 # Dossier de upload
 /uploads/
 

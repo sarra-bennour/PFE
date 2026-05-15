@@ -13,6 +13,7 @@ import com.tunisia.commerce.exception.ImportateurException;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.ImportateurRepository;
 import com.tunisia.commerce.service.ImportateurService;
+import com.tunisia.commerce.service.RapportPDFService;
 import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.DemandeImportationService;
 import com.tunisia.commerce.config.JwtUtil;
@@ -39,6 +40,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +62,7 @@ public class ImportateurController {
     private final ImportateurRepository importateurRepository;
     private final DocumentRepository documentRepository;
     private final AuditService auditService;
-    private final SecureStorageService secureStorageService;
+    private final RapportPDFService rapportPDFService;
 
 
 
@@ -802,6 +805,48 @@ public class ImportateurController {
         }
     }
 
+    // ==================== ENDPOINTS POUR LE DASHBOARD ====================
+
+    @Operation(
+            summary = "Statistiques du dashboard importateur",
+            description = "Récupère toutes les statistiques pour le dashboard"
+    )
+    @GetMapping("/dashboard/stats")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<?> getDashboardStats(@RequestHeader("Authorization") String authHeader) {
+        log.info("========== RÉCUPÉRATION STATISTIQUES DASHBOARD ==========");
+
+        try {
+            ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+            Map<String, Object> stats = importateurService.getDashboardStats(importateur.getId());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", stats);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de la récupération des statistiques: {}", e.getMessage());
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
+    @GetMapping("/dashboard/rapport")
+    @PreAuthorize("hasRole('IMPORTATEUR')")
+    public ResponseEntity<byte[]> generateRapport(@RequestHeader("Authorization") String authHeader) {
+        ImportateurTunisien importateur = getImportateurFromToken(authHeader);
+        byte[] pdf = rapportPDFService.generateRapportPDF(importateur.getId());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("inline", "rapport_importation.pdf");
+
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+    }
     // ==================== MÉTHODES PRIVÉES ====================
 
     /**

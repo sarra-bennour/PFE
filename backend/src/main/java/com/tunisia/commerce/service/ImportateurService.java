@@ -4,6 +4,7 @@ import com.tunisia.commerce.dto.importateur.ImportateurStatutsDTO;
 import com.tunisia.commerce.dto.user.UserDTO;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ImportateurService {
 
@@ -14,40 +15,6 @@ public interface ImportateurService {
      */
     List<UserDTO> rechercherExportateursValides(String searchTerm);
 
-    /**
-     * Recherche des exportateurs validés par pays d'origine
-     * @param pays pays d'origine
-     * @return liste des exportateurs validés du pays spécifié
-     */
-    //List<UserDTO> rechercherParPays(String pays);
-
-    /**
-     * Recherche des exportateurs validés par raison sociale
-     * @param raisonSociale nom de l'entreprise
-     * @return liste des exportateurs validés correspondant au nom
-     */
-    //List<UserDTO> rechercherParRaisonSociale(String raisonSociale);
-
-    /**
-     * Recherche des exportateurs validés par produit
-     * @param produit nom du produit
-     * @return liste des exportateurs validés proposant ce produit
-     */
-    //List<UserDTO> rechercherParProduit(String produit);
-
-    /**
-     * Recherche des exportateurs validés par code NGP
-     * @param codeNGP code NGP du produit
-     * @return liste des exportateurs validés proposant des produits avec ce code NGP
-     */
-    //List<UserDTO> rechercherParCodeNGP(String codeNGP);
-
-    /**
-     * Récupère les détails d'un exportateur validé par son ID
-     * @param exportateurId ID de l'exportateur
-     * @return détails de l'exportateur
-     */
-    //UserDTO getExportateurValideById(Long exportateurId);
 
     /**
      * Liste tous les exportateurs validés
@@ -60,9 +27,7 @@ public interface ImportateurService {
      */
     ImportateurStatutsDTO getProduitsStatuts(Long importateurId);
 
-    /**
-     * Vérifie le statut d'un produit spécifique
-     */
-    //String getProduitStatut(Long importateurId, Long productId);
+    byte[] generateRapportPDF(Long importateurId);
+    Map<String, Object> getDashboardStats(Long importateurId);
 
 }

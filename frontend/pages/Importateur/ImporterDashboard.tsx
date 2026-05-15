@@ -1,36 +1,124 @@
-
-import React from 'react';
+// ImporterDashboard.tsx
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie } from 'recharts';
+import axios from 'axios';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
+
+interface DashboardStats {
+  volumeMensuel: number;
+  performanceScore: number;
+  volumeParCategorie: Array<{ name: string; value: number }>;
+  volumeParPays: Array<{ name: string; value: number }>;
+  volumeHebdomadaire: Array<{ name: string; volume: number }>;
+  topPartenaire: string;
+  topPartenaireMessage: string;
+}
 
 const ImporterDashboard: React.FC = () => {
   const { t } = useTranslation();
+  const [stats, setStats] = useState<DashboardStats>({
+    volumeMensuel: 0,
+    performanceScore: 0,
+    volumeParCategorie: [],
+    volumeParPays: [],
+    volumeHebdomadaire: [],
+    topPartenaire: '',
+    topPartenaireMessage: ''
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const chartData = [
-    { name: 'Lun', volume: 120 },
-    { name: 'Mar', volume: 150 },
-    { name: 'Mer', volume: 80 },
-    { name: 'Jeu', volume: 210 },
-    { name: 'Ven', volume: 190 },
-    { name: 'Sam', volume: 50 },
-    { name: 'Dim', volume: 30 },
-  ];
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
 
-  const categoryData = [
-    { name: 'Alimentaire', value: 45 },
-    { name: 'Textile', value: 25 },
-    { name: 'Tech', value: 20 },
-    { name: 'Autre', value: 10 },
-  ];
+  const fetchDashboardStats = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/importateur/dashboard/stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.data.success) {
+        setStats(response.data.data);
+      }
+      setError(null);
+    } catch (err) {
+      console.error('Erreur lors du chargement des statistiques:', err);
+      setError('Impossible de charger les statistiques');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const countryData = [
-    { name: 'Turquie', value: 350 },
-    { name: 'Chine', value: 280 },
-    { name: 'Italie', value: 210 },
-    { name: 'France', value: 150 },
-  ];
+  const generateRapport = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_BASE_URL}/importateur/dashboard/rapport`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `rapport_importations_${new Date().toISOString().split('T')[0]}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('Erreur lors de la génération du rapport:', err);
+      alert('Erreur lors de la génération du rapport');
+    }
+  };
 
-  const COLORS = ['#E70013', '#334155', '#475569', '#94a3b8'];
+  // ✅ Formateur sécurisé pour les valeurs (gère undefined)
+  const formatVolume = (value: number | undefined) => {
+    if (value === undefined || value === null) return ['0 TND', 'Volume'];
+    return [`${value.toLocaleString()} TND`, 'Volume'];
+  };
+
+  // ✅ Formateur pour les pourcentages
+  const formatPercentage = (value: number | undefined) => {
+    if (value === undefined || value === null) return '0%';
+    return `${value}%`;
+  };
+
+  // ✅ Formateur pour l'étiquette du PieChart
+  const renderPieLabel = (entry: any) => {
+    const percent = entry.percent;
+    if (percent === undefined || percent === null) return entry.name;
+    return `${entry.name} ${(percent * 100).toFixed(0)}%`;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-tunisia-red border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-500 font-bold">Chargement des statistiques...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-3xl p-8 text-center">
+        <i className="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+        <p className="text-red-600 font-bold">{error}</p>
+        <button 
+          onClick={fetchDashboardStats}
+          className="mt-4 px-6 py-2 bg-red-500 text-white rounded-xl text-sm font-bold"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in-scale">
@@ -43,7 +131,7 @@ const ImporterDashboard: React.FC = () => {
             </div>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
+                <AreaChart data={stats.volumeHebdomadaire}>
                   <defs>
                     <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#E70013" stopOpacity={0.15}/>
@@ -56,6 +144,7 @@ const ImporterDashboard: React.FC = () => {
                   <Tooltip 
                     contentStyle={{borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)'}} 
                     labelStyle={{fontWeight: 900, textTransform: 'uppercase', fontSize: '10px'}}
+                    formatter={formatVolume}
                   />
                   <Area type="monotone" dataKey="volume" stroke="#E70013" strokeWidth={4} fillOpacity={1} fill="url(#colorVolume)" />
                 </AreaChart>
@@ -73,15 +162,18 @@ const ImporterDashboard: React.FC = () => {
              <div className="space-y-10">
                 <div>
                   <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Volume Mensuel</span>
-                  <div className="text-4xl font-black italic tracking-tighter">1.4M <span className="text-slate-500 text-sm">TND</span></div>
+                  <div className="text-4xl font-black italic tracking-tighter">{stats.volumeMensuel.toLocaleString()} <span className="text-slate-500 text-sm">TND</span></div>
                 </div>
                 <div>
                   <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Accord Préalable</span>
-                  <div className="text-4xl font-black italic tracking-tighter text-emerald-500">92%</div>
+                  <div className="text-4xl font-black italic tracking-tighter text-emerald-500">{stats.performanceScore}%</div>
                 </div>
              </div>
            </div>
-           <button className="w-full py-5 bg-white/5 hover:bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all mt-8 border border-white/5">
+           <button 
+             onClick={generateRapport}
+             className="w-full py-5 bg-white/5 hover:bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all mt-8 border border-white/5"
+           >
              Générer Rapport Analytique
            </button>
         </div>
@@ -96,25 +188,27 @@ const ImporterDashboard: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={categoryData}
+                      data={stats.volumeParCategorie}
                       innerRadius={60}
                       outerRadius={80}
                       paddingAngle={5}
                       dataKey="value"
+                      label={renderPieLabel}
+                      labelLine={false}
                     >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      {stats.volumeParCategorie.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={['#E70013', '#334155', '#475569', '#94a3b8'][index % 4]} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} />
+                    <Tooltip formatter={formatPercentage} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="w-full space-y-4">
-                {categoryData.map((item, idx) => (
+                {stats.volumeParCategorie.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[idx % COLORS.length]}}></div>
+                      <div className="w-2 h-2 rounded-full" style={{backgroundColor: ['#E70013', '#334155', '#475569', '#94a3b8'][idx % 4]}}></div>
                       <span className="text-xs font-bold text-slate-600 uppercase">{item.name}</span>
                     </div>
                     <span className="text-xs font-black text-slate-900">{item.value}%</span>
@@ -129,15 +223,16 @@ const ImporterDashboard: React.FC = () => {
            <h3 className="text-xl font-black text-slate-900 uppercase italic tracking-tighter mb-10">{t('origin_country')} (Volume)</h3>
            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={countryData} layout="vertical">
+                <BarChart data={stats.volumeParPays} layout="vertical">
                   <XAxis type="number" hide />
                   <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900, fill: '#64748b'}} width={80} />
                   <Tooltip 
                     cursor={{fill: 'transparent'}}
+                    formatter={formatVolume}
                     contentStyle={{borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)'}} 
                   />
                   <Bar dataKey="value" radius={[0, 10, 10, 0]}>
-                    {countryData.map((entry, index) => (
+                    {stats.volumeParPays.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={index === 0 ? '#E70013' : '#cbd5e1'} />
                     ))}
                   </Bar>
@@ -145,7 +240,7 @@ const ImporterDashboard: React.FC = () => {
               </ResponsiveContainer>
            </div>
            <p className="mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center italic">
-             La Turquie reste le partenaire principal pour vos importations de textile.
+             {stats.topPartenaireMessage}
            </p>
         </div>
       </div>

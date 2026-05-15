@@ -53,7 +53,7 @@ public class Document {
     private LocalDateTime validatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "exportateur_id", nullable = false)
+    @JoinColumn(name = "exportateur_id", nullable = true)
     @JsonIgnore
     @ToString.Exclude
     private ExportateurEtranger exportateur;

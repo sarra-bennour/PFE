@@ -913,73 +913,80 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
               </div>
 
               {activeRightTab === 'MANUAL' ? (
-                <div className="space-y-4">
-                  {filteredDocuments.map((doc) => (
-                    <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400">
-                            <i className="fas fa-file-pdf text-lg"></i>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs font-black text-slate-800 uppercase tracking-tight italic">{doc.name}</span>
-                            <button 
-                              onClick={() => handleViewDocument(doc)}
-                              className="text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline text-left"
-                            >
-                              <i className="fas fa-eye mr-1"></i> Consulter le document
-                            </button>
-                          </div>
+              <div className="space-y-4">
+                {filteredDocuments.map((doc) => (
+                  <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                    {/* Changement : flex-wrap et gestion responsive */}
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      {/* Partie gauche : icône + infos document */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                          <i className="fas fa-file-pdf text-lg"></i>
                         </div>
-                        <div className="flex gap-2">
-                          {readOnly ? (
-                            <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${
-                              doc.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-500 border border-emerald-100' :
-                              doc.status === 'REJECTED' ? 'bg-red-50 text-red-500 border border-red-100' :
-                              'bg-amber-50 text-amber-500 border border-amber-100'
-                            }`}>
-                              {doc.status === 'ACCEPTED' ? 'VALIDÉ' : doc.status === 'REJECTED' ? 'REJETÉ' : 'EN ATTENTE'}
-                            </div>
-                          ) : (
-                            <>
-                              <button 
-                                onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
-                                disabled={loading || isSubmitting.current}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all 
-                                  ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                              >
-                                <i className="fas fa-check"></i>
-                              </button>
-                              <button 
-                                onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
-                                disabled={loading || isSubmitting.current}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                              >
-                                <i className="fas fa-question"></i>
-                              </button>
-                              <button 
-                                onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
-                                disabled={loading || isSubmitting.current}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
-                              >
-                                <i className="fas fa-times"></i>
-                              </button>
-                            </>
-                          )}
+                        <div className="flex flex-col min-w-0 flex-1">
+                          {/* Limitation du nom du document avec truncation */}
+                          <span className="text-xs font-black text-slate-800 uppercase tracking-tight italic truncate max-w-[250px] md:max-w-[300px] lg:max-w-[400px]" title={doc.name}>
+                            {doc.name}
+                          </span>
+                          <button 
+                            onClick={() => handleViewDocument(doc)}
+                            className="text-[8px] font-black text-tunisia-red uppercase tracking-widest hover:underline text-left w-fit"
+                          >
+                            <i className="fas fa-eye mr-1"></i> Consulter le document
+                          </button>
                         </div>
                       </div>
-
-                      {(doc.status === 'REJECTED' || doc.status === 'NOT_SURE') && !readOnly && (
-                        <textarea 
-                          placeholder="Pourquoi ? (Commentaire obligatoire)"
-                          value={doc.comment || ''}
-                          onChange={(e) => handleUpdateDocStatus(doc.id, doc.status, e.target.value)}
-                          disabled={loading || isSubmitting.current}
-                          className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all h-16 resize-none disabled:opacity-50"
-                        ></textarea>
-                      )}
+                      
+                      {/* Partie droite : boutons d'action */}
+                      <div className="flex gap-2 shrink-0">
+                        {readOnly ? (
+                          <div className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${
+                            doc.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-500 border border-emerald-100' :
+                            doc.status === 'REJECTED' ? 'bg-red-50 text-red-500 border border-red-100' :
+                            'bg-amber-50 text-amber-500 border border-amber-100'
+                          }`}>
+                            {doc.status === 'ACCEPTED' ? 'VALIDÉ' : doc.status === 'REJECTED' ? 'REJETÉ' : 'EN ATTENTE'}
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleUpdateDocStatus(doc.id, 'ACCEPTED')}
+                              disabled={loading || isSubmitting.current}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all 
+                                ${doc.status === 'ACCEPTED' ? 'bg-emerald-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-emerald-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <i className="fas fa-check"></i>
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateDocStatus(doc.id, 'NOT_SURE')}
+                              disabled={loading || isSubmitting.current}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'NOT_SURE' ? 'bg-amber-500 text-white' : 'bg-slate-50 text-slate-300 hover:text-amber-500'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <i className="fas fa-question"></i>
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateDocStatus(doc.id, 'REJECTED')}
+                              disabled={loading || isSubmitting.current}
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${doc.status === 'REJECTED' ? 'bg-tunisia-red text-white' : 'bg-slate-50 text-slate-300 hover:text-tunisia-red'} disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
+
+                    {(doc.status === 'REJECTED' || doc.status === 'NOT_SURE') && !readOnly && (
+                      <textarea 
+                        placeholder="Pourquoi ? (Commentaire obligatoire)"
+                        value={doc.comment || ''}
+                        onChange={(e) => handleUpdateDocStatus(doc.id, doc.status, e.target.value)}
+                        disabled={loading || isSubmitting.current}
+                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold outline-none focus:border-tunisia-red transition-all h-16 resize-none disabled:opacity-50"
+                      ></textarea>
+                    )}
+                  </div>
+                ))}
 
                   {hiddenDocsCount > 0 && !readOnly && (
                     <div className="p-3 bg-amber-50 rounded-xl text-center border border-amber-100">
@@ -996,16 +1003,18 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                     const analysis = docAnalyses[doc.id];
                     return (
                       <div key={doc.id} className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm">
-                        <div className="flex justify-between items-center mb-2">
-                          <div className="flex items-center gap-3">
-                            <i className="fas fa-microchip text-slate-400"></i>
-                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{doc.name}</span>
+                        <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <i className="fas fa-microchip text-slate-400 shrink-0"></i>
+                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest truncate max-w-[250px] md:max-w-[350px]" title={doc.name}>
+                              {doc.name}
+                            </span>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 shrink-0">
                             {!analysis && !readOnly && (
                               <button 
                                 onClick={() => validateDocWithAI(doc)}
-                                className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all"
+                                className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-tunisia-red transition-all whitespace-nowrap"
                               >
                                 <i className="fas fa-search mr-1"></i> Scanner
                               </button>
@@ -1019,7 +1028,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
                                     return newAnalyses;
                                   });
                                 }}
-                                className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all"
+                                className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all shrink-0"
                                 title="Fermer l'analyse"
                               >
                                 <i className="fas fa-times text-xs"></i>

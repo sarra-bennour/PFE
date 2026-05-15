@@ -1,10 +1,11 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
 
 const Home: React.FC = () => {
   const { t } = useTranslation();
+  const { user, isAuthenticated } = useAuth();
   const [isVisible, setIsVisible] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -31,6 +32,125 @@ const Home: React.FC = () => {
     { name: t('cni'), role: 'Support Technique', icon: 'fa-server' },
   ];
 
+  // Fonction pour rendre les boutons selon le rôle
+  const renderHeroButtons = () => {
+    if (!isAuthenticated || !user) {
+      return (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+          <Link 
+            to="/signup/exporter" 
+            className="px-10 py-5 bg-tunisia-red text-white rounded-full font-black uppercase tracking-[0.2em] transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-red-600/30 text-[9px]"
+          >
+            {t('register_now')}
+          </Link>
+          <Link 
+            to="/importer" 
+            className="px-10 py-5 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-full font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all hover:scale-105 active:scale-95 text-[9px]"
+          >
+            {t('declare_goods')}
+          </Link>
+        </div>
+      );
+    }
+
+    const userRole = user.role;
+    
+    if (userRole === 'IMPORTATEUR') {
+      return (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+          <Link 
+            to="/importer" 
+            className="px-10 py-5 bg-tunisia-red text-white rounded-full font-black uppercase tracking-[0.2em] transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-red-600/30 text-[9px]"
+          >
+            espace importateur
+          </Link>
+          <Link 
+            to="/products" 
+            className="px-10 py-5 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-full font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all hover:scale-105 active:scale-95 text-[9px]"
+          >
+            gérer mes produits
+          </Link>
+        </div>
+      );
+    }
+    
+    if (userRole === 'EXPORTATEUR') {
+      return (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+          <Link 
+            to="/exportateur" 
+            className="px-10 py-5 bg-tunisia-red text-white rounded-full font-black uppercase tracking-[0.2em] transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-red-600/30 text-[9px]"
+          >
+            Espace Exportateur
+          </Link>
+          <Link 
+            to="/products" 
+            className="px-10 py-5 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-full font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all hover:scale-105 active:scale-95 text-[9px]"
+          >
+            Nouvelle déclaration
+          </Link>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+        <Link 
+          to="/dashboard" 
+          className="px-10 py-5 bg-tunisia-red text-white rounded-full font-black uppercase tracking-[0.2em] transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-red-600/30 text-[9px]"
+        >
+          Tableau de Bord
+        </Link>
+      </div>
+    );
+  };
+
+  // Fonction pour rendre les boutons CTA selon le rôle
+  const renderCTAButtons = () => {
+    if (!isAuthenticated || !user) {
+      return (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+          <Link to="/login" className="px-12 py-5 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-slate-50 transition-all text-[9px]">
+            Se connecter
+          </Link>
+          <Link to="/signup/exporter" className="px-12 py-5 bg-white/5 border border-white/10 text-white rounded-full font-black uppercase tracking-widest hover:bg-white/10 transition-all text-[9px]">
+            Créer un compte
+          </Link>
+        </div>
+      );
+    }
+
+    const userRole = user.role;
+    
+    if (userRole === 'IMPORTATEUR') {
+      return (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+          <Link to="/importer" className="px-12 py-5 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-slate-50 transition-all text-[9px]">
+            Aller à mon espace importateur
+          </Link>
+        </div>
+      );
+    }
+    
+    if (userRole === 'EXPORTATEUR') {
+      return (
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+          <Link to="/exportateur" className="px-12 py-5 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-slate-50 transition-all text-[9px]">
+            Aller à mon espace exportateur
+          </Link>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
+        <Link to="/dashboard" className="px-12 py-5 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-slate-50 transition-all text-[9px]">
+          Tableau de Bord
+        </Link>
+      </div>
+    );
+  };
+
   return (
     <div className={`transition-opacity duration-1000 ${isVisible ? 'opacity-100' : 'opacity-0'} space-y-24 pb-32`}>
       
@@ -49,11 +169,9 @@ const Home: React.FC = () => {
              onMouseOver={(e) => (e.currentTarget.controls = true)}
              onMouseOut={(e) => (e.currentTarget.controls = false)}
            >
-             {/* New video source matching the user's screenshots of a busy container port */}
              <source src="https://assets.mixkit.co/videos/preview/mixkit-busy-port-terminal-with-containers-and-cranes-4376-large.mp4" type="video/mp4" />
            </video>
            
-           {/* Protective Overlays */}
            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/20 to-transparent pointer-events-none"></div>
            <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[0.5px] pointer-events-none"></div>
         </div>
@@ -63,7 +181,7 @@ const Home: React.FC = () => {
             
             <div className="flex flex-col items-center gap-4 mb-2">
               <div className="w-12 h-12 bg-white/10 backdrop-blur-2xl rounded-xl border border-white/20 p-2 shadow-2xl">
-                 <img src="https://upload.wikimedia.org/wikipedia/commons/c/ce/Coat_of_arms_of_Tunisia.svg" alt="Tunisia Arms" className="w-full h-full object-contain filter invert" />
+                 <img src="../../images/Coat_of_arms_of_Tunisia.svg.png" alt="Tunisia Arms" className="w-full h-full object-contain" />
               </div>
               <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-xl border border-white/10 shadow-xl">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
@@ -83,29 +201,15 @@ const Home: React.FC = () => {
               {t('hero_subtitle')}
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
-              <Link 
-                to="/signup/exporter" 
-                className="px-10 py-5 bg-tunisia-red text-white rounded-full font-black uppercase tracking-[0.2em] transition-all hover:scale-105 active:scale-95 shadow-2xl shadow-red-600/30 text-[9px]"
-              >
-                {t('register_now')}
-              </Link>
-              <Link 
-                to="/login" 
-                className="px-10 py-5 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-full font-black uppercase tracking-[0.2em] hover:bg-white/20 transition-all hover:scale-105 active:scale-95 text-[9px]"
-              >
-                {t('declare_goods')}
-              </Link>
-            </div>
+            {renderHeroButtons()}
+          
           </div>
         </div>
 
-        {/* Subtle Horizontal Label */}
         <div className="absolute bottom-8 right-12 hidden md:block pointer-events-none">
            <span className="text-[7px] font-black text-white/30 uppercase tracking-[0.8em] vertical-text">DGCE DIGITAL GATEWAY</span>
         </div>
         
-        {/* Floating Indicator for Video Controls */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[8px] font-black text-white/30 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
            Survoler pour les contrôles vidéo
         </div>
@@ -211,7 +315,6 @@ const Home: React.FC = () => {
               </div>
             ))}
             
-            {/* Call to Action for Institutional Partners */}
             <div className="p-8 rounded-[2.5rem] bg-slate-900 text-white flex flex-col justify-center border border-slate-800 shadow-xl group">
                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-4">Support & Coordination</h4>
                <p className="text-xs font-bold leading-relaxed mb-6">Accédez au portail inter-services pour la gestion des workflows.</p>
@@ -227,19 +330,20 @@ const Home: React.FC = () => {
           <div className="absolute top-0 right-0 w-96 h-96 bg-red-600/10 rounded-full blur-[100px] group-hover:bg-red-600/20 transition-all duration-1000"></div>
           <div className="relative z-10 space-y-10">
             <h2 className="text-4xl md:text-6xl font-black text-white tracking-tighter uppercase italic leading-[1]">
-              Accédez à votre <span className="text-tunisia-red">Espace Opérateur</span>
+              {!isAuthenticated ? "Accédez à votre " : "Retrouvez votre "}
+              <span className="text-tunisia-red">
+                {!isAuthenticated ? "Espace Opérateur" : 
+                 user?.role === 'IMPORTATEUR' ? "Espace Importateur" :
+                 user?.role === 'EXPORTATEUR' ? "Espace Exportateur" : "Tableau de Bord"}
+              </span>
             </h2>
             <p className="text-slate-400 text-sm font-medium max-w-xl mx-auto">
-              Utilisez vos identifiants officiels ou votre Mobile ID pour une connexion sécurisée et immédiate.
+              {!isAuthenticated ? 
+                "Utilisez vos identifiants officiels ou votre Mobile ID pour une connexion sécurisée et immédiate." :
+                "Accédez rapidement à votre espace personnel pour gérer vos demandes."
+              }
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-4">
-              <Link to="/login" className="px-12 py-5 bg-white text-slate-900 rounded-full font-black uppercase tracking-widest shadow-2xl hover:bg-slate-50 transition-all text-[9px]">
-                Se connecter
-              </Link>
-              <Link to="/signup/exporter" className="px-12 py-5 bg-white/5 border border-white/10 text-white rounded-full font-black uppercase tracking-widest hover:bg-white/10 transition-all text-[9px]">
-                Créer un compte
-              </Link>
-            </div>
+            {renderCTAButtons()}
           </div>
         </div>
       </section>
