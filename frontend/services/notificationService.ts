@@ -3,7 +3,7 @@ import { ProductAdditionData } from '../types/ProductAdditionData';
 import { NotificationData } from '../types/NotificationData';
 import { NotificationActionData } from '../types/NotificationActionData';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = '/api';
 
 const getAuthToken = () => {
   return localStorage.getItem('token') || sessionStorage.getItem('token') || '';

@@ -45,7 +45,7 @@ const StripeTransactionHistory: React.FC = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/stripe-payment/all', {
+      const response = await axios.get('/api/stripe-payment/all', {
         headers: { Authorization: `Bearer ${token}` },
         params: { limit: 1000 } // Récupérer plus de données pour la pagination
       });
@@ -65,7 +65,7 @@ const StripeTransactionHistory: React.FC = () => {
   const fetchStatistics = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/stripe-payment/statistics', {
+      const response = await axios.get('/api/stripe-payment/statistics', {
         headers: { Authorization: `Bearer ${token}` }
       });
       

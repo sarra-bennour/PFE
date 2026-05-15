@@ -113,7 +113,7 @@ const filterProductsByInstance = (products: Product[], structureName: string): P
   return products;
 };
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, onDecision, readOnly = false,currentStructureName = ''  }) => {
   const [localRequest, setLocalRequest] = React.useState<ValidationRequest>({ ...request });
@@ -617,7 +617,7 @@ const InstructionModal: React.FC<InstructionModalProps> = ({ request, onClose, o
   
   // 🔥 Assurez-vous que l'URL commence par http
   if (!correctedUrl.startsWith('http')) {
-    correctedUrl = `http://localhost:8080${correctedUrl}`;
+    correctedUrl = `${correctedUrl}`;
   }
   
   console.log('🔍 URL corrigée:', correctedUrl);

@@ -33,7 +33,7 @@ const PredictiveDashboard: React.FC = () => {
     setError(null);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/predictive/dashboard', {
+      const response = await axios.get('/api/predictive/dashboard', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPredictions(response.data);

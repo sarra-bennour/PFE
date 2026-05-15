@@ -68,22 +68,22 @@ const AdminPanel: React.FC = () => {
       const token = localStorage.getItem('token');
       
       // 1. Récupérer les utilisateurs pour compter les actifs
-      const usersResponse = await axios.get('http://localhost:8080/api/admin/users', {
+      const usersResponse = await axios.get('/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       // 2. Récupérer les demandes
-      const demandesResponse = await axios.get('http://localhost:8080/api/admin/all-demandes', {
+      const demandesResponse = await axios.get('/api/admin/all-demandes', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       // 3. Récupérer les exportateurs suspects (risque élevé)
-      const riskResponse = await axios.get('http://localhost:8080/api/risk/exportateurs', {
+      const riskResponse = await axios.get('/api/risk/exportateurs', {
         headers: { Authorization: `Bearer ${token}` }
       }).catch(() => ({ data: [] }));
       
       // 4. Récupérer les transactions Stripe des dernières 24h
-      const transactionsResponse = await axios.get('http://localhost:8080/api/stripe-payment/all', {
+      const transactionsResponse = await axios.get('/api/stripe-payment/all', {
         headers: { Authorization: `Bearer ${token}` },
         params: { limit: 1000 }
       }).catch(() => ({ data: { success: false, transactions: [] } }));
@@ -127,7 +127,7 @@ const AdminPanel: React.FC = () => {
       // Générer les données mensuelles des flux
       const monthlyFluxData = generateMonthlyFluxData(demandesResponse.data.data || []);
       
-      const healthResponse = await axios.get('http://localhost:8080/api/admin/system-health', {
+      const healthResponse = await axios.get('/api/admin/system-health', {
         headers: { Authorization: `Bearer ${token}` }
       }).catch(() => ({ data: null }));
 
@@ -214,7 +214,7 @@ const generateMonthlyFluxData = (demandes: any[]) => {
     try {
       setLoadingUsers(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/admin/users', {
+      const response = await axios.get('/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -254,7 +254,7 @@ const generateMonthlyFluxData = (demandes: any[]) => {
   }, [activeTab]);
 
   // Configuration API
-  const API_URL = 'http://localhost:8080/api/admin/structures';
+  const API_URL = '/api/admin/structures';
 
   const getAuthHeader = () => {
     const token = localStorage.getItem('token');
@@ -389,7 +389,7 @@ const generateMonthlyFluxData = (demandes: any[]) => {
     setSelectedUser(u);
 
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/users/${u.id}/reset-password`, {
+      const response = await fetch(`/api/admin/users/${u.id}/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

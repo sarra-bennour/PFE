@@ -47,7 +47,7 @@ const CaseVerifier: React.FC<CaseVerifierProps> = ({ onVerify, compact = false }
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(
-        `http://localhost:8080/api/douane/verify/${encodeURIComponent(searchRef)}`,
+        `/api/douane/verify/${encodeURIComponent(searchRef)}`,
         {
           headers: { Authorization: `Bearer ${token}` }
         }

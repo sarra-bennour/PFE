@@ -238,7 +238,7 @@ const getDisplayImageUrl = (product: any): string => {
     
     // ✅ Si c'est une URL qui commence par /api (déjà complète)
     if (product.productImage && product.productImage.startsWith('/api')) {
-        const fullUrl = `http://localhost:8080${product.productImage}`;
+        const fullUrl = `${product.productImage}`;
         console.log('✅ URL API détectée (commence par /api)');
         console.log('URL construite:', fullUrl);
         return fullUrl;
@@ -246,7 +246,7 @@ const getDisplayImageUrl = (product: any): string => {
     
     // Si c'est une URL existante qui commence par /uploads
     if (product.productImage && product.productImage.startsWith('/uploads')) {
-        const fullUrl = `http://localhost:8080/api/produits${product.productImage}`;
+        const fullUrl = `/api/produits${product.productImage}`;
         console.log('✅ URL existante (commence par /uploads)');
         console.log('URL construite:', fullUrl);
         return fullUrl;

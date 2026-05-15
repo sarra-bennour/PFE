@@ -81,7 +81,7 @@ const CustomsSpace: React.FC = () => {
                 return;
             }
 
-            const response = await axios.get('http://localhost:8080/api/auth/profile', {
+            const response = await axios.get('/api/auth/profile', {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -125,7 +125,7 @@ const CustomsSpace: React.FC = () => {
                 poste: profileData.poste
             };
 
-            const response = await axios.put('http://localhost:8080/api/auth/update-profile', requestBody, {
+            const response = await axios.put('/api/auth/update-profile', requestBody, {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`

@@ -15,7 +15,7 @@ const RequestArchive: React.FC<RequestArchiveProps> = ({ userRole, onBack }) => 
   const [selectedRequest, setSelectedRequest] = useState<DemandeEnregistrement | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+  const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
   // Charger les demandes archivées
   const fetchArchivedRequests = async () => {

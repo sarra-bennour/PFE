@@ -8,7 +8,7 @@ import PaymentForm from '../../components/PaymentForm';
 import EditDeclarationModal from './EditDeclarationModal';
 import FormAlert from '../../components/FormAlert'; // ✅ AJOUTÉ
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 const DeclarationsList: React.FC = () => {
   const navigate = useNavigate();
@@ -169,9 +169,9 @@ const [showDeleteModal, setShowDeleteModal] = useState<{ id: number; reference: 
     if (!imagePath) return '';
     if (imagePath.startsWith('http')) return imagePath;
     if (imagePath.startsWith('/api')) {
-      return `http://localhost:8080${imagePath}`;
+      return `${imagePath}`;
     }
-    return `http://localhost:8080/api/produits${imagePath}`;
+    return `/api/produits${imagePath}`;
   };
 
   const getStatusStyle = (status: string) => {

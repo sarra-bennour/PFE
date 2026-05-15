@@ -188,7 +188,7 @@ const Profile: React.FC = () => {
       setLoadingProfile(true);
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`http://localhost:8080/api/auth/profile`, {
+        const response = await fetch(`/api/auth/profile`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -235,7 +235,7 @@ const Profile: React.FC = () => {
       if (user?.email && (user.role === 'EXPORTATEUR')) {
         try {
           const token = localStorage.getItem('token');
-          const response = await fetch(`http://localhost:8080/api/auth/2fa/status/${user.email}`, {
+          const response = await fetch(`/api/auth/2fa/status/${user.email}`, {
             headers: {
               'Authorization': `Bearer ${token}`
             }
@@ -264,7 +264,7 @@ const Profile: React.FC = () => {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/auth/deactivation-request/status', {
+      const response = await fetch('/api/auth/deactivation-request/status', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -301,7 +301,7 @@ const Profile: React.FC = () => {
   const fetchAllDocuments = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/exportateur/documents', {
+      const response = await fetch('/api/exportateur/documents', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -330,7 +330,7 @@ const Profile: React.FC = () => {
     setLoadingDossier(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/exportateur/dossier/statut', {
+      const response = await fetch('/api/exportateur/dossier/statut', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -364,7 +364,7 @@ const Profile: React.FC = () => {
   const handlePreviewDocument = async (documentId: number, fileName: string, fileType: string) => {
     try {
       const token = localStorage.getItem('token');
-      const fileUrl = `http://localhost:8080/api/exportateur/documents/${documentId}/file`;
+      const fileUrl = `/api/exportateur/documents/${documentId}/file`;
       
       const response = await fetch(fileUrl, {
         headers: {
@@ -610,7 +610,7 @@ const Profile: React.FC = () => {
         };
       }
 
-      const response = await fetch('http://localhost:8080/api/auth/update-profile', {
+      const response = await fetch('/api/auth/update-profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -684,7 +684,7 @@ const Profile: React.FC = () => {
       const token = localStorage.getItem('token');
       
       if (!user.isTwoFactorEnabled) {
-        const setupResponse = await fetch('http://localhost:8080/api/auth/2fa/setup', {
+        const setupResponse = await fetch('/api/auth/2fa/setup', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -726,7 +726,7 @@ const Profile: React.FC = () => {
       const token = localStorage.getItem('token');
       const cleanCode = code.replace(/\s/g, '');
       
-      const response = await fetch('http://localhost:8080/api/auth/2fa/enable', {
+      const response = await fetch('/api/auth/2fa/enable', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -765,7 +765,7 @@ const Profile: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       
-      const response = await fetch('http://localhost:8080/api/auth/2fa/disable', {
+      const response = await fetch('/api/auth/2fa/disable', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -813,7 +813,7 @@ const Profile: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/auth/deactivation-request', {
+      const response = await fetch('/api/auth/deactivation-request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

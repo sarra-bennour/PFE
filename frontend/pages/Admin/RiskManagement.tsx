@@ -35,7 +35,7 @@ const RiskManagement: React.FC = () => {
     const token = localStorage.getItem('token');
     try {
       // Appel à votre backend Spring Boot
-      const response = await fetch('http://localhost:8080/api/risk/exportateurs', {
+      const response = await fetch('/api/risk/exportateurs', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -57,7 +57,7 @@ const RiskManagement: React.FC = () => {
   const handleAction = async (id: string, action: SuspectExporter['status']) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:8080/api/risk/${id}/action`, {
+      const response = await fetch(`/api/risk/${id}/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +86,7 @@ const suspendUser = async (id: string, userEmail: string) => {
   }
   
   try {
-    const response = await fetch(`http://localhost:8080/api/admin/users/${id}/status`, {
+    const response = await fetch(`/api/admin/users/${id}/status`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

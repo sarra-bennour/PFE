@@ -138,7 +138,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
     setResentLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8080/api/auth/resend-verification', {
+      const response = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -182,7 +182,7 @@ const ExporterSignUp: React.FC<ExporterSignUpProps> = ({
     const fullPhoneNumber = `${currentDialCode}${formData.phone}`;
 
     try {
-      const response = await fetch('http://localhost:8080/api/auth/signup/exporter', {
+      const response = await fetch('/api/auth/signup/exporter', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

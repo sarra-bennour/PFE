@@ -56,7 +56,7 @@ const ExporterMap: React.FC<{ height?: string }> = ({ height = "h-[600px]" }) =>
         setLoading(false);
         return;
       }
-      const response = await axios.get('http://localhost:8080/api/statistics/exporters/map', {
+      const response = await axios.get('/api/statistics/exporters/map', {
         headers: {
           Authorization: `Bearer ${token}`
         }

@@ -53,7 +53,7 @@ const EditImporterDeclarationModal: React.FC<EditImporterDeclarationModalProps> 
       console.log('🟢 DEMANDE ID:', declaration.demandeId);
       
       const response = await axios.get(
-        `http://localhost:8080/api/importateur/demandes/${declaration.demandeId}/documents`,
+        `/api/importateur/demandes/${declaration.demandeId}/documents`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
@@ -213,7 +213,7 @@ const EditImporterDeclarationModal: React.FC<EditImporterDeclarationModalProps> 
       }
 
       const response = await axios.put(
-        `http://localhost:8080/api/importateur/demandes/${declaration.demandeId}`,
+        `/api/importateur/demandes/${declaration.demandeId}`,
         formDataToSend,
         {
           headers: { 

@@ -71,7 +71,7 @@ const TwoFactorAuth: React.FC<TwoFactorAuthProps> = ({
     setVerifying(true);
     try {
       // Appel API pour renvoyer un code 2FA
-      const response = await fetch('http://localhost:8080/api/auth/2fa/resend', {
+      const response = await fetch('/api/auth/2fa/resend', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

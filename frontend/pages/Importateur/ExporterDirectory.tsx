@@ -62,7 +62,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
     try {
       const token = getAuthToken();
 
-      const response = await fetch('http://localhost:8080/api/importateur/produits/statuts', {
+      const response = await fetch('/api/importateur/produits/statuts', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -159,7 +159,7 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
       }
 
       const token = getAuthToken();
-      const exportersResponse = await fetch('http://localhost:8080/api/importateur/exportateurs', {
+      const exportersResponse = await fetch('/api/importateur/exportateurs', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -385,10 +385,10 @@ const ExporterDirectory: React.FC<ExporterDirectoryProps> = ({ externalSearchQue
 
     try {
       const token = getAuthToken();
-      let url = 'http://localhost:8080/api/importateur/exportateurs';
+      let url = '/api/importateur/exportateurs';
 
       if (query && query.trim() !== '') {
-        url = `http://localhost:8080/api/importateur/exportateurs/recherche?q=${encodeURIComponent(query)}`;
+        url = `/api/importateur/exportateurs/recherche?q=${encodeURIComponent(query)}`;
       }
 
       const response = await fetch(url, {

@@ -51,7 +51,7 @@ const ArrivalCalendar: React.FC = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/importateur/mes-demandes', {
+      const response = await axios.get('/api/importateur/mes-demandes', {
         headers: { Authorization: `Bearer ${token}` }
       });
       

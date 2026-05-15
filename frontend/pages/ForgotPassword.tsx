@@ -15,7 +15,7 @@ const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBack, onEmailSent }) 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Configuration axios
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+  const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
   // Fonction pour initier la réinitialisation du mot de passe
   const initiatePasswordReset = async (email: string) => {

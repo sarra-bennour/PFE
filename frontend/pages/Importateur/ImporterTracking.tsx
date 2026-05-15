@@ -53,7 +53,7 @@ const ImporterTracking: React.FC<ImporterTrackingProps> = ({ onModalOpen }) => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/importateur/mes-demandes', {
+      const response = await axios.get('/api/importateur/mes-demandes', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -116,7 +116,7 @@ const ImporterTracking: React.FC<ImporterTrackingProps> = ({ onModalOpen }) => {
     setDeleting(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.delete(`http://localhost:8080/api/importateur/demandes/${showDeleteModal}`, {
+      const response = await axios.delete(`/api/importateur/demandes/${showDeleteModal}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -143,7 +143,7 @@ const ImporterTracking: React.FC<ImporterTrackingProps> = ({ onModalOpen }) => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post(
-        `http://localhost:8080/api/importateur/demandes/${demandeId}/soumettre`,
+        `/api/importateur/demandes/${demandeId}/soumettre`,
         {},
         {
           headers: { Authorization: `Bearer ${token}` }
@@ -160,7 +160,7 @@ const ImporterTracking: React.FC<ImporterTrackingProps> = ({ onModalOpen }) => {
   const handleCreatePaymentIntent = async (demandeId: number) => {
     const token = localStorage.getItem('token');
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/create-intent',
+      '/api/stripe-payment/create-intent',
       {
         demandeId: demandeId,
         successUrl: window.location.origin + '/payment-success',
@@ -187,7 +187,7 @@ const ImporterTracking: React.FC<ImporterTrackingProps> = ({ onModalOpen }) => {
       receiptEmail: paymentDetails.receiptEmail
     };
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      '/api/stripe-payment/confirm-payment',
       paymentRequest,
       {
         headers: {

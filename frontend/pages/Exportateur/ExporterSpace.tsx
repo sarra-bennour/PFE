@@ -226,7 +226,7 @@ const ExporterSpace: React.FC = () => {
 
       // Sinon, appel API
       console.log('🌐 Appel API pour rafraîchir les statuts');
-      const response = await axios.get('http://localhost:8080/api/exportateur/dossier/statut', {
+      const response = await axios.get('/api/exportateur/dossier/statut', {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('🔍🔍🔍🔍🔍 Réponse API brute:', response.data);
@@ -257,7 +257,7 @@ const fetchUserDeclarations = useCallback(async () => {
   if (!token) return;
 
   try {
-    const response = await axios.get('http://localhost:8080/api/exportateur/declarations', {
+    const response = await axios.get('/api/exportateur/declarations', {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -347,7 +347,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
       try {
         const token = localStorage.getItem('token');
         const response = await axios.get(
-          'http://localhost:8080/api/exportateur/pre-kyc/suggerer-usernames',
+          '/api/exportateur/pre-kyc/suggerer-usernames',
           { headers: { Authorization: `Bearer ${token}` } }
         );
         setUsernameSuggestions(response.data.suggestions);
@@ -382,7 +382,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(
-        `http://localhost:8080/api/exportateur/pre-kyc/verifier-username?username=${username}`,
+        `/api/exportateur/pre-kyc/verifier-username?username=${username}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setUsernameAvailable(response.data.disponible);
@@ -417,7 +417,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
       };
 
       // 1. Créer le dossier
-      const createResponse = await axios.post('http://localhost:8080/api/exportateur/dossier/creer', requestData, {
+      const createResponse = await axios.post('/api/exportateur/dossier/creer', requestData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -467,7 +467,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
           formData.append('documentType', documentType);
 
           await axios.post(
-            `http://localhost:8080/api/exportateur/dossier/${demandeId}/documents`,
+            `/api/exportateur/dossier/${demandeId}/documents`,
             formData,
             {
               headers: {
@@ -480,7 +480,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
       }
 
       // 4. Soumettre le dossier
-      await axios.post(`http://localhost:8080/api/exportateur/dossier/${demandeId}/soumettre`, {}, {
+      await axios.post(`/api/exportateur/dossier/${demandeId}/soumettre`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -521,7 +521,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
     const token = localStorage.getItem('token');
 
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/create-intent',
+      '/api/stripe-payment/create-intent',
       {
         demandeId: dossierInfo.demandeId,
         successUrl: window.location.origin + '/payment-success',
@@ -558,7 +558,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
 
     // Appeler le backend pour confirmer le paiement
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      '/api/stripe-payment/confirm-payment',
       paymentRequest,
       {
         headers: {
@@ -851,7 +851,7 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
                 };
 
                 const response = await axios.post(
-                  'http://localhost:8080/api/exportateur/pre-kyc/completer',
+                  '/api/exportateur/pre-kyc/completer',
                   dataToSend,
                   {
                     headers: {
@@ -1289,7 +1289,6 @@ const getCurrentValidator = (validationStatuses: any[]): string => {
           <i className="fas fa-robot mr-2"></i> Support Expert IA
         </button>
       </div>
-            <SupportChatbot context="exporter" />
 
 
 

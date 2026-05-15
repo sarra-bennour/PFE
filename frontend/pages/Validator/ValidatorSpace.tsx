@@ -14,7 +14,7 @@ import ExporterMap from './ExporterMap';
 import PredictiveDashboard from './PredictiveDashboard';
 
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 const ValidatorSpace: React.FC = () => {
   const { t } = useTranslation();
@@ -288,7 +288,7 @@ interface BackendDemande {
     documentType: doc.documentType,
     status: mapDocumentStatus(doc.status),
     comment: doc.validationComment,
-    fileUrl: `http://localhost:8080/api/admin/document/${doc.id}/preview`
+    fileUrl: `/api/admin/document/${doc.id}/preview`
     
   }));
   

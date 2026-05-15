@@ -38,7 +38,7 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
     try {
       setLoadingStructures(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8080/api/admin/structures', {
+      const response = await axios.get('/api/admin/structures', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -61,11 +61,11 @@ const CreateUserForm: React.FC<CreateUserFormProps> = ({ onSuccess, onCancel, st
   const getEndpointByStructureType = (type: string): string => {
     switch (type) {
       case 'MINISTRY':
-        return 'http://localhost:8080/api/admin/instance-validation/create';
+        return '/api/admin/instance-validation/create';
       case 'BANK':
-        return 'http://localhost:8080/api/admin/banque/create';
+        return '/api/admin/banque/create';
       case 'CUSTOMS':
-        return 'http://localhost:8080/api/admin/douane/create';
+        return '/api/admin/douane/create';
       default:
         throw new Error(`Type de structure non supporté: ${type}`);
     }

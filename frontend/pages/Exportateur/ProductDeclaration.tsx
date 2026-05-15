@@ -80,7 +80,7 @@ const INDUSTRIAL_DOCS = [
 ];
 
 // ==================== API SETUP ====================
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = '/api';
 
 // Créer une instance axios avec la configuration de base
 const api = axios.create({
@@ -655,7 +655,7 @@ const submitDemande = async (demandeIdToSubmit: number) => {
     const token = localStorage.getItem('token');
 
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/create-intent',
+      '/api/stripe-payment/create-intent',
       {
         demandeId: demandeIdParam,
         successUrl: window.location.origin + '/payment-success',
@@ -685,7 +685,7 @@ const submitDemande = async (demandeIdToSubmit: number) => {
     };
 
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      '/api/stripe-payment/confirm-payment',
       paymentRequest,
       {
         headers: {

@@ -15,7 +15,7 @@ import ProductDeclarationForm from './Importateur/ProductDeclarationForm';
 import { ProductAdditionData } from '../types/ProductAdditionData';
 
 
-const API_URL = 'http://localhost:8080/api';
+const API_URL = '/api';
 
 // Image par défaut en base64
 const DEFAULT_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%239ca3af' font-family='sans-serif' font-size='14'%3E📷 Image non disponible%3C/text%3E%3C/svg%3E";
@@ -83,7 +83,7 @@ const ProductsCatalog: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/importateur/produits/statuts', {
+      const response = await fetch('/api/importateur/produits/statuts', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -184,10 +184,10 @@ const ProductsCatalog: React.FC = () => {
     if (!imagePath) return DEFAULT_IMAGE;
     if (imagePath.startsWith('http')) return imagePath;
     if (imagePath.startsWith('/api')) {
-        return `http://localhost:8080${imagePath}`;
+        return `${imagePath}`;
     }
     if (imagePath.startsWith('/uploads')) {
-        return `http://localhost:8080/api/produits${imagePath}`;
+        return `/api/produits${imagePath}`;
     }
     return DEFAULT_IMAGE;
   };

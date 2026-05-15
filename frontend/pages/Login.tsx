@@ -123,7 +123,7 @@ const Login: React.FC = () => {
 
   const validateResetToken = async (token: string) => {
     try {
-      const response = await fetch(`http://localhost:8080/api/auth/validate-reset-token?token=${token}`, {
+      const response = await fetch(`/api/auth/validate-reset-token?token=${token}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +148,7 @@ const Login: React.FC = () => {
     showAlert('Vérification de votre email en cours...', 'success');
 
     try {
-      const response = await fetch(`http://localhost:8080/api/auth/verify-email?token=${token}`, {
+      const response = await fetch(`/api/auth/verify-email?token=${token}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -179,7 +179,7 @@ const Login: React.FC = () => {
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/api/auth/resend-verification', {
+      const response = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -260,7 +260,7 @@ const handlePasswordLogin = async (e: React.FormEvent) => {
   closeAlert();
 
   try {
-    const response = await fetch('http://localhost:8080/api/auth/login', {
+    const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -361,7 +361,7 @@ const handlePasswordLogin = async (e: React.FormEvent) => {
     closeAlert();
 
     try {
-      const response = await fetch('http://localhost:8080/api/auth/login/mobile', {
+      const response = await fetch('/api/auth/login/mobile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -408,7 +408,7 @@ const handlePasswordLogin = async (e: React.FormEvent) => {
         code: code
       };
 
-      const response = await fetch('http://localhost:8080/api/auth/2fa/verify', {
+      const response = await fetch('/api/auth/2fa/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

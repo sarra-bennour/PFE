@@ -113,7 +113,7 @@ const BankSpace: React.FC = () => {
                 return;
             }
 
-            const response = await axios.get('http://localhost:8080/api/auth/profile', {
+            const response = await axios.get('/api/auth/profile', {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -254,12 +254,12 @@ const BankSpace: React.FC = () => {
             console.log('📡 Récupération des statistiques...');
             
             // Récupérer les statistiques des transactions
-            const statsResponse = await axios.get('http://localhost:8080/api/stripe-payment/statistics', {
+            const statsResponse = await axios.get('/api/stripe-payment/statistics', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             
             // Récupérer toutes les transactions
-            const transactionsResponse = await axios.get('http://localhost:8080/api/stripe-payment/all', {
+            const transactionsResponse = await axios.get('/api/stripe-payment/all', {
                 headers: { Authorization: `Bearer ${token}` },
                 params: { limit: 1000 }
             });
@@ -361,7 +361,7 @@ const BankSpace: React.FC = () => {
                 poste: profileData.poste
             };
 
-            const response = await axios.put('http://localhost:8080/api/auth/update-profile', requestBody, {
+            const response = await axios.put('/api/auth/update-profile', requestBody, {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`

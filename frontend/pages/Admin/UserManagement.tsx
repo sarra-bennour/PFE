@@ -109,7 +109,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
     
     try {
       // Charger les utilisateurs
-      const usersResponse = await fetch('http://localhost:8080/api/admin/users', {
+      const usersResponse = await fetch('/api/admin/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const usersData = await usersResponse.json();
@@ -121,7 +121,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
       }
 
       // Charger les demandes de désactivation
-      const requestsResponse = await fetch('http://localhost:8080/api/admin/deactivation-requests', {
+      const requestsResponse = await fetch('/api/admin/deactivation-requests', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const requestsData = await requestsResponse.json();
@@ -141,7 +141,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
     const token = localStorage.getItem('token');
     
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/deactivation-requests/${requestId}/process`, {
+      const response = await fetch(`/api/admin/deactivation-requests/${requestId}/process`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +176,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
     }
     
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/users/${userId}/status`, {
+      const response = await fetch(`/api/admin/users/${userId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -208,7 +208,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ onResetPassword }) => {
     }
     
     try {
-      const response = await fetch(`http://localhost:8080/api/admin/users/${userId}/reactivate`, {
+      const response = await fetch(`/api/admin/users/${userId}/reactivate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

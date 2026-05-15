@@ -98,7 +98,7 @@ const AdminRequestList: React.FC = () => {
   const [unarchiving, setUnarchiving] = useState(false);
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('');
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+  const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
   // Récupérer les demandes actives (non archivées)
   const fetchActiveDemandes = async () => {
@@ -244,9 +244,9 @@ const AdminRequestList: React.FC = () => {
     if (!imagePath) return '';
     if (imagePath.startsWith('http')) return imagePath;
     if (imagePath.startsWith('/api')) {
-      return `http://localhost:8080${imagePath}`;
+      return `${imagePath}`;
     }
-    return `http://localhost:8080/api/produits${imagePath}`;
+    return `/api/produits${imagePath}`;
   };
 
   // Télécharger un document

@@ -103,7 +103,7 @@ const ValidatorProfile: React.FC = () => {
       setLoadingProfile(true);
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`http://localhost:8080/api/auth/profile`, {
+        const response = await fetch(`/api/auth/profile`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -149,7 +149,7 @@ const fetchRecentActivities = async () => {
   setLoadingActivities(true);
   try {
     const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:8080/api/audit-logs/my-logs?offset=0&limit=1000`, {
+    const response = await fetch(`/api/audit-logs/my-logs?offset=0&limit=1000`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
@@ -286,7 +286,7 @@ const fetchRecentActivities = async () => {
         telephone: profileData.telephone,
       };
 
-      const response = await fetch('http://localhost:8080/api/auth/update-profile', {
+      const response = await fetch('/api/auth/update-profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -338,7 +338,7 @@ const fetchRecentActivities = async () => {
     setLoadingProfile(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/auth/declare-absence', {
+      const response = await fetch('/api/auth/declare-absence', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

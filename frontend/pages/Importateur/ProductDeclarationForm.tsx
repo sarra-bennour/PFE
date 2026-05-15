@@ -5,7 +5,7 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import PaymentForm from '../../components/PaymentForm';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 interface FileWithProgress extends File {
   progress?: number;
@@ -245,7 +245,7 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({
   const handleCreatePaymentIntent = async (demandeIdParam: number) => {
     const token = localStorage.getItem('token');
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/create-intent',
+      '/api/stripe-payment/create-intent',
       {
         demandeId: demandeIdParam,
         successUrl: window.location.origin + '/payment-success',
@@ -271,7 +271,7 @@ const ProductDeclarationForm: React.FC<ProductDeclarationFormProps> = ({
       receiptEmail: paymentDetails.receiptEmail
     };
     const response = await axios.post(
-      'http://localhost:8080/api/stripe-payment/confirm-payment',
+      '/api/stripe-payment/confirm-payment',
       paymentRequest,
       {
         headers: {
