@@ -448,7 +448,7 @@ public class ExportateurController {
     /**
      * Télécharger/Afficher le fichier du document
      */
-    @GetMapping("/documents/{documentId}/file")
+    /*@GetMapping("/documents/{documentId}/file")
     public ResponseEntity<?> downloadDocument(
             @RequestHeader("Authorization") String authHeader,
             @PathVariable Long documentId,
@@ -521,6 +521,78 @@ public class ExportateurController {
                             "error", e.getMessage()
                     ));
         }
+    }*/
+    @GetMapping("/documents/{documentId}/file")
+    public ResponseEntity<?> downloadDocument(
+            @RequestHeader("Authorization") String authHeader,
+            @PathVariable Long documentId,
+            HttpServletRequest httpRequest) {
+
+        String clientIp = getClientIp(httpRequest);
+        String userEmail = null;
+        Long userId = null;
+
+        try {
+            ExportateurEtranger exportateur = getExportateurFromToken(authHeader);
+            userEmail = exportateur.getEmail();
+            userId = exportateur.getId();
+
+            // ✅ Utiliser la méthode qui déchiffre le document
+            byte[] fileData = dossierService.downloadDocument(documentId, exportateur.getId());
+            DocumentDTO documentInfo = dossierService.getDocumentById(documentId, exportateur.getId());
+
+            // AUDIT: Téléchargement document
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_DOWNLOAD_DOCUMENT")
+                            .actionType(ActionType.DOWNLOAD)
+                            .description("Téléchargement d'un document")
+                            .entity(EntityType.DOCUMENT, documentId, documentInfo.getFileName())
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .success()
+                            .detail("document_type", documentInfo.getDocumentType().name())
+                            .detail("file_size", documentInfo.getFileSize())
+                            .detail("ip_address", clientIp)
+            );
+
+            // Déterminer le content type
+            String contentType = determineContentType(documentInfo.getFileType());
+
+            return ResponseEntity.ok()
+                    .contentType(org.springframework.http.MediaType.parseMediaType(contentType))
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                            "inline; filename=\"" + documentInfo.getFileName() + "\"")
+                    .body(fileData);
+
+        } catch (RuntimeException e) {
+            auditService.log(
+                    AuditService.AuditLogBuilder.builder()
+                            .action("EXPORTATEUR_DOWNLOAD_DOCUMENT")
+                            .actionType(ActionType.DOWNLOAD)
+                            .description("Échec téléchargement document")
+                            .entity(EntityType.DOCUMENT, documentId, null)
+                            .user(userId, userEmail, "EXPORTATEUR")
+                            .failure(e.getMessage())
+                            .detail("document_id", documentId)
+                            .detail("ip_address", clientIp)
+            );
+
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                            "success", false,
+                            "error", e.getMessage()
+                    ));
+        }
+    }
+
+    // ✅ Ajouter cette méthode helper
+    private String determineContentType(String fileType) {
+        if (fileType == null) return "application/octet-stream";
+        if (fileType.toLowerCase().contains("pdf")) return "application/pdf";
+        if (fileType.toLowerCase().contains("jpg") || fileType.toLowerCase().contains("jpeg"))
+            return "image/jpeg";
+        if (fileType.toLowerCase().contains("png")) return "image/png";
+        return "application/octet-stream";
     }
 
     /**

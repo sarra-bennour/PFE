@@ -31,6 +31,7 @@ public class AdminServiceImpl {
     private final DemandeImportateurRepository demandeImportateurRepository;
     private final DemandeProduitRepository demandeProduitRepository;
     private final DocumentRepository documentRepository;
+    private final SecureStorageService secureStorageService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private static final DateTimeFormatter DATE_ONLY_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
@@ -202,13 +203,14 @@ public class AdminServiceImpl {
     @Transactional
     public byte[] getDocumentContent(Document document) throws IOException {
         Path filePath = Paths.get(document.getFilePath());
-        Resource resource = new UrlResource(filePath.toUri());
 
-        if (!resource.exists() || !resource.isReadable()) {
-            throw new RuntimeException("Fichier non trouvé: " + document.getFilePath());
+        // ✅ Utiliser SecureStorageService pour déchiffrer
+        try {
+            return secureStorageService.retrieveDocument(filePath, document.getFileHash());
+        } catch (Exception e) {
+            log.error("Erreur lors du déchiffrement du document: {}", e.getMessage());
+            throw new RuntimeException("Impossible de lire le document: " + e.getMessage());
         }
-
-        return resource.getContentAsByteArray();
     }
 
     public Map<String, Object> getDemandesStatistics() {

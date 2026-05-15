@@ -1,6 +1,7 @@
 package com.tunisia.commerce.controller;
 
 import com.tunisia.commerce.config.JwtUtil;
+import com.tunisia.commerce.config.StorageConfig;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementDTO;
 import com.tunisia.commerce.dto.produits.DemandeEnregistrementRequestDTO;
 import com.tunisia.commerce.dto.produits.ProduitDTO;
@@ -17,6 +18,7 @@ import com.tunisia.commerce.repository.ExportateurRepository;
 import com.tunisia.commerce.repository.UserRepository;
 import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.DemandeEnregistrementService;
+import com.tunisia.commerce.service.impl.SecureStorageService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.SignatureException;
@@ -57,6 +59,8 @@ public class ProduitController {
     private final UserRepository userRepository;
     private final DemandeEnregistrementRepository demandeEnregistrementRepository;
     private final AuditService auditService;
+    private final StorageConfig storageConfig;
+    private final SecureStorageService secureStorageService;
 
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
@@ -850,49 +854,87 @@ public class ProduitController {
     }
 
     /**
-     * Servir une image de produit
+     * Servir une image de produit (avec déchiffrement)
      */
     @GetMapping("/uploads/{demandeId}/products/{productId}/images/{fileName}")
-    public ResponseEntity<Resource> getProductImage(
+    public ResponseEntity<?> getProductImage(
             @PathVariable Long demandeId,
             @PathVariable Long productId,
             @PathVariable String fileName) {
 
         log.info("=== DÉBUT getProductImage ===");
-        try {
-            // ✅ CORRECTION : Le chemin dans la BD correspond à la structure des dossiers
-            // BD: /uploads/24/products/22/images/file.png
-            // Dossier physique: uploads/produits/24/products/22/images/file.png
+        log.info("demandeId: {}, productId: {}, fileName: {}", demandeId, productId, fileName);
 
+        try {
             String basePath = System.getProperty("user.dir");
-            // Construire le chemin avec le dossier "produits"
-            String relativePath = "uploads/produits/" + demandeId + "/products/" + productId + "/images/" + fileName;
+
+            // ✅ CORRECTION: Le fichier est directement dans le dossier product, pas dans "images"
+            // Chemin correct: uploads/product-declarations/4/products/1/fichier.png
+            String relativePath = "uploads/product-declarations/" + demandeId + "/products/" + productId + "/" + fileName;
             Path filePath = Paths.get(basePath, relativePath);
 
-            log.info("Base path: {}", basePath);
-            log.info("Relative path: {}", relativePath);
             log.info("Chemin complet: {}", filePath.toAbsolutePath());
-            log.info("Fichier existe: {}", Files.exists(filePath));
 
-            Resource resource = new UrlResource(filePath.toUri());
+            // Vérifier si le fichier existe
+            if (!Files.exists(filePath)) {
+                log.warn("❌ Image non trouvée au chemin 1: {}", filePath);
 
-            if (resource.exists() && resource.isReadable()) {
-                String contentType = Files.probeContentType(filePath);
-                if (contentType == null) {
-                    contentType = "application/octet-stream";
+                // Fallback: essayer avec le dossier "images"
+                String relativePath2 = "uploads/product-declarations/" + demandeId + "/products/" + productId + "/images/" + fileName;
+                Path filePath2 = Paths.get(basePath, relativePath2);
+
+                if (Files.exists(filePath2)) {
+                    filePath = filePath2;
+                    log.info("✅ Image trouvée au chemin 2: {}", filePath2);
+                } else {
+                    // Fallback: ancien chemin "produits"
+                    String relativePath3 = "uploads/produits/" + demandeId + "/products/" + productId + "/" + fileName;
+                    Path filePath3 = Paths.get(basePath, relativePath3);
+
+                    if (Files.exists(filePath3)) {
+                        filePath = filePath3;
+                        log.info("✅ Image trouvée au chemin 3: {}", filePath3);
+                    } else {
+                        log.error("❌ Image non trouvée dans aucun chemin");
+                        return ResponseEntity.notFound().build();
+                    }
                 }
-
-                log.info("✅ Image trouvée: {}", fileName);
-                return ResponseEntity.ok()
-                        .contentType(MediaType.parseMediaType(contentType))
-                        .body(resource);
-            } else {
-                log.warn("❌ Image non trouvée: {}", filePath);
-                return ResponseEntity.notFound().build();
             }
+
+            // ✅ Lire le fichier
+            byte[] fileBytes = Files.readAllBytes(filePath);
+
+            // ✅ DÉCHIFFRER si le chiffrement est activé
+            if (storageConfig.isEncryptionEnabled()) {
+                try {
+                    Path hashPath = Paths.get(filePath.toString() + ".hash");
+                    String expectedHash = Files.exists(hashPath) ? Files.readString(hashPath) : null;
+                    fileBytes = secureStorageService.retrieveDocument(filePath, expectedHash);
+                    log.info("✅ Image déchiffrée avec succès");
+                } catch (Exception e) {
+                    log.error("Erreur déchiffrement: {}", e.getMessage());
+                    // Continuer avec les bytes lus (peut-être non chiffré)
+                }
+            }
+
+            // Déterminer le content type
+            String contentType = Files.probeContentType(filePath);
+            if (contentType == null) {
+                if (fileName.endsWith(".png")) contentType = "image/png";
+                else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) contentType = "image/jpeg";
+                else contentType = "application/octet-stream";
+            }
+
+            log.info("✅ Image servie: {}, taille: {} bytes", fileName, fileBytes.length);
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .body(fileBytes);
+
         } catch (Exception e) {
             log.error("Erreur lors du chargement de l'image: {}", e.getMessage(), e);
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erreur: " + e.getMessage());
         }
     }
 

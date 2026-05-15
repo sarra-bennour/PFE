@@ -31,6 +31,9 @@ public class Document {
     @Column(nullable = false)
     private Long fileSize;
 
+    @Column(name = "file_hash", length = 255)
+    private String fileHash;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private DocumentType documentType; // RC_CERT, SANITARY_CERT, etc.

@@ -35,6 +35,10 @@ public class DemandeEnregistrementService {
     private final UserRepository userRepository;
     private final DemandeProduitRepository demandeProduitRepository;
     private final DemandeRoutingService demandeRoutingService;
+    private final DocumentStorageFacade documentStorageFacade;
+    private final SecureStorageService secureStorageService;
+
+
 
     private static final String REFERENCE_PREFIX = "DEC";
     private static final String UPLOAD_DIR = "uploads/produits/";
@@ -213,7 +217,7 @@ public class DemandeEnregistrementService {
     /**
      * Uploader une image pour un produit
      */
-    @Transactional
+    /*@Transactional
     public String uploadProductImage(Long demandeId, Long productId, MultipartFile file, String originalFileName) {
         log.info("Upload de l'image pour le produit ID: {}, demande ID: {}", productId, demandeId);
 
@@ -294,6 +298,87 @@ public class DemandeEnregistrementService {
             log.error("Erreur lors de l'upload de l'image: {}", e.getMessage());
             throw new RuntimeException("Erreur lors de l'upload: " + e.getMessage());
         }
+    }*/
+
+    @Transactional
+    public String uploadProductImage(Long demandeId, Long productId, MultipartFile file, String originalFileName) {
+        log.info("Upload sécurisé de l'image pour le produit ID: {}, demande ID: {}", productId, demandeId);
+
+        try {
+            // 1. Vérifier que le produit existe
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new RuntimeException("Produit non trouvé avec ID: " + productId));
+
+            // 2. Vérifier que le produit appartient à la demande
+            boolean isAssociated = demandeProduitRepository.existsByDemandeIdAndProduitId(demandeId, productId);
+            if (!isAssociated) {
+                throw new RuntimeException("Ce produit n'appartient pas à cette demande");
+            }
+
+            // 3. Utiliser le DocumentStorageFacade pour stocker l'image
+            SecureStorageService.StorageResult storageResult = documentStorageFacade.storeProductImage(
+                    file,
+                    demandeId,
+                    productId
+            );
+
+            // 4. Supprimer l'ancienne image si elle existe (fichier physique)
+            if (product.getProductImage() != null && !product.getProductImage().isEmpty()) {
+                try {
+                    // Extraire le chemin depuis l'URL
+                    String oldImagePath = extractPathFromUrl(product.getProductImage());
+                    if (oldImagePath != null) {
+                        Path oldPath = Paths.get(oldImagePath);
+                        if (Files.exists(oldPath)) {
+                            secureStorageService.secureDelete(oldPath);
+                            log.info("Ancienne image supprimée: {}", oldImagePath);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Impossible de supprimer l'ancienne image: {}", e.getMessage());
+                }
+            }
+
+            // 5. Construire l'URL publique pour l'image
+            String imageUrl = buildImageUrl(demandeId, productId, storageResult.getFileName());
+
+            // 6. Mettre à jour le produit avec la nouvelle URL
+            product.setProductImage(imageUrl);
+            productRepository.save(product);
+
+            log.info("Image uploadée avec succès - URL: {}, Hash: {}", imageUrl, storageResult.getFileHash());
+            return imageUrl;
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'upload sécurisé de l'image: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors de l'upload: " + e.getMessage());
+        }
+    }
+
+    // Méthode utilitaire pour extraire le chemin du fichier depuis l'URL
+    private String extractPathFromUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isEmpty()) return null;
+
+        // L'URL est comme: /uploads/24/products/22/images/product.png
+        // Le chemin physique est: uploads/produits/24/products/22/images/product.png
+
+        // Retirer le premier slash
+        String relativePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
+
+        // Ajouter le préfixe "produits/" si nécessaire
+        if (!relativePath.startsWith("produits/")) {
+            relativePath = "produits/" + relativePath;
+        }
+
+        // Construire le chemin absolu
+        String basePath = System.getProperty("user.dir");
+        return Paths.get(basePath, relativePath).toString();
+    }
+
+    // Méthode utilitaire pour construire l'URL publique
+    private String buildImageUrl(Long demandeId, Long productId, String fileName) {
+        return String.format("/api/produits/uploads/%d/products/%d/images/%s",
+                demandeId, productId, fileName);
     }
 
 
@@ -527,7 +612,7 @@ public class DemandeEnregistrementService {
     /**
      * Uploader un document pour une demande
      */
-    @Transactional
+    /*@Transactional
     public DocumentDTO uploadDocument(Long demandeId, Long exportateurId,
                                       MultipartFile file, String documentTypeStr,
                                       @RequestParam(required = false) Long productId) {
@@ -604,6 +689,67 @@ public class DemandeEnregistrementService {
 
         } catch (IOException e) {
             log.error("Erreur lors de l'upload du document: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors du téléchargement: " + e.getMessage());
+        }
+    }*/
+
+    @Transactional
+    public DocumentDTO uploadDocument(Long demandeId, Long exportateurId,
+                                      MultipartFile file, String documentTypeStr,
+                                      Long productId) {
+
+        log.info("Upload sécurisé pour déclaration produit - Demande ID: {}, Produit ID: {}",
+                demandeId, productId);
+
+        try {
+            // 1. Validation de la demande et des droits
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> ProductDeclarationException.demandeNotFound(demandeId));
+
+            if (!demande.getExportateur().getId().equals(exportateurId)) {
+                throw ProductDeclarationException.unauthorizedAccess();
+            }
+
+            // 2. Vérifier que la demande est en BROUILLON
+            if (demande.getStatus() != DemandeStatus.BROUILLON) {
+                throw new RuntimeException("Impossible d'uploader des documents sur une demande déjà soumise");
+            }
+
+            // 3. Vérifier le produit associé
+            DocumentType documentType = DocumentType.valueOf(documentTypeStr);
+
+            boolean isAssociated = demandeProduitRepository.existsByDemandeIdAndProduitId(demandeId, productId);
+            if (!isAssociated) {
+                throw new RuntimeException("Ce produit n'appartient pas à cette demande");
+            }
+
+            // 4. Stockage sécurisé avec le DocumentStorageFacade
+            SecureStorageService.StorageResult storageResult = documentStorageFacade
+                    .storeProductDeclarationDocument(file, demandeId, productId, documentType);
+
+            // 5. Sauvegarder les métadonnées
+            Document document = Document.builder()
+                    .fileName(storageResult.getFileName())
+                    .filePath(storageResult.getFilePath())
+                    .fileHash(storageResult.getFileHash())
+                    .fileSize(storageResult.getFileSize())
+                    .fileType(file.getContentType())
+                    .documentType(documentType)
+                    .status(DocumentStatus.EN_ATTENTE)
+                    .uploadedAt(LocalDateTime.now())
+                    .exportateur(demande.getExportateur())
+                    .demande(demande)
+                    .product(Product.builder().id(productId).build())
+                    .build();
+
+            document = documentRepository.save(document);
+
+            log.info("Document de déclaration produit stocké avec ID: {}", document.getId());
+
+            return convertToDTO(document);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'upload: {}", e.getMessage());
             throw new RuntimeException("Erreur lors du téléchargement: " + e.getMessage());
         }
     }

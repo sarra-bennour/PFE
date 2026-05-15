@@ -868,6 +868,9 @@ const Profile: React.FC = () => {
     IMPORTATEUR: 'bg-emerald-600',
     INSTANCE_VALIDATION: 'bg-blue-600',
     ADMIN: 'bg-slate-900',
+    BANQUE: 'bg-purple-600',
+    DOUANE: 'bg-yellow-600',
+    DEFAULT: 'bg-gray-600'
   };
 
   const userStatusBadge = () => {

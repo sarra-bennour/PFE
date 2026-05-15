@@ -18,5 +18,6 @@ public interface DemandeValidateurRepository extends JpaRepository<DemandeValida
 
     Optional<DemandeValidateur> findByDemandeIdAndInstanceId(Long demandeId, Long instanceId);
     long countByInstanceIdAndValidationStatus(Long instanceId, ValidationStatus validationStatus);
+    boolean existsByDemandeIdAndStructureId(Long demandeId, Long structureId);
 
 }

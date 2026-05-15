@@ -24,7 +24,7 @@ import java.util.Map;
         @Index(name = "idx_entity", columnList = "entity_type, entity_id"),
         @Index(name = "idx_user_action", columnList = "user_id, action_type"),
         @Index(name = "idx_performed_at", columnList = "performed_at"),
-        @Index(name = "idx_ip_address", columnList = "ip_address")
+        @Index(name = "idx_ip_address", columnList = "user_ip_address")
 })
 @Data
 @NoArgsConstructor

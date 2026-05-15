@@ -16,6 +16,7 @@ import com.tunisia.commerce.service.ImportateurService;
 import com.tunisia.commerce.service.impl.AuditService;
 import com.tunisia.commerce.service.impl.DemandeImportationService;
 import com.tunisia.commerce.config.JwtUtil;
+import com.tunisia.commerce.service.impl.SecureStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -58,9 +59,9 @@ public class ImportateurController {
     private final ImportateurRepository importateurRepository;
     private final DocumentRepository documentRepository;
     private final AuditService auditService;
+    private final SecureStorageService secureStorageService;
 
 
-    private static final String UPLOAD_DIR = "uploads/importateur/documents/";
 
     private String getClientIp(HttpServletRequest request) {
         String ip = request.getHeader("X-Forwarded-For");

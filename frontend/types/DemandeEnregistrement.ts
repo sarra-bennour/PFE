@@ -33,7 +33,7 @@ export interface DemandeEnregistrement {
   dischargePort?: string;
   arrivalDate?: string;
 
-  step: number;
+  step?: number;
   currentValidator?: string;
 }
 

@@ -11,12 +11,14 @@ import com.tunisia.commerce.enums.EntityType;
 import com.tunisia.commerce.enums.UserRole;
 import com.tunisia.commerce.exception.InstanceValidationException;
 import com.tunisia.commerce.repository.AdministrateurRepository;
+import com.tunisia.commerce.repository.DemandeValidateurRepository;
 import com.tunisia.commerce.repository.DocumentRepository;
 import com.tunisia.commerce.repository.UserRepository;
 import com.tunisia.commerce.service.UserService;
 import com.tunisia.commerce.config.JwtUtil;
 import com.tunisia.commerce.service.impl.AdminServiceImpl;
 import com.tunisia.commerce.service.impl.AuditService;
+import com.tunisia.commerce.service.impl.SecureStorageService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -28,6 +30,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +50,8 @@ public class AdminController {
     private final AdminServiceImpl adminService;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final SecureStorageService secureStorageService;
+    private final DemandeValidateurRepository demandeValidateurRepository;
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
     // Méthode utilitaire pour récupérer l'IP
@@ -313,6 +320,7 @@ public class AdminController {
      * Prévisualiser un document (affiche dans le navigateur)
      * Accessible par ADMIN et INSTANCE_VALIDATION
      */
+    // Dans AdminController.java
     @GetMapping("/document/{documentId}/preview")
     public ResponseEntity<?> previewDocument(
             @PathVariable Long documentId,
@@ -349,6 +357,14 @@ public class AdminController {
             Document document = documentRepository.findById(documentId)
                     .orElseThrow(() -> new RuntimeException("Document non trouvé"));
 
+            // ✅ Vérifier que l'utilisateur a accès à ce document
+            if (!hasAccessToDocument(user, document)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "success", false,
+                        "error", "Vous n'avez pas accès à ce document"
+                ));
+            }
+
             // AUDIT: Prévisualisation document
             auditService.log(
                     AuditService.AuditLogBuilder.builder()
@@ -362,15 +378,13 @@ public class AdminController {
                             .detail("ip_address", clientIp)
             );
 
-            byte[] fileContent = adminService.getDocumentContent(document);
-            String contentType = document.getFileType();
-            if (contentType == null) {
-                String fileName = document.getFileName().toLowerCase();
-                if (fileName.endsWith(".pdf")) contentType = "application/pdf";
-                else if (fileName.endsWith(".png")) contentType = "image/png";
-                else if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) contentType = "image/jpeg";
-                else contentType = "application/octet-stream";
-            }
+            // ✅ Utiliser le service sécurisé pour déchiffrer
+            byte[] fileContent = getDocumentContentWithDecryption(document);
+
+            String contentType = determineContentType(document);
+
+            log.info("✅ Document prévisualisé avec succès: {}, taille: {} bytes",
+                    document.getFileName(), fileContent.length);
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + document.getFileName() + "\"")
@@ -383,7 +397,7 @@ public class AdminController {
                             .action("PREVIEW_DOCUMENT")
                             .actionType(ActionType.DOWNLOAD)
                             .description("Échec prévisualisation document")
-                            .user(userId, userEmail, userRole )
+                            .user(userId, userEmail, userRole)
                             .failure(e.getMessage())
                             .detail("document_id", documentId)
                             .detail("ip_address", clientIp)
@@ -400,18 +414,62 @@ public class AdminController {
                             .action("PREVIEW_DOCUMENT")
                             .actionType(ActionType.DOWNLOAD)
                             .description("Erreur prévisualisation document")
-                            .user(userId, userEmail, userRole )
+                            .user(userId, userEmail, userRole)
                             .failure(e.getMessage())
                             .detail("document_id", documentId)
                             .detail("ip_address", clientIp)
             );
 
             log.error("Erreur: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(Map.of(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "success", false,
-                    "error", e.getMessage()
+                    "error", "Erreur lors du chargement du document: " + e.getMessage()
             ));
         }
+    }
+
+    // ✅ Méthode pour déchiffrer le document
+    private byte[] getDocumentContentWithDecryption(Document document) throws Exception {
+        Path filePath = Paths.get(document.getFilePath());
+
+        if (!Files.exists(filePath)) {
+            throw new RuntimeException("Fichier physique non trouvé: " + document.getFilePath());
+        }
+
+        // Utiliser SecureStorageService pour déchiffrer
+        return secureStorageService.retrieveDocument(filePath, document.getFileHash());
+    }
+
+    // ✅ Méthode helper pour déterminer le content type
+    private String determineContentType(Document document) {
+        String contentType = document.getFileType();
+        if (contentType != null && !contentType.isEmpty()) {
+            return contentType;
+        }
+
+        String fileName = document.getFileName().toLowerCase();
+        if (fileName.endsWith(".pdf")) return "application/pdf";
+        if (fileName.endsWith(".png")) return "image/png";
+        if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) return "image/jpeg";
+        return "application/octet-stream";
+    }
+
+    // ✅ Méthode pour vérifier l'accès
+    private boolean hasAccessToDocument(User user, Document document) {
+        if (user instanceof Administrateur) {
+            return true; // Admin a accès à tout
+        }
+
+        if (user instanceof InstanceValidation) {
+            InstanceValidation validator = (InstanceValidation) user;
+            // Vérifier que la demande du document est assignée à sa structure
+            return demandeValidateurRepository.existsByDemandeIdAndStructureId(
+                    document.getDemande().getId(),
+                    validator.getStructure().getId()
+            );
+        }
+
+        return false;
     }
 
     /**

@@ -128,6 +128,7 @@ interface BackendDemande {
   paymentAmount?: number;
   applicantType?: string;
   applicantName?: string;
+  typeDemande?: string;
   documents?: any[];
   products?: any[];
   importDetails?: any;
@@ -157,6 +158,8 @@ interface BackendDemande {
     
     const demandesData: BackendDemande[] = response.data.data || response.data || [];
     
+        console.log('🔍 5. Avant le mapping, demandesData:', demandesData);
+
     // Afficher chaque demande reçue
     demandesData.forEach((req: BackendDemande, index: number) => {
       
@@ -172,7 +175,11 @@ interface BackendDemande {
     });
     
     const mappedRequests: ValidationRequest[] = demandesData.map((req: BackendDemande) => {
+            console.log(`🔍 5a. Mapping demande: ${req.reference}, typeDemande: ${req.typeDemande}`);
+
       const mapped = mapBackendRequestToFrontend(req);
+            console.log(`🔍 5b. Résultat mapping: ${mapped.reference} -> type: ${mapped.type}`);
+
       return mapped;
     });
     
@@ -259,6 +266,19 @@ interface BackendDemande {
   } else if (backendReq.reference?.startsWith('DOS-')) {
     requestType = 'REGISTRATION';
   }
+
+  if (backendReq.typeDemande) {
+    if (backendReq.typeDemande === 'REGISTRATION') {
+      requestType = 'REGISTRATION';
+    } else if (backendReq.typeDemande === 'PRODUCT_DECLARATION') {
+      requestType = 'PRODUCT_DECLARATION';
+    } else if (backendReq.typeDemande === 'IMPORT') {
+      requestType = 'IMPORT';
+    }
+  }
+
+  console.log(`📋 Mapping demande ${backendReq.reference}: type=${requestType}, typeDemande=${backendReq.typeDemande}`);
+
 
   
   // Mapper les documents

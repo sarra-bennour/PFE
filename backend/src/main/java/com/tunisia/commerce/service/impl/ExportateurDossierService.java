@@ -1,5 +1,6 @@
 package com.tunisia.commerce.service.impl;
 
+import com.tunisia.commerce.config.StorageConfig;
 import com.tunisia.commerce.dto.exportateur.CreerDossierRequest;
 import com.tunisia.commerce.dto.exportateur.PreKycRequest;
 import com.tunisia.commerce.dto.validation.DocumentDTO;
@@ -38,10 +39,11 @@ public class ExportateurDossierService {
     private final DocumentRepository documentRepository;
     private final ProductRepository productRepository;
     private final DemandeRoutingService demandeRoutingService;
-    private final EmailService emailService;
+    private final SecureStorageService secureStorageService;
+    private final DocumentStorageFacade documentStorageFacade;
+
 
     // Dossier de stockage des fichiers
-    private final String UPLOAD_DIR = "uploads/documents/";
     private static final Logger logger = Logger.getLogger(ExportateurDossierService.class.getName());
 
     /**
@@ -91,7 +93,7 @@ public class ExportateurDossierService {
     /**
      * Télécharger un document
      */
-    public DocumentDTO uploadDocument(Long demandeId, Long exportateurId,
+    /*public DocumentDTO uploadDocument(Long demandeId, Long exportateurId,
                                       MultipartFile file, String documentType) {
 
         System.out.println("=== UPLOAD DOCUMENT ===");
@@ -171,6 +173,74 @@ public class ExportateurDossierService {
             System.err.println("ERREUR: " + e.getMessage());
             e.printStackTrace();
             throw e;
+        }
+    }*/
+
+    @Transactional
+    public DocumentDTO uploadDocument(Long demandeId, Long exportateurId,
+                                      MultipartFile file, String documentTypeStr) {
+
+        logger.info("Upload sécurisé du document pour la demande ID: "+ demandeId);
+
+        try {
+            // 1. Récupérer la demande et vérifier les droits
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+            if (!demande.getExportateur().getId().equals(exportateurId)) {
+                throw new RuntimeException("Accès non autorisé");
+            }
+
+            // 2. Convertir le type de document
+            DocumentType documentType = DocumentType.valueOf(documentTypeStr);
+
+            // 3. Stocker le fichier de manière sécurisée
+            SecureStorageService.StorageResult storageResult = documentStorageFacade
+                    .storeRegisterDocument(file, demandeId, documentType);
+
+            // 4. Sauvegarder les métadonnées en base de données
+            Document document = Document.builder()
+                    .fileName(storageResult.getFileName())
+                    .filePath(storageResult.getFilePath())
+                    .fileHash(storageResult.getFileHash())  // ✅ Stocker le hash
+                    .fileSize(storageResult.getFileSize())
+                    .fileType(file.getContentType())
+                    .documentType(documentType)
+                    .status(DocumentStatus.EN_ATTENTE)
+                    .uploadedAt(LocalDateTime.now())
+                    .exportateur(demande.getExportateur())
+                    .demande(demande)
+                    .build();
+
+            document = documentRepository.save(document);
+            logger.info("Document stocké sécurisé avec ID: "+ document.getId());
+
+            return convertToDTO(document);
+
+        } catch (Exception e) {
+            logger.severe("Erreur lors de l'upload sécurisé: "+ e.getMessage());
+            throw new RuntimeException("Erreur lors du téléchargement du document: " + e.getMessage());
+        }
+    }
+
+    // ✅ NOUVEAU: Télécharger un document avec vérification d'intégrité
+    public byte[] downloadDocument(Long documentId, Long exportateurId) {
+        try {
+            Document document = documentRepository.findById(documentId)
+                    .orElseThrow(() -> new RuntimeException("Document non trouvé"));
+
+            if (!document.getExportateur().getId().equals(exportateurId)) {
+                throw new RuntimeException("Accès non autorisé");
+            }
+
+            Path filePath = Paths.get(document.getFilePath());
+
+            // Récupérer et vérifier l'intégrité
+            return secureStorageService.retrieveDocument(filePath, document.getFileHash());
+
+        } catch (Exception e) {
+            logger.severe("Erreur lors du téléchargement: "+ e.getMessage());
+            throw new RuntimeException("Erreur lors du téléchargement: " + e.getMessage());
         }
     }
 
@@ -265,22 +335,6 @@ public class ExportateurDossierService {
     }
 
     /**
-     * Récupérer tous les documents d'un exportateur
-     */
-    /*public List<DocumentDTO> getAllDocumentsByExportateur(Long exportateurId) {
-        logger.info("Récupération de tous les documents pour l'exportateur: " + exportateurId);
-
-        ExportateurEtranger exportateur = exportateurRepository.findById(exportateurId)
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé"));
-
-        List<Document> documents = documentRepository.findByExportateurId(exportateurId);
-
-        return documents.stream()
-                .map(this::convertToDTO)
-                .collect(Collectors.toList());
-    }*/
-
-    /**
      * Récupérer UNIQUEMENT les documents du dossier d'agrément (DOS-)
      */
     public List<DocumentDTO> getDossierAgrementByExportateur(Long exportateurId) {
@@ -329,69 +383,6 @@ public class ExportateurDossierService {
                 .build();
     }
 
-    /**
-     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
-     */
-    /**
-     * Compléter le Pré-KYC (première étape avant le dossier de conformité)
-     */
-    /*@Transactional
-    public ExportateurEtranger completePreKyc(String email, PreKycRequest request) {
-        logger.info("Complétion du Pré-KYC pour l'email: " + email);
-
-        ExportateurEtranger exportateur = exportateurRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Exportateur non trouvé avec l'email: " + email));
-
-        // Vérifier si le Pré-KYC n'est pas déjà complété
-        if (exportateur.isPreKycCompleted()) {
-            throw new RuntimeException("Le Pré-KYC a déjà été complété");
-        }
-
-        // Validation du username
-        String username = request.getUsername();
-        if (username == null || username.trim().isEmpty()) {
-            throw new RuntimeException("Le nom d'utilisateur est requis");
-        }
-
-        // Normaliser le username (enlever espaces, caractères spéciaux)
-        username = username.toLowerCase().trim();
-        if (!username.matches("^[a-z0-9_]+$")) {
-            throw new RuntimeException("Le nom d'utilisateur ne peut contenir que des lettres minuscules, chiffres et underscores");
-        }
-
-        // Vérifier l'unicité
-        if (exportateurRepository.existsByUsername(username)) {
-            // Si le username est déjà pris, suggérer des alternatives
-            List<String> suggestions = suggererUsernames(exportateur.getRaisonSociale(), email);
-            String suggestionsStr = String.join(", ", suggestions);
-            throw new RuntimeException("Ce nom d'utilisateur est déjà pris. Suggestions: " + suggestionsStr);
-        }
-
-        // Vérifier le numéro officiel d'enregistrement (si nécessaire)
-        if (request.getNumeroOfficielEnregistrement() != null &&
-                exportateurRepository.existsByNumeroOfficielEnregistrement(request.getNumeroOfficielEnregistrement())) {
-            throw new RuntimeException("Ce numéro d'enregistrement officiel est déjà utilisé");
-        }
-
-        // Mettre à jour les champs
-        exportateur.setUsername(username);
-        exportateur.setNumeroOfficielEnregistrement(request.getNumeroOfficielEnregistrement());
-        exportateur.setSiteType(request.getSiteType());
-        exportateur.setRepresentantRole(request.getRepresentantRole());
-        exportateur.setRepresentantEmail(request.getRepresentantEmail());
-        exportateur.setCapaciteAnnuelle(request.getCapaciteAnnuelle());
-        exportateur.setPreKycCompleted(true);
-        exportateur.setPreKycCompletedAt(LocalDateTime.now());
-
-        // Mettre à jour le statut utilisateur
-        exportateur.setUserStatut(UserStatus.ACTIF);
-
-        ExportateurEtranger savedExportateur = exportateurRepository.save(exportateur);
-        logger.info("Pré-KYC complété avec succès pour l'exportateur ID: " + savedExportateur.getId() +
-                ", username: " + username);
-
-        return savedExportateur;
-    }*/
 
     /**
      * Générer des suggestions de username basées sur le nom de l'entreprise

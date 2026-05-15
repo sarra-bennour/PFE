@@ -38,6 +38,8 @@ public class DemandeImportationService {
     private final DocumentRepository documentRepository;
     private final DemandeImportateurRepository demandeImportateurRepository;
     private final DemandeRoutingService demandeRoutingService;
+    private final SecureStorageService secureStorageService;
+    private final DocumentStorageFacade documentStorageFacade;
 
     private static final String REFERENCE_PREFIX = "IMP-";
 
@@ -554,7 +556,7 @@ public class DemandeImportationService {
                 .build();
     }
 
-    @Transactional
+    /*@Transactional
     public DocumentDTO uploadDocument(Long demandeId, Long importateurId, MultipartFile file, String documentTypeStr) {
         log.info("Upload du document pour la demande ID: {}", demandeId);
 
@@ -641,6 +643,51 @@ public class DemandeImportationService {
                 .uploadedAt(document.getUploadedAt())
                 .downloadUrl("/api/importateur/demandes/documents/" + document.getId() + "/telecharger")
                 .build();
+    }*/
+
+    @Transactional
+    public DocumentDTO uploadDocument(Long demandeId, Long importateurId,
+                                      MultipartFile file, String documentTypeStr) {
+
+        log.info("Upload sécurisé pour demande d'importation - Demande ID: {}", demandeId);
+
+        try {
+            // 1. Vérifier la demande et les droits
+            DemandeEnregistrement demande = demandeRepository.findById(demandeId)
+                    .orElseThrow(() -> new RuntimeException("Demande non trouvée"));
+
+            if (demande.getImportateur() == null ||
+                    !demande.getImportateur().getId().equals(importateurId)) {
+                throw new RuntimeException("Accès non autorisé");
+            }
+
+            // 2. Stocker le document
+            DocumentType documentType = DocumentType.valueOf(documentTypeStr);
+
+            SecureStorageService.StorageResult storageResult = documentStorageFacade
+                    .storeImportDocument(file, demandeId, documentType);
+
+            // 3. Sauvegarder les métadonnées
+            Document document = Document.builder()
+                    .fileName(storageResult.getFileName())
+                    .filePath(storageResult.getFilePath())
+                    .fileHash(storageResult.getFileHash())
+                    .fileSize(storageResult.getFileSize())
+                    .fileType(file.getContentType())
+                    .documentType(documentType)
+                    .status(DocumentStatus.EN_ATTENTE)
+                    .uploadedAt(LocalDateTime.now())
+                    .demande(demande)
+                    .build();
+
+            document = documentRepository.save(document);
+
+            return convertToDocumentDTO(document);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'upload: {}", e.getMessage());
+            throw new RuntimeException("Erreur lors du téléchargement: " + e.getMessage());
+        }
     }
 
     // Ajouter cette méthode pour récupérer les demandes formatées pour le tracking
